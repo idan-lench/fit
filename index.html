@@ -385,6 +385,31 @@
     <div class="card" id="analysisNotes"></div>
   </section>
 
+  <!-- AI TAB -->
+  <section id="tab-ai">
+    <h2>Ask AI</h2>
+    <div class="card" id="aiSetup" style="display: none;">
+      <div class="muted small" style="margin-bottom: 8px;">⚙️ Set up your Gemini API key first in Settings.</div>
+      <button class="primary" style="width:100%;" onclick="openSettings()">Open Settings</button>
+    </div>
+    <div id="aiReady" style="display: none;">
+      <div class="card" style="margin-bottom: 10px;">
+        <div class="muted small" style="margin-bottom: 6px;">Quick questions:</div>
+        <div class="row" style="gap: 6px; flex-wrap: wrap;">
+          <span class="chip" onclick="askAI('Review my day')" style="cursor: pointer;">Review my day</span>
+          <span class="chip" onclick="askAI('How is my protein this week?')" style="cursor: pointer;">Protein this week</span>
+          <span class="chip" onclick="askAI('What should I do tomorrow?')" style="cursor: pointer;">Plan tomorrow</span>
+          <span class="chip" onclick="askAI('Am I on track for my waist goal?')" style="cursor: pointer;">Goal progress</span>
+        </div>
+      </div>
+      <div id="aiMessages" style="margin-bottom: 100px;"></div>
+      <div style="position: fixed; bottom: calc(72px + env(safe-area-inset-bottom)); left: 0; right: 0; max-width: 720px; margin: 0 auto; padding: 8px 14px; background: var(--bg); border-top: 1px solid var(--line); display: flex; gap: 6px; z-index: 5;">
+        <input type="text" id="aiInput" placeholder="Ask anything about your data…" style="flex: 1;" onkeypress="if(event.key==='Enter') sendAIMessage()">
+        <button class="primary" onclick="sendAIMessage()" style="padding: 12px 16px;">Send</button>
+      </div>
+    </div>
+  </section>
+
   <!-- PHOTOS TAB -->
   <section id="tab-photos">
     <h2>Add photo</h2>
@@ -426,6 +451,9 @@
   <button data-tab="analysis" onclick="switchTab('analysis')">
     <span class="ic">📊</span>Analysis
   </button>
+  <button data-tab="ai" onclick="switchTab('ai')">
+    <span class="ic">✨</span>AI
+  </button>
   <button data-tab="photos" onclick="switchTab('photos')">
     <span class="ic">📸</span>Photos
   </button>
@@ -447,6 +475,11 @@
     <button style="width:100%; margin-bottom:6px;" onclick="openSyncSetup()">⚙ Set up sync</button>
     <button class="primary" style="width:100%; margin-bottom:6px;" id="syncPullBtn" onclick="pullFromDrive({silent:false})" disabled>⬇ Pull latest from Drive</button>
     <button style="width:100%; margin-bottom:8px;" id="syncTestBtn" onclick="testSync()" disabled>Test connection</button>
+    <hr class="div">
+    <div style="font-weight:600; margin-bottom:6px;">AI features (Gemini)</div>
+    <label>Gemini API key</label>
+    <input type="text" id="geminiKeyInput" placeholder="AIzaSy…" style="font-family: ui-monospace, monospace; font-size: 12px;" oninput="saveGeminiKey(this.value)">
+    <div class="muted small" style="margin: 4px 0 8px;">Free at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--accent);">aistudio.google.com/app/apikey</a>. Stored on this device only. Your meal/workout data is sent to Google when AI features run.</div>
     <hr class="div">
     <button style="width:100%; margin-bottom:8px;" onclick="document.getElementById('importInput').click()">Import / Restore</button>
     <input type="file" accept=".json,application/json" id="importInput" style="display:none" onchange="importData(event)">
@@ -521,7 +554,11 @@
       </div>
 
       <div class="card" style="background: var(--panel2); margin-bottom: 12px;">
-        <b>Step 4.</b> Copy the <b>Web app URL</b> Google shows you (ends in <code>/exec</code>) and paste it here:
+        <b>Step 4.</b>
+        <label style="margin-top: 8px;">Drive Fit folder ID</label>
+        <input type="text" id="folderIdInput" placeholder="1-Kb8A…" style="font-family: ui-monospace, monospace; font-size: 11px;">
+        <div class="muted small" style="margin: 4px 0 8px;">From the Drive URL when viewing your Fit folder: <code>drive.google.com/drive/folders/{ID}</code></div>
+        <label>Web app URL (from Apps Script Deploy)</label>
         <input type="text" id="webhookUrlInput" placeholder="https://script.google.com/macros/s/.../exec" style="margin-top: 8px;">
 
         <label style="margin-top: 12px;">Secret token</label>
@@ -738,6 +775,7 @@ function switchTab(name) {
   if (name === 'photos') renderPhotos();
   if (name === 'meals') renderMeals();
   if (name === 'analysis') renderAnalysis();
+  if (name === 'ai') renderAI();
 }
 
 // ---------- WORKOUT ----------
@@ -1779,8 +1817,147 @@ async function removeMeal(id) {
   renderMeals();
 }
 
+// ---------- AI / GEMINI ----------
+function getGeminiKey() { return localStorage.getItem('fit.geminiKey') || ''; }
+function saveGeminiKey(v) {
+  v = (v || '').trim();
+  if (v) localStorage.setItem('fit.geminiKey', v);
+  else localStorage.removeItem('fit.geminiKey');
+}
+
+function aiHistory() {
+  try { return JSON.parse(localStorage.getItem('fit.aiHistory') || '[]'); } catch { return []; }
+}
+function saveAiHistory(h) { localStorage.setItem('fit.aiHistory', JSON.stringify(h.slice(-30))); }
+
+async function buildAIContext() {
+  const meals = await getAllMeals();
+  const mealSummary = meals.slice(0, 30).map(m => ({
+    date: m.date, time: m.time,
+    description: m.description || '(no description)',
+    calories: m.calories || null
+  }));
+  const ctx = {
+    user: {
+      age: 44, sex: 'male', height_cm: 168, weight_kg: 58,
+      bmr: BMR, dailyCalGoal: DAILY_CAL_GOAL, waistGoal: WAIST_GOAL,
+      trainingPlan: 'Tue: 8k run + upper · Wed: movement 1hr · Thu: intervals + upper · Sat: legs · Sun/Mon/Fri: rest'
+    },
+    measurements: state.measurements || [],
+    steps: state.steps || [],
+    sessions: (state.sessions || []).slice(-20).map(s => ({
+      date: s.date, type: s.day,
+      cardio: s.cardioNote || null,
+      caloriesBurned: s.caloriesBurned || null,
+      exercises: (s.entries || []).filter(e => e.sets?.length).map(e => `${e.name}: ${e.sets.map(x=>x.reps).join(',')}`),
+      notes: s.notes || null
+    })),
+    meals: mealSummary,
+    recentNotes: (state.dailyNotes || []).slice(-7),
+    today: todayISO()
+  };
+  return ctx;
+}
+
+async function callGemini(messages) {
+  const key = getGeminiKey();
+  if (!key) throw new Error('Gemini API key not set');
+  const ctx = await buildAIContext();
+  const systemInstruction = `You are a friendly, evidence-based fitness coach. The user is a 44yo male, 168cm, 58kg, lean but low muscle, goal: drop waist from 78 to 75 cm + build muscle. Use the data provided to answer specifically and concisely. Reference exact numbers when relevant. Don't pad — be direct. If data is missing, say so.
+
+Today's date: ${ctx.today}
+
+Full data:
+${JSON.stringify(ctx, null, 2)}`;
+
+  const contents = messages.map(m => ({
+    role: m.role === 'user' ? 'user' : 'model',
+    parts: [{ text: m.text }]
+  }));
+
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(key)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+      contents
+    })
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Gemini ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!reply) throw new Error('Empty reply from Gemini');
+  return reply;
+}
+
+function renderAI() {
+  const hasKey = !!getGeminiKey();
+  document.getElementById('aiSetup').style.display = hasKey ? 'none' : 'block';
+  document.getElementById('aiReady').style.display = hasKey ? 'block' : 'none';
+  if (hasKey) renderAIMessages();
+}
+
+function renderAIMessages() {
+  const list = document.getElementById('aiMessages');
+  const history = aiHistory();
+  if (history.length === 0) {
+    list.innerHTML = '<div class="empty">Ask anything about your meals, workouts, progress…</div>';
+    return;
+  }
+  list.innerHTML = history.map(m => {
+    const isUser = m.role === 'user';
+    return `<div style="display: flex; ${isUser ? 'justify-content: flex-end' : 'justify-content: flex-start'}; margin-bottom: 10px;">
+      <div style="max-width: 85%; padding: 10px 14px; border-radius: 16px; ${isUser ? 'background: var(--accent); color: white; border-bottom-right-radius: 4px;' : 'background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 4px;'} white-space: pre-wrap; line-height: 1.45;">${escapeHtml(m.text)}</div>
+    </div>`;
+  }).join('');
+  list.scrollIntoView({ block: 'end' });
+}
+
+async function sendAIMessage() {
+  const input = document.getElementById('aiInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  const history = aiHistory();
+  history.push({ role: 'user', text, time: Date.now() });
+  saveAiHistory(history);
+  renderAIMessages();
+
+  // Show loading
+  const list = document.getElementById('aiMessages');
+  const loading = document.createElement('div');
+  loading.id = 'aiLoading';
+  loading.style.cssText = 'display: flex; margin-bottom: 10px;';
+  loading.innerHTML = '<div style="padding: 10px 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted);">Thinking…</div>';
+  list.appendChild(loading);
+  loading.scrollIntoView({ block: 'end' });
+
+  try {
+    const reply = await callGemini(history);
+    history.push({ role: 'assistant', text: reply, time: Date.now() });
+    saveAiHistory(history);
+  } catch (e) {
+    history.push({ role: 'assistant', text: '⚠ Error: ' + e.message, time: Date.now() });
+    saveAiHistory(history);
+  }
+  renderAIMessages();
+}
+
+function askAI(prompt) {
+  document.getElementById('aiInput').value = prompt;
+  sendAIMessage();
+}
+
 // ---------- SETTINGS / EXPORT ----------
-function openSettings() { document.getElementById('settingsModal').classList.add('show'); refreshSyncStatus(); }
+function openSettings() {
+  document.getElementById('settingsModal').classList.add('show');
+  refreshSyncStatus();
+  const k = document.getElementById('geminiKeyInput');
+  if (k) k.value = getGeminiKey();
+}
 function closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
 
 async function exportData(opts = {}) {
@@ -1967,9 +2144,10 @@ async function uploadToDrive(payload, filename) {
 }
 
 function buildAppsScript(secret) {
+  const folderId = state.sync?.folderId || 'YOUR_DRIVE_FOLDER_ID';
   return `// Fit tracker webhook — saves & loads backups to your Google Drive "Fit" folder
 const SECRET = '${secret}';
-const FIT_FOLDER_ID = '1-Kb8A8lBMGXqr-RDiRGxugnjT6qNzvgZ';
+const FIT_FOLDER_ID = '${folderId}';
 
 function doPost(e) {
   let data;
@@ -2020,11 +2198,19 @@ function _json(obj) {
 
 function openSyncSetup() {
   const secret = ensureSecret();
-  document.getElementById('appsScriptCode').value = buildAppsScript(secret);
   document.getElementById('webhookUrlInput').value = state.sync?.webhookUrl || '';
+  document.getElementById('folderIdInput').value = state.sync?.folderId || '';
   document.getElementById('secretInput').value = secret;
+  document.getElementById('appsScriptCode').value = buildAppsScript(secret);
   document.getElementById('settingsModal').classList.remove('show');
   document.getElementById('syncModal').classList.add('show');
+  // Re-render code when folder id changes
+  document.getElementById('folderIdInput').oninput = () => {
+    state.sync = state.sync || {};
+    state.sync.folderId = document.getElementById('folderIdInput').value.trim();
+    save();
+    document.getElementById('appsScriptCode').value = buildAppsScript(secret);
+  };
 }
 function copySecret() {
   const v = document.getElementById('secretInput').value.trim();
@@ -2050,6 +2236,7 @@ function copyScript() {
 async function saveAndTestSync() {
   const url = document.getElementById('webhookUrlInput').value.trim();
   const secret = document.getElementById('secretInput').value.trim();
+  const folderId = document.getElementById('folderIdInput').value.trim();
   if (!url || !url.includes('/macros/s/') || !url.endsWith('/exec')) {
     return toast("That URL doesn't look right");
   }
@@ -2059,6 +2246,7 @@ async function saveAndTestSync() {
   state.sync = state.sync || {};
   state.sync.webhookUrl = url;
   state.sync.secret = secret;
+  if (folderId) state.sync.folderId = folderId;
   save();
   toast('Testing…');
   const res = await pingSync();
