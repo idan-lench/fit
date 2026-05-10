@@ -848,22 +848,6 @@ function renderWorkout() {
     }, 0);
   }
 
-  // Notes section — shown for all session types, optional
-  const notesCard = document.createElement('div');
-  notesCard.className = 'ex';
-  notesCard.innerHTML = `
-    <div class="name">Notes / Analysis</div>
-    <div class="target">Optional — paste Claude's analysis or your own notes</div>
-    <div class="row" style="margin-top: 10px; gap: 6px;">
-      <textarea id="sessionNotes" rows="2" style="width: 100%; resize: vertical; min-height: 50px;" placeholder="Optional thoughts, analysis, anything else…">${escapeHtml(state.current?.notes || '')}</textarea>
-    </div>
-  `;
-  list.appendChild(notesCard);
-  setTimeout(() => {
-    const ta = document.getElementById('sessionNotes');
-    if (ta) ta.addEventListener('input', e => { state.current.notes = e.target.value; save(); });
-  }, 0);
-
   state.current.entries.forEach((e, idx) => {
     const last = lastSetsFor(e.name);
     const isTime = /plank|hold|sec|hang/i.test(e.name);
