@@ -259,7 +259,7 @@
     <h2 id="workoutTitle">Workout</h2>
     <div id="exerciseList"></div>
 
-    <div class="row" style="margin-top: 8px;">
+    <div class="row" id="saveRow" style="margin-top: 8px; display: none;">
       <button class="grow" onclick="finishSession()">Save session</button>
       <button class="ghost" onclick="cancelSession()">Reset</button>
     </div>
@@ -800,7 +800,9 @@ function isCurrentFresh() {
   if (!state.current) return true;
   if (state.current.entries.some(e => e.sets.length)) return false;
   if (state.current.cardioNote && state.current.cardioNote.trim()) return false;
-  if (state.current.notes && state.current.notes.trim()) return false;
+  // Also: if user added/removed exercises beyond template defaults
+  const defaults = PLAN[state.current.day]?.exercises || [];
+  if (state.current.entries.length !== defaults.length) return false;
   return true;
 }
 
@@ -828,6 +830,8 @@ function renderWorkout() {
   document.getElementById('workoutTitle').textContent = (editing ? '✏ Editing — ' : '+ New ') + PLAN[currentDay].label;
   const dateInput = document.getElementById('sessionDate');
   if (dateInput && state.current) dateInput.value = state.current.date || todayISO();
+  const saveRow = document.getElementById('saveRow');
+  if (saveRow) saveRow.style.display = (editing || !isCurrentFresh()) ? 'flex' : 'none';
   const list = document.getElementById('exerciseList');
   list.innerHTML = '';
 
@@ -844,7 +848,12 @@ function renderWorkout() {
     list.appendChild(c);
     setTimeout(() => {
       const inp = document.getElementById('cardioNote');
-      if (inp) inp.addEventListener('input', e => { state.current.cardioNote = e.target.value; save(); });
+      if (inp) inp.addEventListener('input', e => {
+        state.current.cardioNote = e.target.value;
+        save();
+        const sr = document.getElementById('saveRow');
+        if (sr) sr.style.display = isCurrentFresh() ? 'none' : 'flex';
+      });
     }, 0);
   }
 
