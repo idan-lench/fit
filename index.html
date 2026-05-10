@@ -1575,7 +1575,21 @@ async function openMealModal(mealId = null) {
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
   // Reset chat if opening a different meal
-  if (_mealChatId !== editingMealId) resetMealChat();
+  if (_mealChatId !== editingMealId) {
+    resetMealChat();
+    // Seed chat with the AI's open questions, if any
+    if (mealId && getGeminiKey()) {
+      getMeal(mealId).then(m => {
+        if (m && m.questions && m.questions.length) {
+          _mealChatId = mealId;
+          const questionText = "I had a few things I wasn't sure about:\n\n" + m.questions.map((q, i) => `${i + 1}. ${q}`).join('\n') + '\n\nCan you clarify?';
+          _mealChatHistory.push({ role: 'model', text: questionText });
+          renderMealRefineChat();
+          document.getElementById('updateMealEstimateBtn').style.display = 'block';
+        }
+      });
+    }
+  }
   renderMealPreview();
   document.getElementById('mealModal').classList.add('show');
 }
@@ -2293,13 +2307,23 @@ function openSessionRefine(savedAt) {
   if (_refiningSessionAt !== savedAt) {
     _sessionChatHistory = [];
     _pendingSessionRefine = null;
+    // Seed chat with the AI's open questions, if any
+    if (session.burnQuestions && session.burnQuestions.length) {
+      const questionText = "A few things I wasn't sure about for this workout:\n\n" + session.burnQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n') + '\n\nCan you clarify?';
+      _sessionChatHistory.push({ role: 'model', text: questionText });
+    }
   }
   _refiningSessionAt = savedAt;
   document.getElementById('sessionRefineTitle').textContent = (PLAN[session.day]?.label || session.day) + ' · ' + formatDate(session.date);
   document.getElementById('sessionRefineCurrent').textContent = `Current burn: ${session.caloriesBurned != null ? session.caloriesBurned + ' kcal' : 'not estimated yet'}`;
   document.getElementById('sessionRefineInput').value = '';
-  if (_sessionChatHistory.length) renderSessionRefineChat();
-  else document.getElementById('sessionRefineResult').style.display = 'none';
+  if (_sessionChatHistory.length) {
+    renderSessionRefineChat();
+    document.getElementById('updateSessionEstimateBtn').style.display = 'block';
+  } else {
+    document.getElementById('sessionRefineResult').style.display = 'none';
+    document.getElementById('updateSessionEstimateBtn').style.display = 'none';
+  }
   document.getElementById('sessionRefineModal').classList.add('show');
   setTimeout(() => document.getElementById('sessionRefineInput').focus(), 100);
 }
