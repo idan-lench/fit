@@ -2292,10 +2292,13 @@ async function applyRefineResult() {
   meal.breakdown = _pendingRefine.items || [];
   meal.aiSaw = _pendingRefine.saw || meal.aiSaw;
   meal.confidence = _pendingRefine.confidence || meal.confidence;
-  meal.questions = (_pendingRefine.questions || []).filter(q => q && q.trim());
+  // User explicitly approved this estimate — clear any stale AI questions
+  meal.questions = [];
   await putMeal(meal);
   toast('Updated ✓');
-  resetMealChat();
+  // Don't reset chat — keep history so user can continue refining later
+  _pendingRefine = null;
+  renderMealRefineChat();
   if (typeof renderMeals === 'function') renderMeals();
 }
 
@@ -2492,11 +2495,11 @@ async function applySessionRefine() {
   state.sessions[idx].caloriesBurned = _pendingSessionRefine.total;
   state.sessions[idx].burnBreakdown = _pendingSessionRefine.breakdown || [];
   state.sessions[idx].burnNotes = _pendingSessionRefine.notes || state.sessions[idx].burnNotes;
-  state.sessions[idx].burnQuestions = (_pendingSessionRefine.questions || []).filter(q => q && q.trim());
+  state.sessions[idx].burnQuestions = []; // user approved — clear stale questions
   save();
   toast('Updated ✓');
-  resetSessionChat();
-  closeSessionRefine();
+  _pendingSessionRefine = null;
+  renderSessionRefineChat();
   renderHistory();
 }
 
