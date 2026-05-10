@@ -67,13 +67,16 @@ INSTRUCTIONS:
 2. For bodyweight strength, estimate based on time-under-tension and total reps.
 3. Provide a clear breakdown so the user can verify your math.
 
+If duration, intensity, or distance is unclear AND would significantly change burn (>50 kcal swing), include up to 2 short clarifying questions. Otherwise return [].
+
 Return ONLY valid JSON. No markdown, no code fences. Format:
 {
   "total": number,
   "breakdown": [
     {"activity": "string", "calories": number, "reasoning": "brief — e.g. '8km run at 5:30/km, ~10 MET, 40 min'"}
   ],
-  "notes": "brief overall comment"
+  "notes": "brief overall comment",
+  "questions": ["string"]
 }`,
 
   // ---------------- DAILY ANALYSIS ----------------
@@ -122,6 +125,39 @@ Today's date: {today}
 
 Full data:
 {data}`,
+
+  // ---------------- SESSION REFINE ----------------
+  // Used when user opens a session and tells the AI what to fix.
+  // Placeholders: {type}, {date}, {cardioNote}, {exercises}, {currentBurn}, {breakdown}, {userCorrection}
+  // Returns JSON: { total, breakdown, notes, changeNote, questions }
+  sessionRefine: `You previously estimated calories burned for this workout session. The user is now CORRECTING you with new info.
+
+PREVIOUS ESTIMATE:
+- Type: {type}
+- Date: {date}
+- Cardio/activity: {cardioNote}
+- Exercises:
+{exercises}
+- Total burn: {currentBurn} kcal
+- Previous breakdown: {breakdown}
+
+USER'S CORRECTION:
+"{userCorrection}"
+
+Apply the correction and re-estimate the burn. Use MET values appropriate to actual intensity.
+
+If new ambiguities arise, include up to 2 follow-up questions in "questions". Otherwise return [].
+
+Return ONLY valid JSON. No markdown. Format:
+{
+  "total": number,
+  "breakdown": [
+    {"activity": "string", "calories": number, "reasoning": "brief"}
+  ],
+  "notes": "brief overall comment",
+  "changeNote": "1-sentence summary of what changed and why",
+  "questions": ["string"]
+}`,
 
   // ---------------- MEAL REFINE ----------------
   // Used when user opens a meal and tells the AI what to fix.

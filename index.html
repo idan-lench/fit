@@ -594,6 +594,22 @@
   </div>
 </div>
 
+<!-- SESSION REFINE MODAL -->
+<div class="modal" id="sessionRefineModal" onclick="if(event.target===this)closeSessionRefine()">
+  <div class="body">
+    <h2 style="margin-top:0">💬 Refine workout</h2>
+    <div class="muted small" id="sessionRefineTitle" style="margin-bottom: 4px;"></div>
+    <div class="small" id="sessionRefineCurrent" style="margin-bottom: 12px;"></div>
+    <div class="row" style="gap: 6px;">
+      <input type="text" id="sessionRefineInput" placeholder="e.g. The hike was 6h not 8h, more elevation than I said…" style="flex:1;">
+      <button class="primary" onclick="refineSessionEstimate()" style="padding: 12px 14px;">Ask</button>
+    </div>
+    <div id="sessionRefineResult" style="display:none; margin-top: 12px;"></div>
+    <hr class="div" style="margin-top: 14px;">
+    <button class="ghost" style="width:100%;" onclick="closeSessionRefine()">Close</button>
+  </div>
+</div>
+
 <!-- ADD-EXERCISE MODAL -->
 <div class="modal" id="exerciseModal" onclick="if(event.target===this)closeExercisePicker()">
   <div class="body" style="max-width: 460px; max-height: 85vh; display: flex; flex-direction: column;">
@@ -1181,6 +1197,7 @@ function renderHistory() {
     const summaryPreview = s.cardioNote
       ? ' · <span class="muted" style="font-weight: 400; font-size: 13px;">' + escapeHtml(s.cardioNote.length > 50 ? s.cardioNote.slice(0, 50) + '…' : s.cardioNote) + '</span>'
       : (s.notes ? ' <span class="muted" style="font-weight: 400; font-size: 13px;">· has notes</span>' : '');
+    const burnQs = s.burnQuestions || [];
     const burnHtml = (typeof s.caloriesBurned === 'number')
       ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--panel2); border-radius: 8px;">
           <div class="row between"><div class="muted small" style="text-transform: uppercase; letter-spacing: 0.4px;">Burn</div><b>${s.caloriesBurned} kcal</b></div>
@@ -1188,6 +1205,7 @@ function renderHistory() {
             ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
             ${s.burnNotes ? `<div class="small muted" style="margin-top: 4px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
           </details>` : ''}
+          ${burnQs.length ? `<div class="small" style="margin-top: 6px; color: var(--warn);">❓ ${burnQs.length} question${burnQs.length > 1 ? 's' : ''}: ${burnQs.map(escapeHtml).join(' · ')}</div>` : ''}
         </div>`
       : '';
     return `
@@ -1199,8 +1217,9 @@ function renderHistory() {
       `).join('')}
       ${burnHtml}
       ${notes ? `<div style="margin-top: 10px; padding: 8px 10px; background: var(--panel2); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small" style="text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
-      <div class="row" style="margin-top: 10px; gap: 6px;">
+      <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
         <button class="ghost" style="padding: 6px 10px; font-size: 13px;" onclick="editSession(${s.savedAt})">✏ Edit</button>
+        <button class="ghost" style="padding: 6px 10px; font-size: 13px;" onclick="openSessionRefine(${s.savedAt})">💬 Refine</button>
         <button class="ghost danger" style="padding: 6px 10px; font-size: 13px;" onclick="deleteSession(${s.savedAt})">✕ Delete</button>
       </div>
     </details>
@@ -2043,6 +2062,7 @@ async function autoAnalyzeSession(savedAt, opts = {}) {
       session.caloriesBurned = Math.round(parsed.total);
       session.burnBreakdown = parsed.breakdown || [];
       session.burnNotes = parsed.notes || null;
+      session.burnQuestions = (parsed.questions || []).filter(q => q && q.trim());
       save();
       if (!opts.silent) { hideToast(); toast(`Workout: ~${Math.round(parsed.total)} kcal ✓`); }
       renderHistory();
@@ -2122,6 +2142,96 @@ async function applyRefineResult() {
   document.getElementById('refineInput').value = '';
   toast('Updated ✓');
   if (typeof renderMeals === 'function') renderMeals();
+}
+
+let _pendingSessionRefine = null;
+let _refiningSessionAt = null;
+
+function openSessionRefine(savedAt) {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  const session = state.sessions.find(s => s.savedAt === savedAt);
+  if (!session) return;
+  _refiningSessionAt = savedAt;
+  _pendingSessionRefine = null;
+  document.getElementById('sessionRefineTitle').textContent = (PLAN[session.day]?.label || session.day) + ' · ' + formatDate(session.date);
+  document.getElementById('sessionRefineCurrent').textContent = `Current burn: ${session.caloriesBurned != null ? session.caloriesBurned + ' kcal' : 'not estimated yet'}`;
+  document.getElementById('sessionRefineInput').value = '';
+  document.getElementById('sessionRefineResult').style.display = 'none';
+  document.getElementById('sessionRefineModal').classList.add('show');
+  setTimeout(() => document.getElementById('sessionRefineInput').focus(), 100);
+}
+
+function closeSessionRefine() {
+  document.getElementById('sessionRefineModal').classList.remove('show');
+  _refiningSessionAt = null;
+  _pendingSessionRefine = null;
+}
+
+async function refineSessionEstimate() {
+  const correction = document.getElementById('sessionRefineInput').value.trim();
+  if (!correction) return toast('Type a correction first');
+  if (_refiningSessionAt == null) return toast('No session selected');
+  const session = state.sessions.find(s => s.savedAt === _refiningSessionAt);
+  if (!session) return;
+
+  toast('Refining…', { persistent: true });
+  try {
+    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n') || '  (none)';
+    const prompt = PROMPTS.sessionRefine
+      .replace('{type}', PLAN[session.day]?.label || session.day)
+      .replace('{date}', session.date)
+      .replace('{cardioNote}', session.cardioNote || '(none)')
+      .replace('{exercises}', exLines)
+      .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
+      .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []))
+      .replace('{userCorrection}', correction);
+    const result = await callGeminiAnalysis(prompt);
+    const parsed = parseJSONResponse(result);
+    hideToast();
+    if (!parsed || typeof parsed.total !== 'number') {
+      toast('Could not parse refinement');
+      return;
+    }
+    _pendingSessionRefine = parsed;
+    const followUps = (parsed.questions || []).filter(q => q && q.trim());
+    const div = document.getElementById('sessionRefineResult');
+    div.style.display = 'block';
+    div.innerHTML = `
+      <div class="muted small">AI suggests:</div>
+      <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${parsed.total} kcal burned</div>
+      ${parsed.changeNote ? `<div class="small" style="margin-bottom: 8px; font-style: italic;">${escapeHtml(parsed.changeNote)}</div>` : ''}
+      ${(parsed.breakdown || []).map(b => `<div class="small" style="padding: 2px 0;">• <b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
+      ${parsed.notes ? `<div class="small muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(parsed.notes)}</div>` : ''}
+      ${followUps.length ? `<div style="margin-top: 8px; padding: 8px; background: rgba(255, 184, 107, 0.12); border-left: 3px solid var(--warn); border-radius: 6px;">
+        <div class="small" style="font-weight: 600; color: var(--warn);">❓ Still uncertain:</div>
+        ${followUps.map(q => `<div class="small" style="margin-top: 3px;">• ${escapeHtml(q)}</div>`).join('')}
+        <div class="small muted" style="margin-top: 4px;">Reply in the box above and Ask again.</div>
+      </div>` : ''}
+      <div class="row" style="margin-top: 10px; gap: 6px;">
+        <button class="primary grow" onclick="applySessionRefine()">Apply</button>
+        <button class="ghost" onclick="document.getElementById('sessionRefineResult').style.display='none'; _pendingSessionRefine=null;">Dismiss</button>
+      </div>
+    `;
+  } catch (e) {
+    hideToast(); toast('Refinement failed');
+  }
+}
+
+async function applySessionRefine() {
+  if (!_pendingSessionRefine || _refiningSessionAt == null) return;
+  const idx = state.sessions.findIndex(s => s.savedAt === _refiningSessionAt);
+  if (idx < 0) return;
+  state.sessions[idx].caloriesBurned = _pendingSessionRefine.total;
+  state.sessions[idx].burnBreakdown = _pendingSessionRefine.breakdown || [];
+  state.sessions[idx].burnNotes = _pendingSessionRefine.notes || state.sessions[idx].burnNotes;
+  state.sessions[idx].burnQuestions = (_pendingSessionRefine.questions || []).filter(q => q && q.trim());
+  save();
+  _pendingSessionRefine = null;
+  document.getElementById('sessionRefineResult').style.display = 'none';
+  document.getElementById('sessionRefineInput').value = '';
+  toast('Updated ✓');
+  closeSessionRefine();
+  renderHistory();
 }
 
 async function runDailyAnalysis(opts = {}) {
