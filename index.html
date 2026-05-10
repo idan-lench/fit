@@ -378,6 +378,8 @@
     <h2>Detailed breakdown</h2>
     <div class="card" id="analysisBreakdown"></div>
 
+    <button class="ghost" style="width:100%; margin: 8px 0;" onclick="analyzeAllMissing()">🤖 Analyze missing items</button>
+
     <h2>7-day trend</h2>
     <div class="card">
       <div id="analysisChart"></div>
@@ -1846,11 +1848,11 @@ async function callGeminiAnalysis(prompt, imageBlobs = []) {
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
-async function autoAnalyzeMeal(mealId) {
-  if (!getGeminiKey()) return;
+async function autoAnalyzeMeal(mealId, opts = {}) {
+  if (!getGeminiKey()) return false;
   const meal = await getMeal(mealId);
-  if (!meal) return;
-  toast('Analyzing meal…', { persistent: true });
+  if (!meal) return false;
+  if (!opts.silent) toast('Analyzing meal…', { persistent: true });
   try {
     const blobs = mealBlobs(meal);
     const prompt = `Estimate the calories (kcal) for this meal eaten by a 58kg adult male. ${meal.description ? 'User notes: "' + meal.description + '".' : ''} ${blobs.length ? 'Photo(s) attached.' : ''}\n\nReply with ONLY a number (calories), no units, no explanation. Example: 600`;
@@ -1858,25 +1860,24 @@ async function autoAnalyzeMeal(mealId) {
     const cals = parseInt(result.match(/\d+/)?.[0]);
     if (cals > 0 && cals < 5000) {
       const fresh = await getMeal(mealId);
-      if (fresh) {
-        fresh.calories = cals;
-        await putMeal(fresh);
-      }
-      hideToast(); toast(`Meal: ~${cals} kcal ✓`);
+      if (fresh) { fresh.calories = cals; await putMeal(fresh); }
+      if (!opts.silent) { hideToast(); toast(`Meal: ~${cals} kcal ✓`); }
       if (typeof renderMeals === 'function') renderMeals();
-    } else {
-      hideToast(); toast('Could not estimate');
+      return true;
     }
+    if (!opts.silent) { hideToast(); toast('Could not estimate'); }
+    return false;
   } catch (e) {
-    hideToast(); toast('Analysis failed');
+    if (!opts.silent) { hideToast(); toast('Analysis failed'); }
+    return false;
   }
 }
 
-async function autoAnalyzeSession(savedAt) {
-  if (!getGeminiKey()) return;
+async function autoAnalyzeSession(savedAt, opts = {}) {
+  if (!getGeminiKey()) return false;
   const session = state.sessions.find(s => s.savedAt === savedAt);
-  if (!session) return;
-  toast('Analyzing workout…', { persistent: true });
+  if (!session) return false;
+  if (!opts.silent) toast('Analyzing workout…', { persistent: true });
   try {
     const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n');
     const prompt = `Estimate calories burned for this workout session by a 58kg, 44yo male.
@@ -1891,14 +1892,37 @@ Reply with ONLY a number (kcal burned), no units, no explanation. Example: 230`;
     if (cals > 0 && cals < 5000) {
       session.caloriesBurned = cals;
       save();
-      hideToast(); toast(`Workout: ~${cals} kcal burned ✓`);
+      if (!opts.silent) { hideToast(); toast(`Workout: ~${cals} kcal burned ✓`); }
       renderHistory();
-    } else {
-      hideToast();
+      return true;
     }
+    if (!opts.silent) hideToast();
+    return false;
   } catch (e) {
-    hideToast(); toast('Analysis failed');
+    if (!opts.silent) { hideToast(); toast('Analysis failed'); }
+    return false;
   }
+}
+
+async function analyzeAllMissing() {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  const meals = await getAllMeals();
+  const missingMeals = meals.filter(m => !m.calories);
+  const missingSessions = (state.sessions || []).filter(s => !s.caloriesBurned);
+  const total = missingMeals.length + missingSessions.length;
+  if (total === 0) return toast('Everything already analysed ✓');
+  let done = 0, ok = 0;
+  for (const m of missingMeals) {
+    toast(`Analyzing ${++done}/${total}…`, { persistent: true });
+    if (await autoAnalyzeMeal(m.id, { silent: true })) ok++;
+  }
+  for (const s of missingSessions) {
+    toast(`Analyzing ${++done}/${total}…`, { persistent: true });
+    if (await autoAnalyzeSession(s.savedAt, { silent: true })) ok++;
+  }
+  hideToast();
+  toast(`Analysed ${ok}/${total} ✓`);
+  if (typeof renderAnalysis === 'function') renderAnalysis();
 }
 
 async function callGemini(messages) {
