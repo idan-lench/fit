@@ -1574,16 +1574,22 @@ async function openMealModal(mealId = null) {
   }
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
-  // Reset chat if opening a different meal
+  // Reset chat if opening a different meal, then restore from persisted history
   if (_mealChatId !== editingMealId) {
     resetMealChat();
-    // Seed chat with the AI's open questions, if any
     if (mealId && getGeminiKey()) {
       getMeal(mealId).then(m => {
-        if (m && m.questions && m.questions.length) {
-          _mealChatId = mealId;
+        if (!m) return;
+        _mealChatId = mealId;
+        // Restore prior chat
+        if (m.chatHistory && m.chatHistory.length) {
+          _mealChatHistory = m.chatHistory.slice();
+        } else if (m.questions && m.questions.length) {
+          // First time opening — seed with the AI's questions
           const questionText = "I had a few things I wasn't sure about:\n\n" + m.questions.map((q, i) => `${i + 1}. ${q}`).join('\n') + '\n\nCan you clarify?';
           _mealChatHistory.push({ role: 'model', text: questionText });
+        }
+        if (_mealChatHistory.length) {
           renderMealRefineChat();
           document.getElementById('updateMealEstimateBtn').style.display = 'block';
         }
@@ -2159,9 +2165,15 @@ async function refineMealEstimate() {
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     _mealChatHistory.push({ role: 'model', text: reply });
 
+    // Persist chat history on the meal so it survives across modal opens / device sync
+    const fresh = await getMeal(editingMealId);
+    if (fresh) {
+      fresh.chatHistory = _mealChatHistory.slice(-40); // keep last 40 turns
+      await putMeal(fresh);
+    }
+
     hideToast();
     renderMealRefineChat();
-    // Show "Update estimate" button now that there's a conversation
     document.getElementById('updateMealEstimateBtn').style.display = 'block';
   } catch (e) {
     hideToast();
@@ -2307,8 +2319,10 @@ function openSessionRefine(savedAt) {
   if (_refiningSessionAt !== savedAt) {
     _sessionChatHistory = [];
     _pendingSessionRefine = null;
-    // Seed chat with the AI's open questions, if any
-    if (session.burnQuestions && session.burnQuestions.length) {
+    // Restore prior chat, or seed with open questions
+    if (session.chatHistory && session.chatHistory.length) {
+      _sessionChatHistory = session.chatHistory.slice();
+    } else if (session.burnQuestions && session.burnQuestions.length) {
       const questionText = "A few things I wasn't sure about for this workout:\n\n" + session.burnQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n') + '\n\nCan you clarify?';
       _sessionChatHistory.push({ role: 'model', text: questionText });
     }
@@ -2374,6 +2388,13 @@ async function refineSessionEstimate() {
     const data = await res.json();
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     _sessionChatHistory.push({ role: 'model', text: reply });
+
+    // Persist chat history on the session
+    const idx = state.sessions.findIndex(s => s.savedAt === _refiningSessionAt);
+    if (idx >= 0) {
+      state.sessions[idx].chatHistory = _sessionChatHistory.slice(-40);
+      save();
+    }
 
     hideToast();
     renderSessionRefineChat();
