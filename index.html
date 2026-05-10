@@ -1572,8 +1572,8 @@ async function openMealModal(mealId = null) {
   }
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
-  document.getElementById('refineResult').style.display = 'none';
-  document.getElementById('refineInput').value = '';
+  // Reset chat if opening a different meal
+  if (_mealChatId !== editingMealId) resetMealChat();
   renderMealPreview();
   document.getElementById('mealModal').classList.add('show');
 }
@@ -2077,54 +2077,119 @@ async function autoAnalyzeSession(savedAt, opts = {}) {
 }
 
 let _pendingRefine = null;
+let _mealChatHistory = []; // [{role: 'user'|'model', text}]
+let _mealChatId = null;
+
+function resetMealChat() {
+  _pendingRefine = null;
+  _mealChatHistory = [];
+  _mealChatId = null;
+  const r = document.getElementById('refineResult');
+  if (r) { r.style.display = 'none'; r.innerHTML = ''; }
+  const i = document.getElementById('refineInput');
+  if (i) i.value = '';
+}
 
 async function refineMealEstimate() {
-  const correction = document.getElementById('refineInput').value.trim();
-  if (!correction) return toast('Type a correction first');
-  if (!editingMealId) return toast('Open a meal to edit first');
+  const text = document.getElementById('refineInput').value.trim();
+  if (!text) return toast('Type a message first');
+  if (!editingMealId) return toast('Open a meal first');
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
   const meal = await getMeal(editingMealId);
   if (!meal) return;
 
-  toast('Refining…', { persistent: true });
+  // Reset chat if switched to a different meal
+  if (_mealChatId !== editingMealId) {
+    _mealChatHistory = [];
+    _mealChatId = editingMealId;
+  }
+
+  _mealChatHistory.push({ role: 'user', text });
+  document.getElementById('refineInput').value = '';
+  renderMealRefineChat();
+  toast('Thinking…', { persistent: true });
+
   try {
     const blobs = mealBlobs(meal);
-    const prompt = PROMPTS.mealRefine
+    const systemInstruction = PROMPTS.mealRefineSystem
       .replace('{description}', meal.description || '(none)')
       .replace('{currentCalories}', String(meal.calories || 'unknown'))
       .replace('{breakdown}', JSON.stringify(meal.breakdown || []))
-      .replace('{aiSaw}', meal.aiSaw || '(no previous description)')
-      .replace('{userCorrection}', correction);
-    const result = await callGeminiAnalysis(prompt, blobs);
-    const parsed = parseJSONResponse(result);
-    hideToast();
-    if (!parsed || typeof parsed.total !== 'number') {
-      toast('Could not parse refinement');
-      return;
+      .replace('{aiSaw}', meal.aiSaw || '(none)')
+      .replace('{photoNote}', blobs.length ? `- Photos: ${blobs.length} attached (already shown to you in first user message)` : '- No photos');
+
+    // Build contents — attach photos to the first user message
+    const contents = [];
+    for (let i = 0; i < _mealChatHistory.length; i++) {
+      const m = _mealChatHistory[i];
+      const parts = [{ text: m.text }];
+      if (i === 0 && m.role === 'user' && blobs.length) {
+        for (const blob of blobs) {
+          const dataUrl = await blobToDataUrl(blob);
+          const base64 = dataUrl.split(',')[1];
+          parts.push({ inline_data: { mime_type: blob.type || 'image/jpeg', data: base64 } });
+        }
+      }
+      contents.push({ role: m.role === 'user' ? 'user' : 'model', parts });
     }
-    _pendingRefine = parsed;
-    const div = document.getElementById('refineResult');
-    div.style.display = 'block';
-    const followUps = (parsed.questions || []).filter(q => q && q.trim());
-    div.innerHTML = `
-      <div class="muted small">AI suggests:</div>
-      <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${parsed.total} kcal</div>
-      ${parsed.changeNote ? `<div class="small" style="margin-bottom: 8px; font-style: italic;">${escapeHtml(parsed.changeNote)}</div>` : ''}
-      ${(parsed.items || []).map(i => `<div class="small" style="padding: 2px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal</div>`).join('')}
-      ${parsed.saw ? `<div class="small muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(parsed.saw)}</div>` : ''}
-      ${followUps.length ? `<div style="margin-top: 8px; padding: 8px; background: rgba(255, 184, 107, 0.12); border-left: 3px solid var(--warn); border-radius: 6px;">
-        <div class="small" style="font-weight: 600; color: var(--warn);">❓ Still uncertain:</div>
-        ${followUps.map(q => `<div class="small" style="margin-top: 3px;">• ${escapeHtml(q)}</div>`).join('')}
-        <div class="small muted" style="margin-top: 4px;">Reply in the box above to answer, then Ask again.</div>
-      </div>` : ''}
-      <div class="row" style="margin-top: 10px; gap: 6px;">
-        <button class="primary grow" onclick="applyRefineResult()">Apply</button>
-        <button class="ghost" onclick="document.getElementById('refineResult').style.display='none'; _pendingRefine=null;">Dismiss</button>
-      </div>
-    `;
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        contents
+      })
+    });
+    if (!res.ok) throw new Error('Gemini ' + res.status);
+    const data = await res.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    _mealChatHistory.push({ role: 'model', text: reply });
+
+    const parsed = parseJSONResponse(reply);
+    if (parsed && typeof parsed.total === 'number') _pendingRefine = parsed;
+
+    hideToast();
+    renderMealRefineChat();
   } catch (e) {
-    hideToast(); toast('Refinement failed');
+    hideToast();
+    toast('Failed: ' + (e.message || 'unknown'));
   }
+}
+
+function renderMealRefineChat() {
+  const div = document.getElementById('refineResult');
+  div.style.display = 'block';
+  let html = '<div style="max-height: 50vh; overflow-y: auto;">';
+  for (const m of _mealChatHistory) {
+    if (m.role === 'user') {
+      html += `<div style="display: flex; justify-content: flex-end; margin: 6px 0;">
+        <div style="max-width: 88%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--accent); color: white; font-size: 14px;">${escapeHtml(m.text)}</div>
+      </div>`;
+    } else {
+      const parsed = parseJSONResponse(m.text);
+      if (parsed && typeof parsed.total === 'number') {
+        const followUps = (parsed.questions || []).filter(q => q && q.trim());
+        html += `<div style="margin: 6px 0; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: var(--panel); border: 1px solid var(--line); max-width: 95%;">
+          <div style="font-size: 18px; font-weight: 700;">${parsed.total} kcal</div>
+          ${parsed.changeNote ? `<div class="small" style="font-style: italic; margin-top: 2px; opacity: 0.85;">${escapeHtml(parsed.changeNote)}</div>` : ''}
+          ${(parsed.items || []).map(i => `<div class="small" style="padding: 1px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal</div>`).join('')}
+          ${followUps.length ? `<div style="margin-top: 6px;">${followUps.map(q => `<div class="small" style="color: var(--warn);">❓ ${escapeHtml(q)}</div>`).join('')}</div>` : ''}
+        </div>`;
+      } else {
+        html += `<div style="margin: 6px 0; padding: 10px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line);">${escapeHtml(m.text)}</div>`;
+      }
+    }
+  }
+  html += '</div>';
+  if (_pendingRefine && typeof _pendingRefine.total === 'number') {
+    html += `<div class="row" style="margin-top: 10px; gap: 6px;">
+      <button class="primary grow" onclick="applyRefineResult()">Apply ${_pendingRefine.total} kcal</button>
+      <button class="ghost" onclick="resetMealChat()">Reset</button>
+    </div>`;
+  }
+  div.innerHTML = html;
+  div.scrollTop = div.scrollHeight;
 }
 
 async function applyRefineResult() {
@@ -2137,84 +2202,130 @@ async function applyRefineResult() {
   meal.confidence = _pendingRefine.confidence || meal.confidence;
   meal.questions = (_pendingRefine.questions || []).filter(q => q && q.trim());
   await putMeal(meal);
-  _pendingRefine = null;
-  document.getElementById('refineResult').style.display = 'none';
-  document.getElementById('refineInput').value = '';
   toast('Updated ✓');
+  resetMealChat();
   if (typeof renderMeals === 'function') renderMeals();
 }
 
 let _pendingSessionRefine = null;
 let _refiningSessionAt = null;
+let _sessionChatHistory = [];
+
+function resetSessionChat() {
+  _pendingSessionRefine = null;
+  _sessionChatHistory = [];
+  const r = document.getElementById('sessionRefineResult');
+  if (r) { r.style.display = 'none'; r.innerHTML = ''; }
+  const i = document.getElementById('sessionRefineInput');
+  if (i) i.value = '';
+}
 
 function openSessionRefine(savedAt) {
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
   const session = state.sessions.find(s => s.savedAt === savedAt);
   if (!session) return;
+  if (_refiningSessionAt !== savedAt) {
+    _sessionChatHistory = [];
+    _pendingSessionRefine = null;
+  }
   _refiningSessionAt = savedAt;
-  _pendingSessionRefine = null;
   document.getElementById('sessionRefineTitle').textContent = (PLAN[session.day]?.label || session.day) + ' · ' + formatDate(session.date);
   document.getElementById('sessionRefineCurrent').textContent = `Current burn: ${session.caloriesBurned != null ? session.caloriesBurned + ' kcal' : 'not estimated yet'}`;
   document.getElementById('sessionRefineInput').value = '';
-  document.getElementById('sessionRefineResult').style.display = 'none';
+  if (_sessionChatHistory.length) renderSessionRefineChat();
+  else document.getElementById('sessionRefineResult').style.display = 'none';
   document.getElementById('sessionRefineModal').classList.add('show');
   setTimeout(() => document.getElementById('sessionRefineInput').focus(), 100);
 }
 
 function closeSessionRefine() {
   document.getElementById('sessionRefineModal').classList.remove('show');
-  _refiningSessionAt = null;
-  _pendingSessionRefine = null;
 }
 
 async function refineSessionEstimate() {
-  const correction = document.getElementById('sessionRefineInput').value.trim();
-  if (!correction) return toast('Type a correction first');
+  const text = document.getElementById('sessionRefineInput').value.trim();
+  if (!text) return toast('Type a message first');
   if (_refiningSessionAt == null) return toast('No session selected');
   const session = state.sessions.find(s => s.savedAt === _refiningSessionAt);
   if (!session) return;
 
-  toast('Refining…', { persistent: true });
+  _sessionChatHistory.push({ role: 'user', text });
+  document.getElementById('sessionRefineInput').value = '';
+  renderSessionRefineChat();
+  toast('Thinking…', { persistent: true });
+
   try {
     const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n') || '  (none)';
-    const prompt = PROMPTS.sessionRefine
+    const systemInstruction = PROMPTS.sessionRefineSystem
       .replace('{type}', PLAN[session.day]?.label || session.day)
       .replace('{date}', session.date)
       .replace('{cardioNote}', session.cardioNote || '(none)')
       .replace('{exercises}', exLines)
       .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
-      .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []))
-      .replace('{userCorrection}', correction);
-    const result = await callGeminiAnalysis(prompt);
-    const parsed = parseJSONResponse(result);
+      .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []));
+
+    const contents = _sessionChatHistory.map(m => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.text }]
+    }));
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        contents
+      })
+    });
+    if (!res.ok) throw new Error('Gemini ' + res.status);
+    const data = await res.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    _sessionChatHistory.push({ role: 'model', text: reply });
+
+    const parsed = parseJSONResponse(reply);
+    if (parsed && typeof parsed.total === 'number') _pendingSessionRefine = parsed;
+
     hideToast();
-    if (!parsed || typeof parsed.total !== 'number') {
-      toast('Could not parse refinement');
-      return;
-    }
-    _pendingSessionRefine = parsed;
-    const followUps = (parsed.questions || []).filter(q => q && q.trim());
-    const div = document.getElementById('sessionRefineResult');
-    div.style.display = 'block';
-    div.innerHTML = `
-      <div class="muted small">AI suggests:</div>
-      <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${parsed.total} kcal burned</div>
-      ${parsed.changeNote ? `<div class="small" style="margin-bottom: 8px; font-style: italic;">${escapeHtml(parsed.changeNote)}</div>` : ''}
-      ${(parsed.breakdown || []).map(b => `<div class="small" style="padding: 2px 0;">• <b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
-      ${parsed.notes ? `<div class="small muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(parsed.notes)}</div>` : ''}
-      ${followUps.length ? `<div style="margin-top: 8px; padding: 8px; background: rgba(255, 184, 107, 0.12); border-left: 3px solid var(--warn); border-radius: 6px;">
-        <div class="small" style="font-weight: 600; color: var(--warn);">❓ Still uncertain:</div>
-        ${followUps.map(q => `<div class="small" style="margin-top: 3px;">• ${escapeHtml(q)}</div>`).join('')}
-        <div class="small muted" style="margin-top: 4px;">Reply in the box above and Ask again.</div>
-      </div>` : ''}
-      <div class="row" style="margin-top: 10px; gap: 6px;">
-        <button class="primary grow" onclick="applySessionRefine()">Apply</button>
-        <button class="ghost" onclick="document.getElementById('sessionRefineResult').style.display='none'; _pendingSessionRefine=null;">Dismiss</button>
-      </div>
-    `;
+    renderSessionRefineChat();
   } catch (e) {
-    hideToast(); toast('Refinement failed');
+    hideToast();
+    toast('Failed: ' + (e.message || 'unknown'));
   }
+}
+
+function renderSessionRefineChat() {
+  const div = document.getElementById('sessionRefineResult');
+  div.style.display = 'block';
+  let html = '<div style="max-height: 50vh; overflow-y: auto;">';
+  for (const m of _sessionChatHistory) {
+    if (m.role === 'user') {
+      html += `<div style="display: flex; justify-content: flex-end; margin: 6px 0;">
+        <div style="max-width: 88%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--accent); color: white; font-size: 14px;">${escapeHtml(m.text)}</div>
+      </div>`;
+    } else {
+      const parsed = parseJSONResponse(m.text);
+      if (parsed && typeof parsed.total === 'number') {
+        const followUps = (parsed.questions || []).filter(q => q && q.trim());
+        html += `<div style="margin: 6px 0; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: var(--panel); border: 1px solid var(--line); max-width: 95%;">
+          <div style="font-size: 18px; font-weight: 700;">${parsed.total} kcal burned</div>
+          ${parsed.changeNote ? `<div class="small" style="font-style: italic; margin-top: 2px; opacity: 0.85;">${escapeHtml(parsed.changeNote)}</div>` : ''}
+          ${(parsed.breakdown || []).map(b => `<div class="small" style="padding: 1px 0;">• <b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
+          ${followUps.length ? `<div style="margin-top: 6px;">${followUps.map(q => `<div class="small" style="color: var(--warn);">❓ ${escapeHtml(q)}</div>`).join('')}</div>` : ''}
+        </div>`;
+      } else {
+        html += `<div style="margin: 6px 0; padding: 10px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line);">${escapeHtml(m.text)}</div>`;
+      }
+    }
+  }
+  html += '</div>';
+  if (_pendingSessionRefine && typeof _pendingSessionRefine.total === 'number') {
+    html += `<div class="row" style="margin-top: 10px; gap: 6px;">
+      <button class="primary grow" onclick="applySessionRefine()">Apply ${_pendingSessionRefine.total} kcal</button>
+      <button class="ghost" onclick="resetSessionChat()">Reset</button>
+    </div>`;
+  }
+  div.innerHTML = html;
+  div.scrollTop = div.scrollHeight;
 }
 
 async function applySessionRefine() {
@@ -2226,10 +2337,8 @@ async function applySessionRefine() {
   state.sessions[idx].burnNotes = _pendingSessionRefine.notes || state.sessions[idx].burnNotes;
   state.sessions[idx].burnQuestions = (_pendingSessionRefine.questions || []).filter(q => q && q.trim());
   save();
-  _pendingSessionRefine = null;
-  document.getElementById('sessionRefineResult').style.display = 'none';
-  document.getElementById('sessionRefineInput').value = '';
   toast('Updated ✓');
+  resetSessionChat();
   closeSessionRefine();
   renderHistory();
 }

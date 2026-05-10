@@ -126,67 +126,64 @@ Today's date: {today}
 Full data:
 {data}`,
 
-  // ---------------- SESSION REFINE ----------------
-  // Used when user opens a session and tells the AI what to fix.
-  // Placeholders: {type}, {date}, {cardioNote}, {exercises}, {currentBurn}, {breakdown}, {userCorrection}
-  // Returns JSON: { total, breakdown, notes, changeNote, questions }
-  sessionRefine: `You previously estimated calories burned for this workout session. The user is now CORRECTING you with new info.
+  // ---------------- SESSION REFINE (multi-turn) ----------------
+  // System instruction for an ongoing conversation about ONE workout.
+  // Each user turn appends to the chat. Each AI response is full JSON state.
+  // Placeholders: {type}, {date}, {cardioNote}, {exercises}, {currentBurn}, {breakdown}
+  sessionRefineSystem: `You are refining a calorie-burn estimate over MULTIPLE turns of conversation about ONE workout. The user can correct, answer questions, or ask follow-ups. Every reply must be valid JSON with your CURRENT best estimate.
 
-PREVIOUS ESTIMATE:
+ORIGINAL SESSION:
 - Type: {type}
 - Date: {date}
 - Cardio/activity: {cardioNote}
 - Exercises:
 {exercises}
-- Total burn: {currentBurn} kcal
-- Previous breakdown: {breakdown}
+- Initial total burn: {currentBurn} kcal
+- Initial breakdown: {breakdown}
 
-USER'S CORRECTION:
-"{userCorrection}"
+CONVERSATION RULES:
+1. Treat each user message as a correction, an answer to your previous question, or a new question.
+2. Update your estimate ONLY when the user gives new info that affects it. Otherwise keep numbers stable.
+3. Carry over context across turns — remember what the user has told you.
+4. Use MET-based reasoning for activities.
+5. Ask follow-up questions only when truly uncertain (>50 kcal swing). Otherwise return [].
 
-Apply the correction and re-estimate the burn. Use MET values appropriate to actual intensity.
-
-If new ambiguities arise, include up to 2 follow-up questions in "questions". Otherwise return [].
-
-Return ONLY valid JSON. No markdown. Format:
+Every reply must be valid JSON, no markdown:
 {
   "total": number,
-  "breakdown": [
-    {"activity": "string", "calories": number, "reasoning": "brief"}
-  ],
+  "breakdown": [{"activity": "string", "calories": number, "reasoning": "brief"}],
   "notes": "brief overall comment",
-  "changeNote": "1-sentence summary of what changed and why",
-  "questions": ["string"]
+  "changeNote": "1-sentence summary of what changed THIS turn (or 'no change' if user just asked a question)",
+  "questions": ["any follow-ups, max 2; [] if confident"]
 }`,
 
-  // ---------------- MEAL REFINE ----------------
-  // Used when user opens a meal and tells the AI what to fix.
-  // Placeholders: {description}, {currentCalories}, {breakdown}, {aiSaw}, {userCorrection}
-  // Returns JSON: { items, total, confidence, saw, changeNote }
-  mealRefine: `You previously analyzed a meal photo and provided this estimate. The user is now CORRECTING you with new info — re-estimate based on their feedback.
+  // ---------------- MEAL REFINE (multi-turn) ----------------
+  // System instruction for an ongoing conversation about ONE meal.
+  // Each user turn appends to the chat. Photos are sent on first user turn.
+  // Placeholders: {description}, {currentCalories}, {breakdown}, {aiSaw}, {photoNote}
+  mealRefineSystem: `You are refining a calorie estimate over MULTIPLE turns of conversation about ONE meal. The user can correct you, answer your questions, ask follow-ups. Every reply must be valid JSON with your CURRENT best estimate.
 
-PREVIOUS ESTIMATE:
-- Description: "{description}"
-- Total: {currentCalories} kcal
-- Breakdown: {breakdown}
-- What you said you saw: {aiSaw}
+ORIGINAL MEAL:
+- User's description: "{description}"
+- Initial total: {currentCalories} kcal
+- Initial breakdown: {breakdown}
+- What you saw initially: "{aiSaw}"
+{photoNote}
 
-USER'S CORRECTION:
-"{userCorrection}"
+CONVERSATION RULES:
+1. Treat each user message as a correction, an answer to your question, or a follow-up.
+2. Update your estimate ONLY when the user gives new info that changes it. Otherwise keep numbers stable.
+3. Carry over context across turns — remember what the user has told you.
+4. Be conservative on portions, especially Mediterranean/Israeli. See the meal-analysis rules.
+5. Ask follow-up questions only when truly uncertain (>100 kcal swing). Otherwise return [].
 
-Apply the correction to your estimate. Update the breakdown and total accordingly. Be precise.
-
-If new ambiguities arise from the user's correction, include up to 2 short follow-up questions in "questions". Otherwise return [].
-
-Return ONLY valid JSON. No markdown. Format:
+Every reply must be valid JSON, no markdown:
 {
-  "items": [
-    {"name": "string", "portion": "string", "calories": number}
-  ],
+  "items": [{"name": "string", "portion": "string", "calories": number}],
   "total": number,
   "confidence": "high" | "medium" | "low",
-  "saw": "updated description of what's actually in the photo (carry over what's right, fix what's wrong)",
-  "changeNote": "1-sentence summary of what changed in this revision and why",
-  "questions": ["string"]
+  "saw": "updated description carrying over what's right",
+  "changeNote": "1-sentence summary of what changed THIS turn (or 'no change' if user just asked a question)",
+  "questions": ["any follow-ups, max 2; [] if confident"]
 }`
 };
