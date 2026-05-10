@@ -524,12 +524,13 @@
     <input type="text" id="mealDescInput" placeholder="Optional: lunch, chicken &amp; rice…" style="margin-top: 12px;">
 
     <div id="refineSection" style="display:none; margin-top: 12px; padding: 10px 12px; background: var(--panel2); border-radius: 10px;">
-      <div class="muted small" style="margin-bottom: 6px;">💬 Refine the AI estimate</div>
+      <div class="muted small" style="margin-bottom: 6px;">💬 Chat with AI about this meal</div>
+      <div id="refineResult" style="display:none; margin-bottom: 8px;"></div>
       <div class="row" style="gap: 6px;">
-        <input type="text" id="refineInput" placeholder="e.g. I only ate half the chicken, tahini was watered down…" style="flex:1;">
-        <button class="primary" onclick="refineMealEstimate()" style="padding: 12px 14px;">Ask</button>
+        <input type="text" id="refineInput" placeholder="Ask anything or correct the estimate…" style="flex:1;">
+        <button class="primary" onclick="refineMealEstimate()" style="padding: 12px 14px;">Send</button>
       </div>
-      <div id="refineResult" style="display:none; margin-top: 10px;"></div>
+      <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
     </div>
 
     <div class="row" style="margin-top: 14px; gap: 10px;">
@@ -597,14 +598,15 @@
 <!-- SESSION REFINE MODAL -->
 <div class="modal" id="sessionRefineModal" onclick="if(event.target===this)closeSessionRefine()">
   <div class="body">
-    <h2 style="margin-top:0">💬 Refine workout</h2>
+    <h2 style="margin-top:0">💬 Chat about workout</h2>
     <div class="muted small" id="sessionRefineTitle" style="margin-bottom: 4px;"></div>
     <div class="small" id="sessionRefineCurrent" style="margin-bottom: 12px;"></div>
+    <div id="sessionRefineResult" style="display:none; margin-bottom: 8px;"></div>
     <div class="row" style="gap: 6px;">
-      <input type="text" id="sessionRefineInput" placeholder="e.g. The hike was 6h not 8h, more elevation than I said…" style="flex:1;">
-      <button class="primary" onclick="refineSessionEstimate()" style="padding: 12px 14px;">Ask</button>
+      <input type="text" id="sessionRefineInput" placeholder="Ask anything or correct the burn estimate…" style="flex:1;">
+      <button class="primary" onclick="refineSessionEstimate()" style="padding: 12px 14px;">Send</button>
     </div>
-    <div id="sessionRefineResult" style="display:none; margin-top: 12px;"></div>
+    <button class="ghost" id="updateSessionEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestSessionEstimateUpdate()">🔄 Update burn estimate from this chat</button>
     <hr class="div" style="margin-top: 14px;">
     <button class="ghost" style="width:100%;" onclick="closeSessionRefine()">Close</button>
   </div>
@@ -2098,7 +2100,6 @@ async function refineMealEstimate() {
   const meal = await getMeal(editingMealId);
   if (!meal) return;
 
-  // Reset chat if switched to a different meal
   if (_mealChatId !== editingMealId) {
     _mealChatHistory = [];
     _mealChatId = editingMealId;
@@ -2111,19 +2112,17 @@ async function refineMealEstimate() {
 
   try {
     const blobs = mealBlobs(meal);
-    const systemInstruction = PROMPTS.mealRefineSystem
+    const systemInstruction = PROMPTS.mealChatSystem
       .replace('{description}', meal.description || '(none)')
       .replace('{currentCalories}', String(meal.calories || 'unknown'))
       .replace('{breakdown}', JSON.stringify(meal.breakdown || []))
-      .replace('{aiSaw}', meal.aiSaw || '(none)')
-      .replace('{photoNote}', blobs.length ? `- Photos: ${blobs.length} attached (already shown to you in first user message)` : '- No photos');
+      .replace('{aiSaw}', meal.aiSaw || '(none)');
 
-    // Build contents — attach photos to the first user message
+    // Build contents — attach photos to EVERY user message so AI can re-verify
     const contents = [];
-    for (let i = 0; i < _mealChatHistory.length; i++) {
-      const m = _mealChatHistory[i];
+    for (const m of _mealChatHistory) {
       const parts = [{ text: m.text }];
-      if (i === 0 && m.role === 'user' && blobs.length) {
+      if (m.role === 'user' && blobs.length) {
         for (const blob of blobs) {
           const dataUrl = await blobToDataUrl(blob);
           const base64 = dataUrl.split(',')[1];
@@ -2146,10 +2145,80 @@ async function refineMealEstimate() {
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     _mealChatHistory.push({ role: 'model', text: reply });
 
-    const parsed = parseJSONResponse(reply);
-    if (parsed && typeof parsed.total === 'number') _pendingRefine = parsed;
-
     hideToast();
+    renderMealRefineChat();
+    // Show "Update estimate" button now that there's a conversation
+    document.getElementById('updateMealEstimateBtn').style.display = 'block';
+  } catch (e) {
+    hideToast();
+    toast('Failed: ' + (e.message || 'unknown'));
+  }
+}
+
+async function requestMealEstimateUpdate() {
+  if (!editingMealId) return;
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  if (_mealChatHistory.length === 0) return toast('Chat with AI first to provide context');
+  const meal = await getMeal(editingMealId);
+  if (!meal) return;
+
+  toast('Updating estimate…', { persistent: true });
+  try {
+    const blobs = mealBlobs(meal);
+    const systemInstruction = PROMPTS.mealChatSystem
+      .replace('{description}', meal.description || '(none)')
+      .replace('{currentCalories}', String(meal.calories || 'unknown'))
+      .replace('{breakdown}', JSON.stringify(meal.breakdown || []))
+      .replace('{aiSaw}', meal.aiSaw || '(none)');
+
+    const updatePrompt = PROMPTS.mealEstimateUpdate
+      .replace('{description}', meal.description || '(none)')
+      .replace('{currentCalories}', String(meal.calories || 'unknown'))
+      .replace('{breakdown}', JSON.stringify(meal.breakdown || []))
+      .replace('{aiSaw}', meal.aiSaw || '(none)');
+
+    // Build contents: chat history + final update request
+    const contents = [];
+    for (const m of _mealChatHistory) {
+      const parts = [{ text: m.text }];
+      if (m.role === 'user' && blobs.length) {
+        for (const blob of blobs) {
+          const dataUrl = await blobToDataUrl(blob);
+          const base64 = dataUrl.split(',')[1];
+          parts.push({ inline_data: { mime_type: blob.type || 'image/jpeg', data: base64 } });
+        }
+      }
+      contents.push({ role: m.role === 'user' ? 'user' : 'model', parts });
+    }
+    // Append the final JSON request as a new user message
+    const updateParts = [{ text: updatePrompt }];
+    if (blobs.length) {
+      for (const blob of blobs) {
+        const dataUrl = await blobToDataUrl(blob);
+        const base64 = dataUrl.split(',')[1];
+        updateParts.push({ inline_data: { mime_type: blob.type || 'image/jpeg', data: base64 } });
+      }
+    }
+    contents.push({ role: 'user', parts: updateParts });
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        contents
+      })
+    });
+    if (!res.ok) throw new Error('Gemini ' + res.status);
+    const data = await res.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const parsed = parseJSONResponse(reply);
+    hideToast();
+    if (!parsed || typeof parsed.total !== 'number') {
+      toast('Could not parse update');
+      return;
+    }
+    _pendingRefine = parsed;
     renderMealRefineChat();
   } catch (e) {
     hideToast();
@@ -2164,30 +2233,25 @@ function renderMealRefineChat() {
   for (const m of _mealChatHistory) {
     if (m.role === 'user') {
       html += `<div style="display: flex; justify-content: flex-end; margin: 6px 0;">
-        <div style="max-width: 88%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--accent); color: white; font-size: 14px;">${escapeHtml(m.text)}</div>
+        <div style="max-width: 88%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--accent); color: white; font-size: 14px; white-space: pre-wrap;">${escapeHtml(m.text)}</div>
       </div>`;
     } else {
-      const parsed = parseJSONResponse(m.text);
-      if (parsed && typeof parsed.total === 'number') {
-        const followUps = (parsed.questions || []).filter(q => q && q.trim());
-        html += `<div style="margin: 6px 0; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: var(--panel); border: 1px solid var(--line); max-width: 95%;">
-          ${parsed.reply ? `<div style="margin-bottom: 8px; line-height: 1.5;">${escapeHtml(parsed.reply)}</div>` : ''}
-          <details style="margin-top: 4px;"><summary class="small muted">Current estimate: ${parsed.total} kcal</summary>
-            ${parsed.changeNote && parsed.changeNote.toLowerCase() !== 'no change' ? `<div class="small" style="font-style: italic; margin-top: 4px; opacity: 0.85;">${escapeHtml(parsed.changeNote)}</div>` : ''}
-            ${(parsed.items || []).map(i => `<div class="small" style="padding: 1px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal</div>`).join('')}
-          </details>
-          ${followUps.length ? `<div style="margin-top: 6px;">${followUps.map(q => `<div class="small" style="color: var(--warn);">❓ ${escapeHtml(q)}</div>`).join('')}</div>` : ''}
-        </div>`;
-      } else {
-        html += `<div style="margin: 6px 0; padding: 10px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line);">${escapeHtml(m.text)}</div>`;
-      }
+      // Plain text reply now (no JSON expected)
+      html += `<div style="margin: 6px 0; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: var(--panel); border: 1px solid var(--line); max-width: 95%; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(m.text)}</div>`;
     }
   }
   html += '</div>';
+  // Show estimate update preview only when Update Estimate button has been used and parsed JSON exists
   if (_pendingRefine && typeof _pendingRefine.total === 'number') {
-    html += `<div class="row" style="margin-top: 10px; gap: 6px;">
-      <button class="primary grow" onclick="applyRefineResult()">Apply ${_pendingRefine.total} kcal</button>
-      <button class="ghost" onclick="resetMealChat()">Reset</button>
+    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(122, 209, 195, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
+      <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Proposed estimate</div>
+      <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${_pendingRefine.total} kcal</div>
+      ${_pendingRefine.changeNote ? `<div class="small" style="font-style: italic; margin-bottom: 6px;">${escapeHtml(_pendingRefine.changeNote)}</div>` : ''}
+      ${(_pendingRefine.items || []).map(i => `<div class="small" style="padding: 1px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal</div>`).join('')}
+      <div class="row" style="margin-top: 10px; gap: 6px;">
+        <button class="primary grow" onclick="applyRefineResult()">Apply ${_pendingRefine.total} kcal</button>
+        <button class="ghost" onclick="_pendingRefine=null;renderMealRefineChat();">Discard</button>
+      </div>
     </div>`;
   }
   div.innerHTML = html;
@@ -2244,6 +2308,17 @@ function closeSessionRefine() {
   document.getElementById('sessionRefineModal').classList.remove('show');
 }
 
+function buildSessionSystemInstruction(session) {
+  const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n') || '  (none)';
+  return PROMPTS.sessionChatSystem
+    .replace('{type}', PLAN[session.day]?.label || session.day)
+    .replace('{date}', session.date)
+    .replace('{cardioNote}', session.cardioNote || '(none)')
+    .replace('{exercises}', exLines)
+    .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
+    .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []));
+}
+
 async function refineSessionEstimate() {
   const text = document.getElementById('sessionRefineInput').value.trim();
   if (!text) return toast('Type a message first');
@@ -2257,15 +2332,7 @@ async function refineSessionEstimate() {
   toast('Thinking…', { persistent: true });
 
   try {
-    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n') || '  (none)';
-    const systemInstruction = PROMPTS.sessionRefineSystem
-      .replace('{type}', PLAN[session.day]?.label || session.day)
-      .replace('{date}', session.date)
-      .replace('{cardioNote}', session.cardioNote || '(none)')
-      .replace('{exercises}', exLines)
-      .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
-      .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []));
-
+    const systemInstruction = buildSessionSystemInstruction(session);
     const contents = _sessionChatHistory.map(m => ({
       role: m.role === 'user' ? 'user' : 'model',
       parts: [{ text: m.text }]
@@ -2284,10 +2351,58 @@ async function refineSessionEstimate() {
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     _sessionChatHistory.push({ role: 'model', text: reply });
 
-    const parsed = parseJSONResponse(reply);
-    if (parsed && typeof parsed.total === 'number') _pendingSessionRefine = parsed;
-
     hideToast();
+    renderSessionRefineChat();
+    document.getElementById('updateSessionEstimateBtn').style.display = 'block';
+  } catch (e) {
+    hideToast();
+    toast('Failed: ' + (e.message || 'unknown'));
+  }
+}
+
+async function requestSessionEstimateUpdate() {
+  if (_refiningSessionAt == null) return;
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  if (_sessionChatHistory.length === 0) return toast('Chat with AI first');
+  const session = state.sessions.find(s => s.savedAt === _refiningSessionAt);
+  if (!session) return;
+
+  toast('Updating estimate…', { persistent: true });
+  try {
+    const systemInstruction = buildSessionSystemInstruction(session);
+    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n') || '  (none)';
+    const updatePrompt = PROMPTS.sessionEstimateUpdate
+      .replace('{type}', PLAN[session.day]?.label || session.day)
+      .replace('{date}', session.date)
+      .replace('{cardioNote}', session.cardioNote || '(none)')
+      .replace('{exercises}', exLines)
+      .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
+      .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []));
+
+    const contents = _sessionChatHistory.map(m => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.text }]
+    }));
+    contents.push({ role: 'user', parts: [{ text: updatePrompt }] });
+
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        contents
+      })
+    });
+    if (!res.ok) throw new Error('Gemini ' + res.status);
+    const data = await res.json();
+    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const parsed = parseJSONResponse(reply);
+    hideToast();
+    if (!parsed || typeof parsed.total !== 'number') {
+      toast('Could not parse update');
+      return;
+    }
+    _pendingSessionRefine = parsed;
     renderSessionRefineChat();
   } catch (e) {
     hideToast();
@@ -2302,30 +2417,23 @@ function renderSessionRefineChat() {
   for (const m of _sessionChatHistory) {
     if (m.role === 'user') {
       html += `<div style="display: flex; justify-content: flex-end; margin: 6px 0;">
-        <div style="max-width: 88%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--accent); color: white; font-size: 14px;">${escapeHtml(m.text)}</div>
+        <div style="max-width: 88%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--accent); color: white; font-size: 14px; white-space: pre-wrap;">${escapeHtml(m.text)}</div>
       </div>`;
     } else {
-      const parsed = parseJSONResponse(m.text);
-      if (parsed && typeof parsed.total === 'number') {
-        const followUps = (parsed.questions || []).filter(q => q && q.trim());
-        html += `<div style="margin: 6px 0; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: var(--panel); border: 1px solid var(--line); max-width: 95%;">
-          ${parsed.reply ? `<div style="margin-bottom: 8px; line-height: 1.5;">${escapeHtml(parsed.reply)}</div>` : ''}
-          <details style="margin-top: 4px;"><summary class="small muted">Current estimate: ${parsed.total} kcal</summary>
-            ${parsed.changeNote && parsed.changeNote.toLowerCase() !== 'no change' ? `<div class="small" style="font-style: italic; margin-top: 4px; opacity: 0.85;">${escapeHtml(parsed.changeNote)}</div>` : ''}
-            ${(parsed.breakdown || []).map(b => `<div class="small" style="padding: 1px 0;">• <b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
-          </details>
-          ${followUps.length ? `<div style="margin-top: 6px;">${followUps.map(q => `<div class="small" style="color: var(--warn);">❓ ${escapeHtml(q)}</div>`).join('')}</div>` : ''}
-        </div>`;
-      } else {
-        html += `<div style="margin: 6px 0; padding: 10px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line);">${escapeHtml(m.text)}</div>`;
-      }
+      html += `<div style="margin: 6px 0; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: var(--panel); border: 1px solid var(--line); max-width: 95%; line-height: 1.5; white-space: pre-wrap;">${escapeHtml(m.text)}</div>`;
     }
   }
   html += '</div>';
   if (_pendingSessionRefine && typeof _pendingSessionRefine.total === 'number') {
-    html += `<div class="row" style="margin-top: 10px; gap: 6px;">
-      <button class="primary grow" onclick="applySessionRefine()">Apply ${_pendingSessionRefine.total} kcal</button>
-      <button class="ghost" onclick="resetSessionChat()">Reset</button>
+    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(122, 209, 195, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
+      <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Proposed burn estimate</div>
+      <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${_pendingSessionRefine.total} kcal</div>
+      ${_pendingSessionRefine.changeNote ? `<div class="small" style="font-style: italic; margin-bottom: 6px;">${escapeHtml(_pendingSessionRefine.changeNote)}</div>` : ''}
+      ${(_pendingSessionRefine.breakdown || []).map(b => `<div class="small" style="padding: 1px 0;">• <b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
+      <div class="row" style="margin-top: 10px; gap: 6px;">
+        <button class="primary grow" onclick="applySessionRefine()">Apply ${_pendingSessionRefine.total} kcal</button>
+        <button class="ghost" onclick="_pendingSessionRefine=null;renderSessionRefineChat();">Discard</button>
+      </div>
     </div>`;
   }
   div.innerHTML = html;

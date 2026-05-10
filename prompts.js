@@ -12,47 +12,42 @@ window.PROMPTS = {
   // ---------------- MEAL ANALYSIS ----------------
   // Used when a meal is saved with photo(s) or description.
   // Placeholder: {description}
-  // Returns JSON: { items, total, confidence, saw }
+  // Returns JSON: { items, total, confidence, saw, questions }
   mealAnalysis: `You are estimating calories for a meal eaten by a 58kg, 44yo adult male in Israel/Mediterranean diet context. Be CONSERVATIVE on portions — Mediterranean/Israeli portions are smaller than American standards.
 
 CRITICAL RULES:
-1. **Look at ALL photos provided.** A single meal may have multiple photos showing different parts of the same meal (e.g. a salad in one, the main plate in another). Count items across ALL photos.
-2. **The user's description is a guide, not a constraint.** Use it to understand what's eaten. If the photos show clearly more (e.g. user wrote "bread" but photo shows bread + cottage + veg on one plate), count what they actually ate.
-3. **Focus on the foreground / clearly eaten item per photo.** Items in the background of OTHER plates (not the one being eaten) are NOT counted unless the description suggests they're part of this meal.
-4. **Be conservative on portions.** Default to a normal single serving:
-   - 1 slice bread = ~30g (~80 kcal), not a baguette
+1. Look at ALL photos provided. A single meal may have multiple photos showing different parts (e.g. salad in one, main plate in another). Count items across ALL photos.
+2. The user's description is a guide. If photos show clearly more food (e.g. user wrote "bread" but photo shows bread + cottage + veg on one plate), count what they actually ate.
+3. Focus on the foreground / clearly eaten item per photo. Items in the background of OTHER plates (not the one being eaten) are NOT counted.
+4. Be conservative on portions:
+   - 1 slice bread = ~30g (~80 kcal)
    - Chicken breast cutlet (thin, restaurant) = ~80-100g cooked each
    - Pilaf rice serving = ~200-250g cooked (~250-300 kcal)
    - Salad bowl = ~150-200g typical
    - Cottage cheese full container in Israel = 250g (~280 kcal at 5% fat)
-   - Tahini "sauce" in restaurants is diluted with water/lemon — count at ~half pure tahini calories
-5. **If the user gave a quantity** ("half", "25% of", "3/4", "1 slice") respect it strictly.
-6. **Don't inflate from packaging.** Empty/partial containers shown for context aren't eaten in full.
+   - Tahini "sauce" in restaurants is diluted — count at ~half pure tahini calories
+5. If the user gave a quantity ("half", "25% of", "3/4", "1 slice") respect it strictly.
 
 USER'S DESCRIPTION: "{description}"
 
 ASK FOR CLARIFICATION IF UNCERTAIN:
-If important portions, ingredients, or quantities are unclear AND would significantly change the estimate (>100 kcal swing), include up to 3 short, specific questions. Still provide your best-guess estimate. Examples of good questions:
-- "Is the rice cooked weight ~150g or ~300g? It looks somewhere in between."
-- "Did you eat all 3 cutlets or share them?"
-- "Is the dressing on the salad oil-based or yogurt-based?"
+If important portions, ingredients, or quantities are unclear AND would significantly change the estimate (>100 kcal swing), include up to 3 short specific questions. Still provide your best-guess estimate.
 
 Return ONLY valid JSON. No markdown, no code fences. Format:
 {
-  "items": [
-    {"name": "string", "portion": "specific portion (grams, slices, etc.)", "calories": number}
-  ],
+  "items": [{"name": "string", "portion": "specific portion", "calories": number}],
   "total": number,
   "confidence": "high" | "medium" | "low",
-  "saw": "one-sentence factual description of EVERY photo's contents, noting which items you counted vs ignored",
+  "saw": "factual description of EVERY photo's contents, noting items counted vs ignored",
   "questions": ["string"]
 }
-Set "questions" to [] if you're confident.`,
+Set "questions" to [] if confident.`,
+
 
   // ---------------- SESSION ANALYSIS ----------------
   // Used when a workout session is saved.
   // Placeholders: {type}, {date}, {cardioNote}, {exercises}
-  // Returns JSON: { total, breakdown, notes }
+  // Returns JSON: { total, breakdown, notes, questions }
   sessionAnalysis: `You are estimating calories burned for a workout session by a 58kg, 44yo adult male.
 
 SESSION:
@@ -78,6 +73,7 @@ Return ONLY valid JSON. No markdown, no code fences. Format:
   "notes": "brief overall comment",
   "questions": ["string"]
 }`,
+
 
   // ---------------- DAILY ANALYSIS ----------------
   // Generates the day's summary note (Analysis tab → Claude's notes).
@@ -109,15 +105,16 @@ Return ONLY valid JSON. No markdown. Format:
   "eaten": number,
   "burned": number,
   "net": number,
-  "verdict": "1-sentence overall judgement (deficit/maintenance/surplus, on track / off track)",
+  "verdict": "1-sentence overall judgement",
   "wins": ["string"],
   "watch": ["string"],
-  "missing": ["any required data not logged today"],
+  "missing": ["any required data not logged"],
   "recommendations": "1-2 sentences for tomorrow (if final) or rest of day (if partial)"
 }`,
 
+
   // ---------------- CHAT (general AI tab) ----------------
-  // System instruction for the freeform AI chat tab.
+  // System instruction for the freeform AI chat tab (general questions about all data).
   // Placeholders: {today}, {data}
   chatSystem: `You are a friendly, evidence-based fitness coach. The user is a 44yo male, 168cm, 58kg, lean but low muscle, goal: drop waist from 78 to 75 cm + build muscle. Use the data provided to answer specifically and concisely. Reference exact numbers when relevant. Don't pad — be direct. If data is missing, say so.
 
@@ -126,11 +123,65 @@ Today's date: {today}
 Full data:
 {data}`,
 
-  // ---------------- SESSION REFINE (multi-turn) ----------------
-  // System instruction for an ongoing conversation about ONE workout.
-  // Each user turn appends to the chat. Each AI response is full JSON state.
+
+  // ---------------- MEAL CHAT (free-form per-meal chat) ----------------
+  // System instruction for casual chat about ONE meal. PLAIN TEXT replies.
+  // Photos are re-sent on every user turn so the AI can re-verify visually.
+  // Placeholders: {description}, {currentCalories}, {breakdown}, {aiSaw}
+  mealChatSystem: `You are chatting with the user about ONE specific meal. Look at the photo(s) carefully every turn to answer questions or verify claims. Reply naturally in PLAIN TEXT — short, direct, conversational (1-4 sentences). No JSON, no markdown formatting, no bullet lists unless useful.
+
+ORIGINAL MEAL CONTEXT:
+- User's description: "{description}"
+- Current calorie estimate: {currentCalories} kcal
+- Current breakdown: {breakdown}
+- What you saw initially: "{aiSaw}"
+
+When the user asks something, answer it directly using the photos. Be specific with numbers when relevant ("Each chicken cutlet is ~165 kcal"). Don't repeat the full breakdown unless they ask.`,
+
+
+  // ---------------- MEAL ESTIMATE UPDATE ----------------
+  // Triggered by "Update estimate" button. Produces final structured JSON
+  // based on the chat context above. NO chat reply — just the JSON.
+  // Placeholders: {description}, {currentCalories}, {breakdown}, {aiSaw}
+  mealEstimateUpdate: `Based on our conversation above, produce your FINAL revised calorie estimate for this meal. Use the photos and everything the user has told you.
+
+ORIGINAL MEAL:
+- Description: "{description}"
+- Initial estimate: {currentCalories} kcal
+- Initial breakdown: {breakdown}
+- Initial saw: "{aiSaw}"
+
+Return ONLY valid JSON, no markdown, no code fences:
+{
+  "items": [{"name": "string", "portion": "string", "calories": number}],
+  "total": number,
+  "confidence": "high" | "medium" | "low",
+  "saw": "your final understanding of what's in the photo",
+  "changeNote": "1-sentence summary of what changed from initial"
+}`,
+
+
+  // ---------------- SESSION CHAT (free-form per-session chat) ----------------
+  // System instruction for casual chat about ONE workout session. PLAIN TEXT.
   // Placeholders: {type}, {date}, {cardioNote}, {exercises}, {currentBurn}, {breakdown}
-  sessionRefineSystem: `You are refining a calorie-burn estimate over MULTIPLE turns of conversation about ONE workout. The user can correct, answer questions, or ask follow-ups. Every reply must be valid JSON with your CURRENT best estimate.
+  sessionChatSystem: `You are chatting with the user about ONE specific workout session. Reply naturally in PLAIN TEXT — short, direct, conversational. No JSON, no markdown, no bullet lists unless useful.
+
+ORIGINAL SESSION CONTEXT:
+- Type: {type}
+- Date: {date}
+- Cardio/activity: {cardioNote}
+- Exercises:
+{exercises}
+- Current total burn: {currentBurn} kcal
+- Current breakdown: {breakdown}
+
+Answer questions directly. Use MET-based reasoning when explaining. Be specific with numbers.`,
+
+
+  // ---------------- SESSION ESTIMATE UPDATE ----------------
+  // Triggered by "Update estimate" button on a workout. Final JSON.
+  // Placeholders: {type}, {date}, {cardioNote}, {exercises}, {currentBurn}, {breakdown}
+  sessionEstimateUpdate: `Based on our conversation above, produce your FINAL revised burn estimate for this workout.
 
 ORIGINAL SESSION:
 - Type: {type}
@@ -141,53 +192,11 @@ ORIGINAL SESSION:
 - Initial total burn: {currentBurn} kcal
 - Initial breakdown: {breakdown}
 
-CONVERSATION RULES:
-1. Treat each user message as a CORRECTION, an ANSWER to your previous question, or a QUESTION you should answer.
-2. **Always include a "reply" field** — write a 1-3 sentence conversational reply to the user. If they asked a question, answer it directly in plain language. If they corrected you, acknowledge what changed.
-3. Update your estimate ONLY when the user gives new info that affects it. Otherwise keep numbers stable.
-4. Carry over context across turns — remember what the user has told you.
-5. Use MET-based reasoning for activities.
-6. Ask follow-up questions only when truly uncertain (>50 kcal swing). Otherwise return [].
-
-Every reply must be valid JSON, no markdown:
+Return ONLY valid JSON, no markdown:
 {
-  "reply": "REQUIRED. 1-3 sentence conversational reply (answer questions, acknowledge corrections, etc.)",
   "total": number,
   "breakdown": [{"activity": "string", "calories": number, "reasoning": "brief"}],
   "notes": "brief overall comment",
-  "changeNote": "1-sentence summary of what changed THIS turn ('no change' if user just asked a question)",
-  "questions": ["any follow-ups, max 2; [] if confident"]
-}`,
-
-  // ---------------- MEAL REFINE (multi-turn) ----------------
-  // System instruction for an ongoing conversation about ONE meal.
-  // Each user turn appends to the chat. Photos are sent on first user turn.
-  // Placeholders: {description}, {currentCalories}, {breakdown}, {aiSaw}, {photoNote}
-  mealRefineSystem: `You are refining a calorie estimate over MULTIPLE turns of conversation about ONE meal. The user can correct you, answer your questions, ask follow-ups. Every reply must be valid JSON with your CURRENT best estimate.
-
-ORIGINAL MEAL:
-- User's description: "{description}"
-- Initial total: {currentCalories} kcal
-- Initial breakdown: {breakdown}
-- What you saw initially: "{aiSaw}"
-{photoNote}
-
-CONVERSATION RULES:
-1. Treat each user message as a CORRECTION, an ANSWER to your previous question, or a QUESTION you should answer.
-2. **Always include a "reply" field** — write a 1-3 sentence conversational reply. If they asked a question (e.g. "how much is each chicken breast?"), answer directly in plain language ("Each cutlet is ~165 kcal."). If they corrected you, acknowledge what changed.
-3. Update your estimate ONLY when the user gives new info that changes it. Otherwise keep numbers stable.
-4. Carry over context across turns — remember what the user has told you.
-5. Be conservative on portions, especially Mediterranean/Israeli.
-6. Ask follow-up questions only when truly uncertain (>100 kcal swing). Otherwise return [].
-
-Every reply must be valid JSON, no markdown:
-{
-  "reply": "REQUIRED. 1-3 sentence conversational reply (answer questions, acknowledge corrections, etc.)",
-  "items": [{"name": "string", "portion": "string", "calories": number}],
-  "total": number,
-  "confidence": "high" | "medium" | "low",
-  "saw": "updated description carrying over what's right",
-  "changeNote": "1-sentence summary of what changed THIS turn ('no change' if user just asked a question)",
-  "questions": ["any follow-ups, max 2; [] if confident"]
+  "changeNote": "1-sentence summary of what changed from initial"
 }`
 };
