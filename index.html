@@ -825,51 +825,11 @@ function startNewSession() {
 
 function renderWorkout() {
   const editing = !!state.current?._editingId;
-  const inProgress = !!state.current && !isCurrentFresh();
-  const showStartButton = !editing && !inProgress && state.sessions.some(s => s.day === currentDay);
-  document.getElementById('workoutTitle').textContent = (editing ? '✏ Editing — ' : (showStartButton ? '' : '+ New ')) + PLAN[currentDay].label;
+  document.getElementById('workoutTitle').textContent = (editing ? '✏ Editing — ' : '+ New ') + PLAN[currentDay].label;
   const dateInput = document.getElementById('sessionDate');
   if (dateInput && state.current) dateInput.value = state.current.date || todayISO();
   const list = document.getElementById('exerciseList');
   list.innerHTML = '';
-
-  // Show last saved session matching the current template (if not editing)
-  if (!editing) {
-    const lastForDay = state.sessions.slice().reverse().find(s => s.day === currentDay);
-    if (lastForDay) {
-      const banner = document.createElement('div');
-      banner.className = 'card';
-      banner.style.cssText = 'background: var(--panel2); border-left: 3px solid var(--accent2); padding: 10px 12px; margin-bottom: 10px;';
-      const setsSummary = lastForDay.entries.filter(e => e.sets.length).map(e => `${e.name}: ${e.sets.map(x=>x.reps).join('·')}`).join(' · ');
-      const cardioPreview = lastForDay.cardioNote
-        ? (lastForDay.cardioNote.length > 80 ? escapeHtml(lastForDay.cardioNote.slice(0, 80)) + '…' : escapeHtml(lastForDay.cardioNote))
-        : '';
-      banner.innerHTML = `
-        <div class="row between" style="align-items: center; gap: 8px;">
-          <div style="flex: 1; min-width: 0;">
-            <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Last saved · ${formatDate(lastForDay.date)}${lastForDay.notes ? ' · has analysis' : ''}</div>
-            ${cardioPreview ? `<div class="small" style="margin-top: 2px;">${cardioPreview}</div>` : ''}
-            ${setsSummary && !cardioPreview ? `<div class="small" style="margin-top: 2px;">${escapeHtml(setsSummary)}</div>` : ''}
-          </div>
-          <button class="ghost" style="padding: 5px 10px; font-size: 12px; flex-shrink: 0;" onclick="viewSavedSession(${lastForDay.savedAt})">View</button>
-        </div>
-      `;
-      list.appendChild(banner);
-    }
-  }
-
-  // If there's a saved session for this day and user hasn't started a new one, show start button
-  if (showStartButton) {
-    const startBtn = document.createElement('button');
-    startBtn.className = 'primary';
-    startBtn.style.cssText = 'width: 100%; padding: 16px; margin-top: 4px; font-size: 16px; font-weight: 700;';
-    startBtn.textContent = '+ Start new ' + PLAN[currentDay].label.replace(/^[^—]+—\s*/, '');
-    startBtn.onclick = startNewSession;
-    list.appendChild(startBtn);
-    renderHistory();
-    document.querySelectorAll('[data-day]').forEach(c => c.classList.toggle('on', c.dataset.day === currentDay));
-    return;
-  }
 
   if (PLAN[currentDay].cardio) {
     const c = document.createElement('div');
