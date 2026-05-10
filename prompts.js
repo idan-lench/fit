@@ -31,6 +31,12 @@ CRITICAL RULES:
 
 USER'S DESCRIPTION: "{description}"
 
+ASK FOR CLARIFICATION IF UNCERTAIN:
+If important portions, ingredients, or quantities are unclear AND would significantly change the estimate (>100 kcal swing), include up to 3 short, specific questions. Still provide your best-guess estimate. Examples of good questions:
+- "Is the rice cooked weight ~150g or ~300g? It looks somewhere in between."
+- "Did you eat all 3 cutlets or share them?"
+- "Is the dressing on the salad oil-based or yogurt-based?"
+
 Return ONLY valid JSON. No markdown, no code fences. Format:
 {
   "items": [
@@ -38,8 +44,10 @@ Return ONLY valid JSON. No markdown, no code fences. Format:
   ],
   "total": number,
   "confidence": "high" | "medium" | "low",
-  "saw": "one-sentence factual description of EVERY photo's contents, noting which items you counted vs ignored"
-}`,
+  "saw": "one-sentence factual description of EVERY photo's contents, noting which items you counted vs ignored",
+  "questions": ["string"]
+}
+Set "questions" to [] if you're confident.`,
 
   // ---------------- SESSION ANALYSIS ----------------
   // Used when a workout session is saved.
@@ -132,6 +140,8 @@ USER'S CORRECTION:
 
 Apply the correction to your estimate. Update the breakdown and total accordingly. Be precise.
 
+If new ambiguities arise from the user's correction, include up to 2 short follow-up questions in "questions". Otherwise return [].
+
 Return ONLY valid JSON. No markdown. Format:
 {
   "items": [
@@ -140,6 +150,7 @@ Return ONLY valid JSON. No markdown. Format:
   "total": number,
   "confidence": "high" | "medium" | "low",
   "saw": "updated description of what's actually in the photo (carry over what's right, fix what's wrong)",
-  "changeNote": "1-sentence summary of what changed in this revision and why"
+  "changeNote": "1-sentence summary of what changed in this revision and why",
+  "questions": ["string"]
 }`
 };

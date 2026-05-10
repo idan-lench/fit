@@ -1891,6 +1891,13 @@ async function renderMeals() {
           ${m.breakdown.map(b => `<div class="row between" style="padding: 3px 0; font-size: 13px;"><span>${escapeHtml(b.name)} <span class="muted">${escapeHtml(b.portion || '')}</span></span><span style="font-weight: 600;">${b.calories} kcal</span></div>`).join('')}
         </details>`
       : '';
+    const questionsHtml = (m.questions && m.questions.length)
+      ? `<div style="margin-top: 6px; padding: 8px 10px; background: rgba(255, 184, 107, 0.12); border-left: 3px solid var(--warn); border-radius: 6px;">
+          <div class="small" style="font-weight: 600; color: var(--warn);">❓ AI has ${m.questions.length} question${m.questions.length > 1 ? 's' : ''}:</div>
+          ${m.questions.map(q => `<div class="small" style="margin-top: 4px;">• ${escapeHtml(q)}</div>`).join('')}
+          <div class="small muted" style="margin-top: 6px;">Tap the meal to answer via "Refine".</div>
+        </div>`
+      : '';
     card.innerHTML = `
       <div class="row between" style="align-items: flex-start;">
         <div class="grow" style="min-width: 0;">
@@ -1900,6 +1907,7 @@ async function renderMeals() {
         <button class="icon ghost" onclick="event.stopPropagation(); removeMeal(${m.id})" aria-label="Delete">✕</button>
       </div>
       ${thumbs}
+      ${questionsHtml}
       ${breakdownHtml}
     `;
     card.addEventListener('click', () => openMealModal(m.id));
@@ -2002,6 +2010,7 @@ async function autoAnalyzeMeal(mealId, opts = {}) {
         fresh.breakdown = parsed.items || [];
         fresh.confidence = parsed.confidence || null;
         fresh.aiSaw = parsed.saw || null;
+        fresh.questions = (parsed.questions || []).filter(q => q && q.trim());
         await putMeal(fresh);
       }
       if (!opts.silent) { hideToast(); toast(`Meal: ~${Math.round(parsed.total)} kcal ✓`); }
@@ -2076,12 +2085,18 @@ async function refineMealEstimate() {
     _pendingRefine = parsed;
     const div = document.getElementById('refineResult');
     div.style.display = 'block';
+    const followUps = (parsed.questions || []).filter(q => q && q.trim());
     div.innerHTML = `
       <div class="muted small">AI suggests:</div>
       <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${parsed.total} kcal</div>
       ${parsed.changeNote ? `<div class="small" style="margin-bottom: 8px; font-style: italic;">${escapeHtml(parsed.changeNote)}</div>` : ''}
       ${(parsed.items || []).map(i => `<div class="small" style="padding: 2px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal</div>`).join('')}
       ${parsed.saw ? `<div class="small muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(parsed.saw)}</div>` : ''}
+      ${followUps.length ? `<div style="margin-top: 8px; padding: 8px; background: rgba(255, 184, 107, 0.12); border-left: 3px solid var(--warn); border-radius: 6px;">
+        <div class="small" style="font-weight: 600; color: var(--warn);">❓ Still uncertain:</div>
+        ${followUps.map(q => `<div class="small" style="margin-top: 3px;">• ${escapeHtml(q)}</div>`).join('')}
+        <div class="small muted" style="margin-top: 4px;">Reply in the box above to answer, then Ask again.</div>
+      </div>` : ''}
       <div class="row" style="margin-top: 10px; gap: 6px;">
         <button class="primary grow" onclick="applyRefineResult()">Apply</button>
         <button class="ghost" onclick="document.getElementById('refineResult').style.display='none'; _pendingRefine=null;">Dismiss</button>
@@ -2100,6 +2115,7 @@ async function applyRefineResult() {
   meal.breakdown = _pendingRefine.items || [];
   meal.aiSaw = _pendingRefine.saw || meal.aiSaw;
   meal.confidence = _pendingRefine.confidence || meal.confidence;
+  meal.questions = (_pendingRefine.questions || []).filter(q => q && q.trim());
   await putMeal(meal);
   _pendingRefine = null;
   document.getElementById('refineResult').style.display = 'none';
