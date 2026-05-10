@@ -1024,25 +1024,31 @@ function finishSession() {
   if (!state.current) return toast('Nothing to save');
   const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote;
   if (!hasAny) return toast('Log at least one set');
+  let savedAt;
   if (state.current._editingId) {
     const idx = state.sessions.findIndex(s => s.savedAt === state.current._editingId);
     if (idx >= 0) {
       const editingId = state.current._editingId;
       const updated = { ...state.current, savedAt: editingId };
       delete updated._editingId;
+      delete updated.caloriesBurned; // re-analyze on next save
       state.sessions[idx] = updated;
+      savedAt = editingId;
     }
     state.current = null;
     save();
     selectDay(currentDay);
     toast('Updated ✓');
   } else {
-    state.sessions.push({ ...state.current, savedAt: Date.now() });
+    savedAt = Date.now();
+    state.sessions.push({ ...state.current, savedAt });
     state.current = null;
     save();
     selectDay(currentDay);
     toast('Saved ✓');
   }
+  // Auto-analyze in background
+  if (getGeminiKey() && savedAt) setTimeout(() => autoAnalyzeSession(savedAt), 800);
 }
 function cancelSession() {
   if (!state.current) return;
@@ -1470,18 +1476,22 @@ async function saveMeal() {
   if (!pendingMealBlobs.length && !desc) {
     return toast('Add a photo or a description');
   }
+  let savedId;
   if (editingMealId) {
     const existing = await getMeal(editingMealId);
     if (existing) {
+      // Reset calories so it gets re-analyzed if photo/description changed
+      existing.calories = null;
       await putMeal({
         ...existing,
         blobs: [...pendingMealBlobs],
         description: desc
       });
+      savedId = existing.id;
     }
   } else {
     const now = new Date();
-    await putMeal({
+    savedId = await putMeal({
       date: todayISO(),
       time: now.toTimeString().slice(0,5),
       blobs: [...pendingMealBlobs],
@@ -1492,6 +1502,8 @@ async function saveMeal() {
   closeMealModal();
   toast(wasEditing ? 'Meal updated ✓' : 'Meal saved ✓');
   renderMeals();
+  // Auto-analyze in background
+  if (getGeminiKey() && savedId) setTimeout(() => autoAnalyzeMeal(savedId), 800);
 }
 
 function mealBlobs(m) {
@@ -1813,6 +1825,80 @@ async function buildAIContext() {
     today: todayISO()
   };
   return ctx;
+}
+
+async function callGeminiAnalysis(prompt, imageBlobs = []) {
+  const key = getGeminiKey();
+  if (!key) throw new Error('No Gemini key');
+  const parts = [{ text: prompt }];
+  for (const blob of imageBlobs) {
+    const dataUrl = await blobToDataUrl(blob);
+    const base64 = dataUrl.split(',')[1];
+    parts.push({ inline_data: { mime_type: blob.type || 'image/jpeg', data: base64 } });
+  }
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(key)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts }] })
+  });
+  if (!res.ok) throw new Error('Gemini ' + res.status);
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+async function autoAnalyzeMeal(mealId) {
+  if (!getGeminiKey()) return;
+  const meal = await getMeal(mealId);
+  if (!meal) return;
+  toast('Analyzing meal…', { persistent: true });
+  try {
+    const blobs = mealBlobs(meal);
+    const prompt = `Estimate the calories (kcal) for this meal eaten by a 58kg adult male. ${meal.description ? 'User notes: "' + meal.description + '".' : ''} ${blobs.length ? 'Photo(s) attached.' : ''}\n\nReply with ONLY a number (calories), no units, no explanation. Example: 600`;
+    const result = await callGeminiAnalysis(prompt, blobs);
+    const cals = parseInt(result.match(/\d+/)?.[0]);
+    if (cals > 0 && cals < 5000) {
+      const fresh = await getMeal(mealId);
+      if (fresh) {
+        fresh.calories = cals;
+        await putMeal(fresh);
+      }
+      hideToast(); toast(`Meal: ~${cals} kcal ✓`);
+      if (typeof renderMeals === 'function') renderMeals();
+    } else {
+      hideToast(); toast('Could not estimate');
+    }
+  } catch (e) {
+    hideToast(); toast('Analysis failed');
+  }
+}
+
+async function autoAnalyzeSession(savedAt) {
+  if (!getGeminiKey()) return;
+  const session = state.sessions.find(s => s.savedAt === savedAt);
+  if (!session) return;
+  toast('Analyzing workout…', { persistent: true });
+  try {
+    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n');
+    const prompt = `Estimate calories burned for this workout session by a 58kg, 44yo male.
+
+Type: ${PLAN[session.day]?.label || session.day}
+Date: ${session.date}
+${session.cardioNote ? 'Activity: ' + session.cardioNote + '\n' : ''}${exLines ? 'Exercises:\n' + exLines : ''}
+
+Reply with ONLY a number (kcal burned), no units, no explanation. Example: 230`;
+    const result = await callGeminiAnalysis(prompt);
+    const cals = parseInt(result.match(/\d+/)?.[0]);
+    if (cals > 0 && cals < 5000) {
+      session.caloriesBurned = cals;
+      save();
+      hideToast(); toast(`Workout: ~${cals} kcal burned ✓`);
+      renderHistory();
+    } else {
+      hideToast();
+    }
+  } catch (e) {
+    hideToast(); toast('Analysis failed');
+  }
 }
 
 async function callGemini(messages) {
