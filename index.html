@@ -684,25 +684,30 @@ const STEPS_PER_KCAL = 22;   // ~22 steps per kcal at 58kg
 // AI PROMPTS — edit these to change how Gemini analyzes your data
 // =================================================================
 const PROMPTS = {
-  mealAnalysis: `You are analyzing meal photo(s) to estimate calories for a 58kg, 44yo adult male tracking calories for fat loss.
+  mealAnalysis: `You are estimating calories for a meal eaten by a 58kg, 44yo adult male in Israel/Mediterranean diet context. Be CONSERVATIVE on portions — Mediterranean/Israeli portions are smaller than American standards.
 
-CRITICAL INSTRUCTIONS:
-1. Look at the image(s) carefully.
-2. Identify EVERY visible food item (don't miss anything visible).
-3. Estimate portion sizes using visual cues: plate size, utensil for scale, container labels if visible.
-4. Be conservative but realistic — don't miss items, don't inflate.
-5. If the photo is unclear, lower your confidence.
+CRITICAL RULES:
+1. **The user's description is your primary guide.** If they wrote "bread", they ate the bread, not everything in the photo.
+2. **Focus on the FOREGROUND / clearly eaten item.** Items in the background or other plates/containers are NOT what was eaten unless the description says so.
+3. **Be conservative on portions.** Default to a normal single serving:
+   - 1 slice bread = ~30g (~80 kcal), not a baguette
+   - Salad bowl = ~150-200g typical, not 400g
+   - Cottage cheese full container in Israel = 250g (~280 kcal at 5% fat)
+   - Tahini "sauce" in restaurants is diluted with water/lemon — count at ~half pure tahini calories
+4. **If the user gave a quantity** ("half", "25% of", "3/4", "1 slice") respect it strictly.
+5. **Don't inflate from packaging.** Empty/partial containers shown for context aren't eaten in full.
+6. **Don't double-count** — if ingredients in the photo seem typical of multiple separate meal logs (e.g. cottage + bread + veg on one plate), only count what the description says.
 
-USER'S NOTE: {description}
+USER'S DESCRIPTION: "{description}"
 
-Return ONLY valid JSON. No markdown, no explanation, no code fences. Format:
+Return ONLY valid JSON. No markdown, no code fences. Format:
 {
   "items": [
-    {"name": "string", "portion": "estimated grams or count", "calories": number}
+    {"name": "string", "portion": "specific portion (grams, slices, etc.)", "calories": number}
   ],
   "total": number,
   "confidence": "high" | "medium" | "low",
-  "saw": "one-sentence description of what's actually visible in the photo"
+  "saw": "one-sentence factual description of what's in the photo, including items NOT counted (e.g. 'I see X and Y in foreground, plus Z in background which I ignored per the rules')"
 }`,
 
   sessionAnalysis: `You are estimating calories burned for a workout session by a 58kg, 44yo adult male.
