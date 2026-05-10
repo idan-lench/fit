@@ -142,18 +142,20 @@ ORIGINAL SESSION:
 - Initial breakdown: {breakdown}
 
 CONVERSATION RULES:
-1. Treat each user message as a correction, an answer to your previous question, or a new question.
-2. Update your estimate ONLY when the user gives new info that affects it. Otherwise keep numbers stable.
-3. Carry over context across turns — remember what the user has told you.
-4. Use MET-based reasoning for activities.
-5. Ask follow-up questions only when truly uncertain (>50 kcal swing). Otherwise return [].
+1. Treat each user message as a CORRECTION, an ANSWER to your previous question, or a QUESTION you should answer.
+2. **Always include a "reply" field** — write a 1-3 sentence conversational reply to the user. If they asked a question, answer it directly in plain language. If they corrected you, acknowledge what changed.
+3. Update your estimate ONLY when the user gives new info that affects it. Otherwise keep numbers stable.
+4. Carry over context across turns — remember what the user has told you.
+5. Use MET-based reasoning for activities.
+6. Ask follow-up questions only when truly uncertain (>50 kcal swing). Otherwise return [].
 
 Every reply must be valid JSON, no markdown:
 {
+  "reply": "REQUIRED. 1-3 sentence conversational reply (answer questions, acknowledge corrections, etc.)",
   "total": number,
   "breakdown": [{"activity": "string", "calories": number, "reasoning": "brief"}],
   "notes": "brief overall comment",
-  "changeNote": "1-sentence summary of what changed THIS turn (or 'no change' if user just asked a question)",
+  "changeNote": "1-sentence summary of what changed THIS turn ('no change' if user just asked a question)",
   "questions": ["any follow-ups, max 2; [] if confident"]
 }`,
 
@@ -171,19 +173,21 @@ ORIGINAL MEAL:
 {photoNote}
 
 CONVERSATION RULES:
-1. Treat each user message as a correction, an answer to your question, or a follow-up.
-2. Update your estimate ONLY when the user gives new info that changes it. Otherwise keep numbers stable.
-3. Carry over context across turns — remember what the user has told you.
-4. Be conservative on portions, especially Mediterranean/Israeli. See the meal-analysis rules.
-5. Ask follow-up questions only when truly uncertain (>100 kcal swing). Otherwise return [].
+1. Treat each user message as a CORRECTION, an ANSWER to your previous question, or a QUESTION you should answer.
+2. **Always include a "reply" field** — write a 1-3 sentence conversational reply. If they asked a question (e.g. "how much is each chicken breast?"), answer directly in plain language ("Each cutlet is ~165 kcal."). If they corrected you, acknowledge what changed.
+3. Update your estimate ONLY when the user gives new info that changes it. Otherwise keep numbers stable.
+4. Carry over context across turns — remember what the user has told you.
+5. Be conservative on portions, especially Mediterranean/Israeli.
+6. Ask follow-up questions only when truly uncertain (>100 kcal swing). Otherwise return [].
 
 Every reply must be valid JSON, no markdown:
 {
+  "reply": "REQUIRED. 1-3 sentence conversational reply (answer questions, acknowledge corrections, etc.)",
   "items": [{"name": "string", "portion": "string", "calories": number}],
   "total": number,
   "confidence": "high" | "medium" | "low",
   "saw": "updated description carrying over what's right",
-  "changeNote": "1-sentence summary of what changed THIS turn (or 'no change' if user just asked a question)",
+  "changeNote": "1-sentence summary of what changed THIS turn ('no change' if user just asked a question)",
   "questions": ["any follow-ups, max 2; [] if confident"]
 }`
 };

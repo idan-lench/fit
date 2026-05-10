@@ -2171,9 +2171,11 @@ function renderMealRefineChat() {
       if (parsed && typeof parsed.total === 'number') {
         const followUps = (parsed.questions || []).filter(q => q && q.trim());
         html += `<div style="margin: 6px 0; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: var(--panel); border: 1px solid var(--line); max-width: 95%;">
-          <div style="font-size: 18px; font-weight: 700;">${parsed.total} kcal</div>
-          ${parsed.changeNote ? `<div class="small" style="font-style: italic; margin-top: 2px; opacity: 0.85;">${escapeHtml(parsed.changeNote)}</div>` : ''}
-          ${(parsed.items || []).map(i => `<div class="small" style="padding: 1px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal</div>`).join('')}
+          ${parsed.reply ? `<div style="margin-bottom: 8px; line-height: 1.5;">${escapeHtml(parsed.reply)}</div>` : ''}
+          <details style="margin-top: 4px;"><summary class="small muted">Current estimate: ${parsed.total} kcal</summary>
+            ${parsed.changeNote && parsed.changeNote.toLowerCase() !== 'no change' ? `<div class="small" style="font-style: italic; margin-top: 4px; opacity: 0.85;">${escapeHtml(parsed.changeNote)}</div>` : ''}
+            ${(parsed.items || []).map(i => `<div class="small" style="padding: 1px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal</div>`).join('')}
+          </details>
           ${followUps.length ? `<div style="margin-top: 6px;">${followUps.map(q => `<div class="small" style="color: var(--warn);">❓ ${escapeHtml(q)}</div>`).join('')}</div>` : ''}
         </div>`;
       } else {
@@ -2307,9 +2309,11 @@ function renderSessionRefineChat() {
       if (parsed && typeof parsed.total === 'number') {
         const followUps = (parsed.questions || []).filter(q => q && q.trim());
         html += `<div style="margin: 6px 0; padding: 10px 12px; border-radius: 14px 14px 14px 4px; background: var(--panel); border: 1px solid var(--line); max-width: 95%;">
-          <div style="font-size: 18px; font-weight: 700;">${parsed.total} kcal burned</div>
-          ${parsed.changeNote ? `<div class="small" style="font-style: italic; margin-top: 2px; opacity: 0.85;">${escapeHtml(parsed.changeNote)}</div>` : ''}
-          ${(parsed.breakdown || []).map(b => `<div class="small" style="padding: 1px 0;">• <b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
+          ${parsed.reply ? `<div style="margin-bottom: 8px; line-height: 1.5;">${escapeHtml(parsed.reply)}</div>` : ''}
+          <details style="margin-top: 4px;"><summary class="small muted">Current estimate: ${parsed.total} kcal</summary>
+            ${parsed.changeNote && parsed.changeNote.toLowerCase() !== 'no change' ? `<div class="small" style="font-style: italic; margin-top: 4px; opacity: 0.85;">${escapeHtml(parsed.changeNote)}</div>` : ''}
+            ${(parsed.breakdown || []).map(b => `<div class="small" style="padding: 1px 0;">• <b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
+          </details>
           ${followUps.length ? `<div style="margin-top: 6px;">${followUps.map(q => `<div class="small" style="color: var(--warn);">❓ ${escapeHtml(q)}</div>`).join('')}</div>` : ''}
         </div>`;
       } else {
