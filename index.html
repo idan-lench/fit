@@ -1156,9 +1156,14 @@ function finishSession() {
     const idx = state.sessions.findIndex(s => s.savedAt === state.current._editingId);
     if (idx >= 0) {
       const editingId = state.current._editingId;
+      const previous = state.sessions[idx];
       const updated = { ...state.current, savedAt: editingId };
       delete updated._editingId;
-      delete updated.caloriesBurned; // re-analyze on next save
+      // Preserve previous burn estimate / chat / breakdown — user may have refined them
+      if (previous.caloriesBurned != null) updated.caloriesBurned = previous.caloriesBurned;
+      if (previous.burnBreakdown) updated.burnBreakdown = previous.burnBreakdown;
+      if (previous.burnNotes) updated.burnNotes = previous.burnNotes;
+      if (previous.chatHistory) updated.chatHistory = previous.chatHistory;
       state.sessions[idx] = updated;
       savedAt = editingId;
     }
@@ -1174,8 +1179,11 @@ function finishSession() {
     selectDay(currentDay);
     toast('Saved ✓');
   }
-  // Auto-analyze in background
-  if (getGeminiKey() && savedAt) setTimeout(() => autoAnalyzeSession(savedAt), 800);
+  // Only auto-analyze if no estimate exists yet
+  if (getGeminiKey() && savedAt) {
+    const s = state.sessions.find(x => x.savedAt === savedAt);
+    if (s && s.caloriesBurned == null) setTimeout(() => autoAnalyzeSession(savedAt), 800);
+  }
 }
 function cancelSession() {
   if (!state.current) return;
@@ -1643,8 +1651,7 @@ async function saveMeal() {
   if (editingMealId) {
     const existing = await getMeal(editingMealId);
     if (existing) {
-      // Reset calories so it gets re-analyzed if photo/description changed
-      existing.calories = null;
+      // Preserve calories, breakdown, etc. — user may have refined via chat
       await putMeal({
         ...existing,
         blobs: [...pendingMealBlobs],
@@ -1665,8 +1672,11 @@ async function saveMeal() {
   closeMealModal();
   toast(wasEditing ? 'Meal updated ✓' : 'Meal saved ✓');
   renderMeals();
-  // Auto-analyze in background
-  if (getGeminiKey() && savedId) setTimeout(() => autoAnalyzeMeal(savedId), 800);
+  // Only auto-analyze if there's no estimate yet (preserves chat-refined values)
+  if (getGeminiKey() && savedId) {
+    const meal = await getMeal(savedId);
+    if (meal && !meal.calories) setTimeout(() => autoAnalyzeMeal(savedId), 800);
+  }
 }
 
 function mealBlobs(m) {
