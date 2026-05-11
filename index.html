@@ -370,7 +370,12 @@
 
   <!-- ANALYSIS TAB -->
   <section id="tab-analysis">
-    <h2>Today's energy</h2>
+    <div class="row between" style="align-items: center; padding: 4px 4px 0;">
+      <button class="icon ghost" onclick="shiftAnalysisDate(-1)" aria-label="Previous day">‹</button>
+      <span id="analysisDateLabel" style="font-weight: 600; font-size: 15px;"></span>
+      <button class="icon ghost" id="analysisNextBtn" onclick="shiftAnalysisDate(1)" aria-label="Next day">›</button>
+    </div>
+    <h2 id="analysisEnergyTitle">Energy</h2>
     <div class="card">
       <div class="row" style="gap: 10px;">
         <div style="flex: 1;">
@@ -829,6 +834,7 @@ Full data:
 {data}`
 };
 let currentDay = 'tue';
+let analysisViewDate = null; // null = today
 let currentSetCtx = null; // {exerciseIdx}
 let currentReps = 8;
 
@@ -1846,9 +1852,30 @@ async function drawEnergyChart(elementId = 'energyChart') {
   `;
 }
 
+function shiftAnalysisDate(delta) {
+  const base = analysisViewDate || todayISO();
+  const d = new Date(base);
+  d.setDate(d.getDate() + delta);
+  const shifted = d.toISOString().slice(0, 10);
+  if (shifted > todayISO()) return; // don't go into future
+  analysisViewDate = shifted === todayISO() ? null : shifted;
+  renderAnalysis();
+}
+
 async function renderAnalysis() {
   const today = todayISO();
-  const e = await computeDailyEnergy(today);
+  const viewDate = analysisViewDate || today;
+  const isToday = viewDate === today;
+
+  // Update nav UI
+  const labelEl = document.getElementById('analysisDateLabel');
+  if (labelEl) labelEl.textContent = isToday ? 'Today' : formatDate(viewDate);
+  const nextBtn = document.getElementById('analysisNextBtn');
+  if (nextBtn) nextBtn.style.opacity = isToday ? '0.3' : '1';
+  const titleEl = document.getElementById('analysisEnergyTitle');
+  if (titleEl) titleEl.textContent = isToday ? "Today's energy" : formatDate(viewDate) + ' energy';
+
+  const e = await computeDailyEnergy(viewDate);
   document.getElementById('analysisEaten').textContent = e.eaten ? e.eaten.toLocaleString() : '—';
   document.getElementById('analysisEatenSub').textContent = e.mealCount === 0
     ? 'No meals logged'
@@ -1900,13 +1927,13 @@ async function renderAnalysis() {
 
   // Detailed breakdown
   const meals = await getAllMeals();
-  const todayMeals = meals.filter(m => m.date === today);
-  const todaySessions = (state.sessions || []).filter(s => s.date === today);
-  const stepsToday = (state.steps || []).find(s => s.date === today);
+  const todayMeals = meals.filter(m => m.date === viewDate);
+  const todaySessions = (state.sessions || []).filter(s => s.date === viewDate);
+  const stepsToday = (state.steps || []).find(s => s.date === viewDate);
   const breakdown = document.getElementById('analysisBreakdown');
   let html = '<div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Eaten</div>';
   if (todayMeals.length === 0) {
-    html += '<div class="muted small" style="margin-bottom: 12px;">No meals logged today</div>';
+    html += '<div class="muted small" style="margin-bottom: 12px;">No meals logged</div>';
   } else {
     for (const m of todayMeals) {
       const pStr = typeof m.protein === 'number' && m.protein > 0 ? ` · <span style="color:var(--accent2)">${m.protein}g P</span>` : '';
@@ -1934,42 +1961,23 @@ async function renderAnalysis() {
 
   await drawEnergyChart('analysisChart');
 
-  // Update banner + button label based on data status
-  const yesterday = yesterdayISO();
+  // Update button label based on viewed date
   const notesArr = state.dailyNotes || [];
-  const hasToday = notesArr.some(n => n.date === today);
-  const stepsYesterday = (state.steps || []).find(s => s.date === yesterday);
-  const hasYesterday = notesArr.some(n => n.date === yesterday);
-
-  const banner = document.getElementById('analysisBanner');
-  let bannerMsg = '';
-  if (!hasYesterday && !stepsYesterday) {
-    bannerMsg = `⚠ Yesterday's steps not logged — yesterday's summary can't auto-generate. <a href="#" onclick="event.preventDefault();switchTab('body');" style="color: var(--accent);">Add them in Body</a>.`;
-  } else if (!hasToday && !stepsToday && new Date().getHours() >= 21) {
-    bannerMsg = `⚠ Today's steps not logged — today's summary can't auto-generate. <a href="#" onclick="event.preventDefault();switchTab('body');" style="color: var(--accent);">Add them in Body</a>.`;
-  }
-  if (banner) {
-    banner.innerHTML = bannerMsg;
-    banner.style.display = bannerMsg ? 'block' : 'none';
-  }
-
-  // Update button label
+  const viewNote = notesArr.find(n => n.date === viewDate);
+  const isPartial = viewNote && viewNote.note.includes('(Partial');
   const btn = document.getElementById('dailySummaryBtn');
-  if (btn) btn.textContent = hasToday ? '🔄 Regenerate today\'s summary' : '✨ Generate daily summary';
+  if (btn) {
+    if (!viewNote) btn.textContent = isToday ? '✨ Generate daily summary' : `✨ Generate summary for ${formatDate(viewDate)}`;
+    else if (isPartial) btn.textContent = '🔄 Day complete? Regenerate final';
+    else btn.textContent = '🔄 Regenerate summary';
+  }
 
-
-  const todayNote = notesArr.find(n => n.date === today);
-  const recent = notesArr.slice().sort((a,b) => b.date.localeCompare(a.date)).slice(0, 7);
+  // Show note for the viewed date
   const notesEl = document.getElementById('analysisNotes');
-  if (recent.length === 0) {
-    notesEl.innerHTML = '<div class="muted small">No notes yet. After you back up, ask Claude to "review my day" and notes appear here.</div>';
+  if (viewNote) {
+    notesEl.innerHTML = `<div style="white-space: pre-wrap; line-height: 1.6;">${escapeHtml(viewNote.note)}</div>`;
   } else {
-    notesEl.innerHTML = recent.map(n => `
-      <details ${n.date === today ? 'open' : ''} style="margin-bottom: 8px;">
-        <summary style="font-weight: 600;">${n.date === today ? 'Today' : formatDate(n.date)}</summary>
-        <div style="margin-top: 8px; white-space: pre-wrap; line-height: 1.5;">${escapeHtml(n.note)}</div>
-      </details>
-    `).join('');
+    notesEl.innerHTML = `<div class="muted small">No summary for ${isToday ? 'today' : formatDate(viewDate)} yet. Tap the button above to generate one.</div>`;
   }
 }
 
@@ -2064,9 +2072,8 @@ async function renderMeals() {
       : '';
     card.innerHTML = `
       <div class="row between" style="align-items: flex-start;">
-        <div class="grow" style="min-width: 0;">
-          <div class="small muted">${formatDate(m.date)}${m.time ? ' · ' + m.time : ''}${blobs.length > 1 ? ' · ' + blobs.length + ' photos' : ''}${calBadge}${proteinBadge}</div>
-          <div style="margin-top: 2px; word-wrap: break-word;">${escapeHtml(m.description) || '<span class="muted small">(tap to add description)</span>'}</div>
+        <div class="grow" style="min-width: 0; word-wrap: break-word; line-height: 1.6;">
+          ${m.time ? `<span class="muted small">${m.time}</span> · ` : ''}${escapeHtml(m.description) || '<span class="muted small">(tap to add description)</span>'}${blobs.length > 1 ? `<span class="muted small"> · ${blobs.length} photos</span>` : ''}${calBadge}${proteinBadge}
         </div>
         <button class="icon ghost" onclick="event.stopPropagation(); removeMeal(${m.id})" aria-label="Delete">✕</button>
       </div>
@@ -2704,12 +2711,29 @@ function yesterdayISO() {
 }
 
 async function confirmDailyRegenerate() {
-  const today = todayISO();
-  const has = (state.dailyNotes || []).some(n => n.date === today);
-  if (has) {
-    if (!confirm("Today's summary already exists. Regenerate (will replace existing)?")) return;
+  const viewDate = analysisViewDate || todayISO();
+  const notes = state.dailyNotes || [];
+  const existing = notes.find(n => n.date === viewDate);
+  const isPartial = existing && existing.note.includes('(Partial');
+
+  if (existing && !isPartial) {
+    if (!confirm('Summary already exists. Regenerate?')) return;
   }
-  await runDailyAnalysis();
+  await runDailyAnalysis({ date: viewDate });
+
+  // Also fill any missing or partial summaries for past 7 days
+  const today = todayISO();
+  for (let i = 1; i <= 7; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const date = d.toISOString().slice(0, 10);
+    const note = notes.find(n => n.date === date);
+    const missing = !note;
+    const partial = note && note.note.includes('(Partial');
+    if (missing || partial) {
+      await runDailyAnalysis({ date, silent: true });
+    }
+  }
 }
 
 async function autoGenerateMissingSummaries() {
