@@ -551,6 +551,16 @@
         <input type="time" id="mealTimeInput">
       </div>
     </div>
+    <div class="row" style="gap: 8px; margin-top: 8px;">
+      <div style="flex: 1;">
+        <label>Calories (kcal)</label>
+        <input type="number" id="mealCalInput" placeholder="e.g. 450" min="0" max="5000">
+      </div>
+      <div style="flex: 1;">
+        <label>Protein (g)</label>
+        <input type="number" id="mealProteinInput" placeholder="e.g. 30" min="0" max="300">
+      </div>
+    </div>
 
     <div id="refineSection" style="display:none; margin-top: 12px; padding: 10px 12px; background: var(--panel2); border-radius: 10px;">
       <div class="muted small" style="margin-bottom: 6px;">💬 Chat with AI about this meal</div>
@@ -1613,12 +1623,16 @@ async function openMealModal(mealId = null) {
       document.getElementById('mealDescInput').value = m.description || '';
       document.getElementById('mealDateInput').value = m.date || todayISO();
       document.getElementById('mealTimeInput').value = m.time || '';
+      document.getElementById('mealCalInput').value = m.calories || '';
+      document.getElementById('mealProteinInput').value = m.protein || '';
     }
   } else {
     document.getElementById('mealDescInput').value = '';
     document.getElementById('mealDateInput').value = todayISO();
     const now = new Date();
     document.getElementById('mealTimeInput').value = now.toTimeString().slice(0, 5);
+    document.getElementById('mealCalInput').value = '';
+    document.getElementById('mealProteinInput').value = '';
   }
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
@@ -1691,6 +1705,8 @@ async function saveMeal() {
   let savedId;
   const mealDate = document.getElementById('mealDateInput').value || todayISO();
   const mealTime = document.getElementById('mealTimeInput').value || new Date().toTimeString().slice(0, 5);
+  const manualCal = parseInt(document.getElementById('mealCalInput').value, 10) || null;
+  const manualProtein = parseInt(document.getElementById('mealProteinInput').value, 10) || null;
   if (editingMealId) {
     const existing = await getMeal(editingMealId);
     if (existing) {
@@ -1699,7 +1715,9 @@ async function saveMeal() {
         blobs: [...pendingMealBlobs],
         description: desc,
         date: mealDate,
-        time: mealTime
+        time: mealTime,
+        ...(manualCal !== null && { calories: manualCal }),
+        ...(manualProtein !== null && { protein: manualProtein })
       });
       savedId = existing.id;
     }
