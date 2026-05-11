@@ -2012,7 +2012,6 @@ async function renderMeals() {
     groups[m.date].push(m);
   }
   const sortedDates = Object.keys(groups).sort().reverse();
-  const today = todayISO();
 
   for (const date of sortedDates) {
     const dayMeals = groups[date];
