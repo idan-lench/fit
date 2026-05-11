@@ -353,6 +353,16 @@
       <button class="primary" style="width:100%;" onclick="openMealModal()">+ Add meal</button>
       <div class="muted small" style="margin-top: 8px;">Optional. Photo + short note. Logs locally — Claude only sees them when you do "Full backup (with photos)" in Settings.</div>
     </div>
+    <div id="proteinBar" style="display:none; margin-bottom: 12px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);">
+      <div class="row between" style="margin-bottom: 6px;">
+        <span class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Protein today</span>
+        <span class="small" id="proteinBarLabel" style="font-weight: 600;"></span>
+      </div>
+      <div style="height: 8px; background: var(--panel2); border-radius: 4px; overflow: hidden;">
+        <div id="proteinBarFill" style="height: 100%; border-radius: 4px; background: var(--accent2); transition: width 0.4s ease;"></div>
+      </div>
+      <div class="small muted" id="proteinBarSub" style="margin-top: 4px;"></div>
+    </div>
     <h2>Recent meals</h2>
     <div id="mealList"></div>
     <div class="empty" id="mealEmpty">No meals logged yet.</div>
@@ -375,6 +385,7 @@
         </div>
       </div>
       <div id="analysisStatus" style="margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--panel2);"></div>
+      <div id="analysisProtein" style="margin-top: 10px;"></div>
     </div>
 
     <h2>Detailed breakdown</h2>
@@ -719,7 +730,8 @@ state.dailyNotes = state.dailyNotes || [];
 const STEPS_GOAL = 10000;
 const WAIST_GOAL = 75;
 const BMR = 1415;          // Resting burn for 44yo male, 168cm, 58kg
-const DAILY_CAL_GOAL = 1700; // Target intake for mild fat loss
+const DAILY_CAL_GOAL = 1700;    // Target intake for mild fat loss
+const DAILY_PROTEIN_GOAL = 120; // ~2g/kg for recomposition at 58kg
 const STEPS_PER_KCAL = 22;   // ~22 steps per kcal at 58kg
 
 // AI PROMPTS — defined in prompts.js (separate file in repo for easy review).
@@ -744,9 +756,10 @@ USER'S DESCRIPTION: "{description}"
 Return ONLY valid JSON. No markdown, no code fences. Format:
 {
   "items": [
-    {"name": "string", "portion": "specific portion (grams, slices, etc.)", "calories": number}
+    {"name": "string", "portion": "specific portion (grams, slices, etc.)", "calories": number, "protein": number}
   ],
   "total": number,
+  "totalProtein": number,
   "confidence": "high" | "medium" | "low",
   "saw": "one-sentence factual description of what's in the photo, including items NOT counted (e.g. 'I see X and Y in foreground, plus Z in background which I ignored per the rules')"
 }`,
@@ -1713,6 +1726,7 @@ async function computeDailyEnergy(date) {
   const todayMeals = meals.filter(m => m.date === date);
   const mealsWithCal = todayMeals.filter(m => typeof m.calories === 'number' && m.calories > 0);
   const eaten = mealsWithCal.reduce((sum, m) => sum + m.calories, 0);
+  const protein = todayMeals.reduce((sum, m) => sum + (typeof m.protein === 'number' ? m.protein : 0), 0);
 
   let burned = BMR;
   let stepsBurn = 0;
@@ -1729,7 +1743,7 @@ async function computeDailyEnergy(date) {
   burned += sessionBurn;
 
   return {
-    eaten, burned,
+    eaten, burned, protein,
     bmr: BMR, stepsBurn, sessionBurn,
     mealCount: todayMeals.length,
     estimatedCount: mealsWithCal.length
@@ -1860,6 +1874,28 @@ async function renderAnalysis() {
     status.innerHTML = text;
   }
 
+  // Protein progress in Analysis card
+  const proteinEl = document.getElementById('analysisProtein');
+  if (proteinEl) {
+    if (e.protein > 0) {
+      const pct = Math.min(100, Math.round(e.protein / DAILY_PROTEIN_GOAL * 100));
+      const remaining = DAILY_PROTEIN_GOAL - e.protein;
+      const fillColor = pct >= 100 ? 'var(--accent2)' : pct >= 70 ? '#7ad1c3' : 'var(--accent)';
+      proteinEl.innerHTML = `
+        <div class="row between" style="margin-bottom: 5px;">
+          <span class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Protein</span>
+          <span class="small" style="font-weight: 600; color: var(--accent2);">${e.protein}g / ${DAILY_PROTEIN_GOAL}g</span>
+        </div>
+        <div style="height: 7px; background: var(--panel2); border-radius: 4px; overflow: hidden;">
+          <div style="height: 100%; width: ${pct}%; border-radius: 4px; background: ${fillColor}; transition: width 0.4s ease;"></div>
+        </div>
+        <div class="small muted" style="margin-top: 3px;">${remaining > 0 ? `${remaining}g more to reach goal` : `✓ Goal hit (+${-remaining}g)`}</div>
+      `;
+    } else {
+      proteinEl.innerHTML = '<div class="muted small" style="margin-top: 6px;">Protein tracked once AI estimates your meals.</div>';
+    }
+  }
+
   // Detailed breakdown
   const meals = await getAllMeals();
   const todayMeals = meals.filter(m => m.date === today);
@@ -1871,9 +1907,10 @@ async function renderAnalysis() {
     html += '<div class="muted small" style="margin-bottom: 12px;">No meals logged today</div>';
   } else {
     for (const m of todayMeals) {
+      const pStr = typeof m.protein === 'number' && m.protein > 0 ? ` · <span style="color:var(--accent2)">${m.protein}g P</span>` : '';
       html += `<div class="row between" style="padding: 4px 0; border-bottom: 1px solid var(--line);">
-        <span class="small">${m.time} · ${escapeHtml(m.description) || '(no description)'}</span>
-        <span class="small" style="font-weight: 600; color: ${m.calories ? 'var(--accent)' : 'var(--muted)'};">${m.calories ? m.calories + ' kcal' : '—'}</span>
+        <span class="small">${m.time ? m.time + ' · ' : ''}${escapeHtml(m.description) || '(no description)'}</span>
+        <span class="small" style="font-weight: 600; color: ${m.calories ? 'var(--accent)' : 'var(--muted)'};">${m.calories ? m.calories + ' kcal' : '—'}${pStr}</span>
       </div>`;
     }
     html += `<div class="row between" style="padding: 6px 0 12px; font-weight: 700;">
@@ -1941,6 +1978,33 @@ async function renderMeals() {
   empty.style.display = meals.length ? 'none' : 'block';
   list.innerHTML = '';
 
+  // Update protein bar
+  const today = todayISO();
+  const todayMeals = meals.filter(m => m.date === today);
+  const proteinToday = todayMeals.reduce((sum, m) => sum + (typeof m.protein === 'number' ? m.protein : 0), 0);
+  const mealsWithProtein = todayMeals.filter(m => typeof m.protein === 'number' && m.protein > 0).length;
+  const proteinBarEl = document.getElementById('proteinBar');
+  if (proteinBarEl) {
+    if (mealsWithProtein > 0) {
+      proteinBarEl.style.display = 'block';
+      const pct = Math.min(100, Math.round(proteinToday / DAILY_PROTEIN_GOAL * 100));
+      const remaining = DAILY_PROTEIN_GOAL - proteinToday;
+      document.getElementById('proteinBarLabel').textContent = `${proteinToday}g / ${DAILY_PROTEIN_GOAL}g`;
+      document.getElementById('proteinBarFill').style.width = pct + '%';
+      document.getElementById('proteinBarFill').style.background = pct >= 100 ? 'var(--accent2)' : pct >= 70 ? '#7ad1c3' : 'var(--accent)';
+      document.getElementById('proteinBarSub').textContent = remaining > 0
+        ? `${remaining}g more to hit your daily goal`
+        : `Goal reached! +${-remaining}g over`;
+    } else {
+      proteinBarEl.style.display = todayMeals.length > 0 ? 'block' : 'none';
+      if (todayMeals.length > 0) {
+        document.getElementById('proteinBarLabel').textContent = '—';
+        document.getElementById('proteinBarFill').style.width = '0%';
+        document.getElementById('proteinBarSub').textContent = 'Protein estimated when AI analyzes your meals';
+      }
+    }
+  }
+
   // Group meals by date (descending)
   const groups = {};
   for (const m of meals) {
@@ -1981,10 +2045,13 @@ async function renderMeals() {
     const calBadge = (typeof m.calories === 'number' && m.calories > 0)
       ? `<span style="display:inline-block; background: var(--accent); color: white; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-left: 6px;">~${m.calories} kcal</span>`
       : '';
+    const proteinBadge = (typeof m.protein === 'number' && m.protein > 0)
+      ? `<span style="display:inline-block; background: var(--accent2); color: #0b1220; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-left: 4px;">${m.protein}g protein</span>`
+      : '';
     const breakdownHtml = (m.breakdown && m.breakdown.length)
       ? `<details style="margin-top: 8px;" onclick="event.stopPropagation()"><summary class="muted small">Breakdown ${m.confidence ? '· ' + m.confidence + ' confidence' : ''}</summary>
           ${m.aiSaw ? `<div class="small muted" style="margin-top: 4px; font-style: italic;">AI saw: ${escapeHtml(m.aiSaw)}</div>` : ''}
-          ${m.breakdown.map(b => `<div class="row between" style="padding: 3px 0; font-size: 13px;"><span>${escapeHtml(b.name)} <span class="muted">${escapeHtml(b.portion || '')}</span></span><span style="font-weight: 600;">${b.calories} kcal</span></div>`).join('')}
+          ${m.breakdown.map(b => `<div class="row between" style="padding: 3px 0; font-size: 13px;"><span>${escapeHtml(b.name)} <span class="muted">${escapeHtml(b.portion || '')}</span></span><span style="font-weight: 600;">${b.calories} kcal${b.protein ? ` · <span style="color:var(--accent2)">${b.protein}g P</span>` : ''}</span></div>`).join('')}
         </details>`
       : '';
     const questionsHtml = (m.questions && m.questions.length)
@@ -1997,7 +2064,7 @@ async function renderMeals() {
     card.innerHTML = `
       <div class="row between" style="align-items: flex-start;">
         <div class="grow" style="min-width: 0;">
-          <div class="small muted">${formatDate(m.date)}${m.time ? ' · ' + m.time : ''}${blobs.length > 1 ? ' · ' + blobs.length + ' photos' : ''}${calBadge}</div>
+          <div class="small muted">${formatDate(m.date)}${m.time ? ' · ' + m.time : ''}${blobs.length > 1 ? ' · ' + blobs.length + ' photos' : ''}${calBadge}${proteinBadge}</div>
           <div style="margin-top: 2px; word-wrap: break-word;">${escapeHtml(m.description) || '<span class="muted small">(tap to add description)</span>'}</div>
         </div>
         <button class="icon ghost" onclick="event.stopPropagation(); removeMeal(${m.id})" aria-label="Delete">✕</button>
@@ -2103,6 +2170,7 @@ async function autoAnalyzeMeal(mealId, opts = {}) {
       const fresh = await getMeal(mealId);
       if (fresh) {
         fresh.calories = Math.round(parsed.total);
+        fresh.protein = typeof parsed.totalProtein === 'number' ? Math.round(parsed.totalProtein) : null;
         fresh.breakdown = parsed.items || [];
         fresh.confidence = parsed.confidence || null;
         fresh.aiSaw = parsed.saw || null;
