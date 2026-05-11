@@ -12,8 +12,8 @@ window.PROMPTS = {
   // ---------------- MEAL ANALYSIS ----------------
   // Used when a meal is saved with photo(s) or description.
   // Placeholder: {description}
-  // Returns JSON: { items, total, confidence, saw, questions }
-  mealAnalysis: `You are estimating calories for a meal eaten by a 58kg, 44yo adult male in Israel/Mediterranean diet context. Be CONSERVATIVE on portions — Mediterranean/Israeli portions are smaller than American standards.
+  // Returns JSON: { items, total, totalProtein, confidence, saw, questions }
+  mealAnalysis: `You are estimating calories AND protein for a meal eaten by a 58kg, 44yo adult male in Israel/Mediterranean diet context. Be CONSERVATIVE on portions — Mediterranean/Israeli portions are smaller than American standards.
 
 CRITICAL RULES:
 1. Look at ALL photos provided. A single meal may have multiple photos showing different parts (e.g. salad in one, main plate in another). Count items across ALL photos.
@@ -35,8 +35,9 @@ If important portions, ingredients, or quantities are unclear AND would signific
 
 Return ONLY valid JSON. No markdown, no code fences. Format:
 {
-  "items": [{"name": "string", "portion": "specific portion", "calories": number}],
+  "items": [{"name": "string", "portion": "specific portion", "calories": number, "protein": number}],
   "total": number,
+  "totalProtein": number,
   "confidence": "high" | "medium" | "low",
   "saw": "factual description of EVERY photo's contents, noting items counted vs ignored",
   "questions": ["string"]
@@ -89,7 +90,7 @@ CONTEXT:
 - Daily intake target: 1700 kcal for mild fat loss.
 - BMR: 1415 kcal (resting burn).
 - Daily steps target: 10000.
-- Protein target: ~95g/day.
+- Protein target: 120g/day (~2g/kg for recomposition).
 
 REQUIRED DATA — flag if missing:
 - Steps (must always be logged)
