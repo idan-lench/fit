@@ -3024,18 +3024,17 @@ async function pullFromDrive(opts = {}) {
     let data;
     try { data = JSON.parse(text); } catch { return { ok: false, error: 'bad response' }; }
     if (!data.ok) return data;
-    const driveTime = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
-    const localSyncTime = state.lastSyncAt ? new Date(state.lastSyncAt).getTime() : 0;
-    if (driveTime <= localSyncTime + 2000) {
-      if (!opts.silent) { hideToast(); toast('Already up to date'); }
-      return { ok: true, upToDate: true };
-    }
-    const driveExportTime = data.payload.exportedAt ? new Date(data.payload.exportedAt).getTime() : 0;
+    const driveExportTime = data.payload?.exportedAt ? new Date(data.payload.exportedAt).getTime() : 0;
     const localExportTime = state.exportedAt ? new Date(state.exportedAt).getTime() : 0;
-    if (opts.silent && driveExportTime <= localExportTime) {
-      state.lastSyncAt = data.updatedAt;
-      save();
-      return { ok: true, noNewerData: true };
+    if (opts.silent) {
+      const driveTime = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
+      const localSyncTime = state.lastSyncAt ? new Date(state.lastSyncAt).getTime() : 0;
+      if (driveTime <= localSyncTime + 2000) return { ok: true, upToDate: true };
+      if (driveExportTime <= localExportTime) {
+        state.lastSyncAt = data.updatedAt;
+        save();
+        return { ok: true, noNewerData: true };
+      }
     }
     if (!opts.silent && !confirm('Pull latest from Drive? This will replace local sessions, measurements, and steps.')) {
       return { ok: false, declined: true };
