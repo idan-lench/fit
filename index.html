@@ -1799,7 +1799,7 @@ async function renderEnergy() {
     status.innerHTML = '<span class="muted small">Log meals (with photos) so Claude can estimate calories.</span>';
     return;
   }
-  const net = e.eaten - e.burned;
+  const net = Math.round(e.eaten - e.burned);
   const goalGap = e.eaten - DAILY_CAL_GOAL;
   let bg, text;
   if (net < -800) {
@@ -1916,7 +1916,7 @@ async function renderAnalysis() {
     status.style.background = 'var(--panel2)';
     status.innerHTML = '<span class="muted small">Log meals to see your daily picture</span>';
   } else {
-    const net = e.eaten - e.burned;
+    const net = Math.round(e.eaten - e.burned);
     let bg, text;
     if (net < -800) { bg = 'rgba(255, 184, 107, 0.15)'; text = `<b>Net: ${net} cal</b> · big deficit. Eat more — especially protein.`; }
     else if (net < -200) { bg = 'rgba(122, 209, 195, 0.18)'; text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`; }
