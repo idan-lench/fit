@@ -250,9 +250,11 @@
       <span class="chip" data-day="bike" onclick="selectDay('bike')">🚴 Bike</span>
       <span class="chip" data-day="custom" onclick="selectDay('custom')">Custom</span>
     </div>
-    <div class="row" style="gap: 8px; align-items: center; padding: 12px 4px 0;">
+    <div class="row" style="gap: 8px; align-items: center; padding: 12px 4px 0; flex-wrap: wrap;">
       <label class="muted small" style="margin: 0;">Date:</label>
-      <input type="date" id="sessionDate" style="flex: 1; max-width: 180px;" onchange="updateSessionDate(this.value)">
+      <input type="date" id="sessionDate" style="flex: 1; max-width: 160px;" onchange="updateSessionDate(this.value)">
+      <label class="muted small" style="margin: 0;">Time:</label>
+      <input type="time" id="sessionTime" style="flex: 1; max-width: 120px;" onchange="updateSessionTime(this.value)">
       <button class="ghost" style="padding: 8px 12px; font-size: 13px;" onclick="openPlanModal()">📅 View plan</button>
     </div>
 
@@ -523,6 +525,16 @@
     </div>
     <div class="muted small" style="margin-top: 4px;">Take photos one at a time, or pick several from gallery.</div>
     <input type="text" id="mealDescInput" placeholder="Optional: lunch, chicken &amp; rice…" style="margin-top: 12px;">
+    <div class="row" style="gap: 8px; margin-top: 10px;">
+      <div style="flex: 1;">
+        <label>Date</label>
+        <input type="date" id="mealDateInput">
+      </div>
+      <div style="flex: 1;">
+        <label>Time</label>
+        <input type="time" id="mealTimeInput">
+      </div>
+    </div>
 
     <div id="refineSection" style="display:none; margin-top: 12px; padding: 10px 12px; background: var(--panel2); border-radius: 10px;">
       <div class="muted small" style="margin-bottom: 6px;">💬 Chat with AI about this meal</div>
@@ -958,6 +970,8 @@ function renderWorkout() {
   document.getElementById('workoutTitle').textContent = (editing ? '✏ Editing — ' : '+ New ') + PLAN[currentDay].label;
   const dateInput = document.getElementById('sessionDate');
   if (dateInput && state.current) dateInput.value = state.current.date || todayISO();
+  const timeInput = document.getElementById('sessionTime');
+  if (timeInput && state.current) timeInput.value = state.current.time || '';
   const saveRow = document.getElementById('saveRow');
   if (saveRow) saveRow.style.display = (editing || !isCurrentFresh()) ? 'flex' : 'none';
   const list = document.getElementById('exerciseList');
@@ -1221,7 +1235,7 @@ function renderHistory() {
       : '';
     return `
     <details data-saved-at="${s.savedAt}">
-      <summary>${formatDate(s.date)} — ${PLAN[s.day]?.label || s.day}${summaryPreview}</summary>
+      <summary>${formatDate(s.date)}${s.time ? ' · ' + s.time : ''} — ${PLAN[s.day]?.label || s.day}${summaryPreview}</summary>
       ${cardio ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--panel2); border-radius: 8px;"><div class="muted small" style="text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;">Cardio</div><div>${cardio}</div></div>` : ''}
       ${s.entries.filter(e => e.sets.length).map(e => `
         <div class="small" style="margin-top:6px;"><b>${e.name}</b>: ${e.sets.map(x=>x.reps).join(' · ')}</div>
@@ -1577,9 +1591,14 @@ async function openMealModal(mealId = null) {
       editingMealId = mealId;
       pendingMealBlobs = mealBlobs(m).slice();
       document.getElementById('mealDescInput').value = m.description || '';
+      document.getElementById('mealDateInput').value = m.date || todayISO();
+      document.getElementById('mealTimeInput').value = m.time || '';
     }
   } else {
     document.getElementById('mealDescInput').value = '';
+    document.getElementById('mealDateInput').value = todayISO();
+    const now = new Date();
+    document.getElementById('mealTimeInput').value = now.toTimeString().slice(0, 5);
   }
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
@@ -1649,22 +1668,24 @@ async function saveMeal() {
     return toast('Add a photo or a description');
   }
   let savedId;
+  const mealDate = document.getElementById('mealDateInput').value || todayISO();
+  const mealTime = document.getElementById('mealTimeInput').value || new Date().toTimeString().slice(0, 5);
   if (editingMealId) {
     const existing = await getMeal(editingMealId);
     if (existing) {
-      // Preserve calories, breakdown, etc. — user may have refined via chat
       await putMeal({
         ...existing,
         blobs: [...pendingMealBlobs],
-        description: desc
+        description: desc,
+        date: mealDate,
+        time: mealTime
       });
       savedId = existing.id;
     }
   } else {
-    const now = new Date();
     savedId = await putMeal({
-      date: todayISO(),
-      time: now.toTimeString().slice(0,5),
+      date: mealDate,
+      time: mealTime,
       blobs: [...pendingMealBlobs],
       description: desc
     });
@@ -3223,6 +3244,13 @@ function updateSessionDate(value) {
   if (!value) return;
   if (state.current) {
     state.current.date = value;
+    save();
+  }
+}
+
+function updateSessionTime(value) {
+  if (state.current) {
+    state.current.time = value;
     save();
   }
 }
