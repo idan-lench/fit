@@ -2205,6 +2205,7 @@ async function autoAnalyzeMeal(mealId, opts = {}) {
       }
       if (!opts.silent) { hideToast(); toast(`Meal: ~${Math.round(parsed.total)} kcal ✓`); }
       if (typeof renderMeals === 'function') renderMeals();
+      if (typeof renderAnalysis === 'function') renderAnalysis();
       return true;
     }
     if (!opts.silent) { hideToast(); toast('Could not parse estimate'); }
