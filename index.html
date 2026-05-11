@@ -393,7 +393,7 @@
 
     <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--warn); background: rgba(255,184,107,0.12);"></div>
     <div class="row" style="gap: 8px; margin: 8px 0;">
-      <button class="ghost grow" onclick="analyzeAllMissing()">🤖 Analyze missing items</button>
+      <button class="ghost grow" onclick="analyzeAllMissing()">🤖 Analyze &amp; update protein</button>
       <button class="primary grow" id="dailySummaryBtn" onclick="confirmDailyRegenerate()">✨ Generate daily summary</button>
     </div>
 
@@ -557,7 +557,7 @@
       <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
     </div>
 
-    <button id="reanalyzeMealBtn" style="display:none; width:100%; margin-top: 12px;" onclick="reanalyzeMeal()">🔄 Re-analyze (update calories + protein)</button>
+    <button id="reanalyzeMealBtn" style="display:none; width:100%; margin-top: 12px;" onclick="reanalyzeMeal()">🔄 Re-analyze this meal</button>
     <div class="row" style="margin-top: 10px; gap: 10px;">
       <button class="grow primary" onclick="saveMeal()">Save</button>
       <button class="ghost" onclick="closeMealModal()">Cancel</button>
@@ -2761,12 +2761,13 @@ function scheduleMidnightGen() {
 async function analyzeAllMissing() {
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
   const meals = await getAllMeals();
-  const missingMeals = meals.filter(m => !m.calories);
+  // Meals with no calories OR meals that have calories but no protein yet
+  const mealsToAnalyze = meals.filter(m => !m.calories || m.protein == null);
   const missingSessions = (state.sessions || []).filter(s => !s.caloriesBurned);
-  const total = missingMeals.length + missingSessions.length;
-  if (total === 0) return toast('Everything already analysed ✓');
+  const total = mealsToAnalyze.length + missingSessions.length;
+  if (total === 0) return toast('Everything up to date ✓');
   let done = 0, ok = 0;
-  for (const m of missingMeals) {
+  for (const m of mealsToAnalyze) {
     toast(`Analyzing ${++done}/${total}…`, { persistent: true });
     if (await autoAnalyzeMeal(m.id, { silent: true })) ok++;
   }
@@ -2775,8 +2776,9 @@ async function analyzeAllMissing() {
     if (await autoAnalyzeSession(s.savedAt, { silent: true })) ok++;
   }
   hideToast();
-  toast(`Analysed ${ok}/${total} ✓`);
+  toast(`Updated ${ok}/${total} ✓`);
   if (typeof renderAnalysis === 'function') renderAnalysis();
+  if (typeof renderMeals === 'function') renderMeals();
 }
 
 async function callGemini(messages) {
