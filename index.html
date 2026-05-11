@@ -378,9 +378,10 @@
     <h2>Detailed breakdown</h2>
     <div class="card" id="analysisBreakdown"></div>
 
+    <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--warn); background: rgba(255,184,107,0.12);"></div>
     <div class="row" style="gap: 8px; margin: 8px 0;">
       <button class="ghost grow" onclick="analyzeAllMissing()">🤖 Analyze missing items</button>
-      <button class="primary grow" onclick="runDailyAnalysis()">✨ Generate daily summary</button>
+      <button class="primary grow" id="dailySummaryBtn" onclick="confirmDailyRegenerate()">✨ Generate daily summary</button>
     </div>
 
     <h2>7-day trend</h2>
@@ -1873,9 +1874,32 @@ async function renderAnalysis() {
 
   await drawEnergyChart('analysisChart');
 
-  const notes = state.dailyNotes || [];
-  const todayNote = notes.find(n => n.date === today);
-  const recent = notes.slice().sort((a,b) => b.date.localeCompare(a.date)).slice(0, 7);
+  // Update banner + button label based on data status
+  const yesterday = yesterdayISO();
+  const notesArr = state.dailyNotes || [];
+  const hasToday = notesArr.some(n => n.date === today);
+  const stepsYesterday = (state.steps || []).find(s => s.date === yesterday);
+  const hasYesterday = notesArr.some(n => n.date === yesterday);
+
+  const banner = document.getElementById('analysisBanner');
+  let bannerMsg = '';
+  if (!hasYesterday && !stepsYesterday) {
+    bannerMsg = `⚠ Yesterday's steps not logged — yesterday's summary can't auto-generate. <a href="#" onclick="event.preventDefault();switchTab('body');" style="color: var(--accent);">Add them in Body</a>.`;
+  } else if (!hasToday && !stepsToday && new Date().getHours() >= 21) {
+    bannerMsg = `⚠ Today's steps not logged — today's summary can't auto-generate. <a href="#" onclick="event.preventDefault();switchTab('body');" style="color: var(--accent);">Add them in Body</a>.`;
+  }
+  if (banner) {
+    banner.innerHTML = bannerMsg;
+    banner.style.display = bannerMsg ? 'block' : 'none';
+  }
+
+  // Update button label
+  const btn = document.getElementById('dailySummaryBtn');
+  if (btn) btn.textContent = hasToday ? '🔄 Regenerate today\'s summary' : '✨ Generate daily summary';
+
+
+  const todayNote = notesArr.find(n => n.date === today);
+  const recent = notesArr.slice().sort((a,b) => b.date.localeCompare(a.date)).slice(0, 7);
   const notesEl = document.getElementById('analysisNotes');
   if (recent.length === 0) {
     notesEl.innerHTML = '<div class="muted small">No notes yet. After you back up, ask Claude to "review my day" and notes appear here.</div>';
@@ -2515,28 +2539,31 @@ async function applySessionRefine() {
 
 async function runDailyAnalysis(opts = {}) {
   if (!getGeminiKey()) return null;
-  const today = todayISO();
-  const e = await computeDailyEnergy(today);
+  const targetDate = opts.date || todayISO();
+  const isToday = targetDate === todayISO();
+  const e = await computeDailyEnergy(targetDate);
   const meals = await getAllMeals();
-  const todayMeals = meals.filter(m => m.date === today).map(m => ({
+  const dayMeals = meals.filter(m => m.date === targetDate).map(m => ({
     time: m.time, description: m.description || '(none)', calories: m.calories || null
   }));
-  const todaySessions = (state.sessions || []).filter(s => s.date === today).map(s => ({
+  const daySessions = (state.sessions || []).filter(s => s.date === targetDate).map(s => ({
     type: PLAN[s.day]?.label || s.day,
     cardio: s.cardioNote || null,
     burn: s.caloriesBurned || null,
     exercises: (s.entries || []).filter(en => en.sets?.length).map(en => `${en.name}: ${en.sets.map(x=>x.reps).join(',')}`)
   }));
-  const stepsToday = (state.steps || []).find(s => s.date === today);
-  const now = new Date();
-  const time = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+  const stepsDay = (state.steps || []).find(s => s.date === targetDate);
+  // For non-today, treat current time as 23:59 (assume end of day for past dates)
+  const time = isToday
+    ? (() => { const n = new Date(); return String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0'); })()
+    : '23:59';
 
   const prompt = PROMPTS.dailyAnalysis
-    .replace('{date}', today)
+    .replace('{date}', targetDate)
     .replace('{time}', time)
-    .replace('{steps}', stepsToday ? String(stepsToday.count) : 'NOT LOGGED')
-    .replace('{meals}', JSON.stringify(todayMeals))
-    .replace('{sessions}', JSON.stringify(todaySessions));
+    .replace('{steps}', stepsDay ? String(stepsDay.count) : 'NOT LOGGED')
+    .replace('{meals}', JSON.stringify(dayMeals))
+    .replace('{sessions}', JSON.stringify(daySessions));
 
   if (!opts.silent) toast('Generating daily analysis…', { persistent: true });
   try {
@@ -2546,7 +2573,7 @@ async function runDailyAnalysis(opts = {}) {
       if (!opts.silent) { hideToast(); toast('Daily analysis failed'); }
       return null;
     }
-    state.dailyNotes = (state.dailyNotes || []).filter(n => n.date !== today);
+    state.dailyNotes = (state.dailyNotes || []).filter(n => n.date !== targetDate);
     const noteText = `${parsed.verdict || ''}
 
 📊 ${parsed.eaten || '?'} eaten · ${parsed.burned || '?'} burned · ${parsed.net !== undefined ? (parsed.net >= 0 ? '+' : '') + parsed.net : '?'} net
@@ -2554,7 +2581,7 @@ async function runDailyAnalysis(opts = {}) {
 ${(parsed.wins || []).length ? '💪 Wins\n' + parsed.wins.map(w => '• ' + w).join('\n') + '\n\n' : ''}${(parsed.watch || []).length ? '⚠️ Watch\n' + parsed.watch.map(w => '• ' + w).join('\n') + '\n\n' : ''}${(parsed.missing || []).length ? '❗ Missing data: ' + parsed.missing.join(', ') + '\n\n' : ''}${parsed.recommendations ? '📝 ' + parsed.recommendations : ''}
 
 ${parsed.isFinal ? '(Final summary)' : '(Partial — day in progress)'}`;
-    state.dailyNotes.push({ date: today, note: noteText.trim(), addedAt: new Date().toISOString() });
+    state.dailyNotes.push({ date: targetDate, note: noteText.trim(), addedAt: new Date().toISOString() });
     save();
     if (!opts.silent) { hideToast(); toast('Daily analysis updated ✓'); }
     if (typeof renderAnalysis === 'function') renderAnalysis();
@@ -2563,6 +2590,68 @@ ${parsed.isFinal ? '(Final summary)' : '(Partial — day in progress)'}`;
     if (!opts.silent) { hideToast(); toast('Daily analysis failed'); }
     return null;
   }
+}
+
+// ---------- DAILY AUTO-GEN ----------
+function yesterdayISO() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+async function confirmDailyRegenerate() {
+  const today = todayISO();
+  const has = (state.dailyNotes || []).some(n => n.date === today);
+  if (has) {
+    if (!confirm("Today's summary already exists. Regenerate (will replace existing)?")) return;
+  }
+  await runDailyAnalysis();
+}
+
+async function autoGenerateMissingSummaries() {
+  if (!getGeminiKey()) return;
+  const today = todayISO();
+  const yesterday = yesterdayISO();
+  const notes = state.dailyNotes || [];
+
+  // Yesterday: generate if missing AND steps logged
+  const hasYesterday = notes.some(n => n.date === yesterday);
+  const stepsYesterday = (state.steps || []).find(s => s.date === yesterday);
+  if (!hasYesterday && stepsYesterday) {
+    await runDailyAnalysis({ date: yesterday, silent: true });
+  }
+
+  // Today: only auto-gen if it's late evening (>= 21:00) and steps logged
+  const hour = new Date().getHours();
+  if (hour >= 21) {
+    const hasToday = notes.some(n => n.date === today);
+    const stepsToday = (state.steps || []).find(s => s.date === today);
+    if (!hasToday && stepsToday) {
+      await runDailyAnalysis({ date: today, silent: true });
+    }
+  }
+}
+
+let _midnightTimer = null;
+function scheduleMidnightGen() {
+  if (_midnightTimer) clearTimeout(_midnightTimer);
+  const now = new Date();
+  const target = new Date();
+  target.setHours(23, 55, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1); // tomorrow
+  const ms = target - now;
+  _midnightTimer = setTimeout(async () => {
+    if (getGeminiKey()) {
+      const today = todayISO();
+      // Only generate if not already done (avoid duplicate from another device)
+      const hasToday = (state.dailyNotes || []).some(n => n.date === today);
+      const stepsToday = (state.steps || []).find(s => s.date === today);
+      if (!hasToday && stepsToday) {
+        await runDailyAnalysis({ date: today, silent: true });
+      }
+    }
+    scheduleMidnightGen(); // schedule next day
+  }, ms);
 }
 
 async function analyzeAllMissing() {
@@ -3161,19 +3250,31 @@ function closePlanModal() {
 document.getElementById('todayLabel').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 selectDay(state.current?.day || suggestedDay());
 
-// Auto-pull from Drive on startup (after 1.5s delay so initial UI is visible)
+// Auto-pull from Drive on startup, then auto-generate missing summaries
 if (state.sync?.webhookUrl) {
-  setTimeout(() => pullFromDrive({ silent: true }).then(r => {
+  setTimeout(async () => {
+    const r = await pullFromDrive({ silent: true });
     if (r.applied) toast('Auto-synced from Drive ✓');
-  }), 1500);
+    autoGenerateMissingSummaries();
+  }, 1500);
+} else {
+  setTimeout(() => autoGenerateMissingSummaries(), 1500);
 }
 
-// Auto-pull when user returns to the tab
+// Schedule daily 23:55 generation
+scheduleMidnightGen();
+
+// Auto-pull + auto-gen when user returns to the tab
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden && state.sync?.webhookUrl) {
-    pullFromDrive({ silent: true }).then(r => {
-      if (r.applied) toast('Auto-synced ✓');
-    });
+  if (!document.hidden) {
+    if (state.sync?.webhookUrl) {
+      pullFromDrive({ silent: true }).then(r => {
+        if (r.applied) toast('Auto-synced ✓');
+        autoGenerateMissingSummaries();
+      });
+    } else {
+      autoGenerateMissingSummaries();
+    }
   }
 });
 </script>
