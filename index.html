@@ -557,7 +557,8 @@
       <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
     </div>
 
-    <div class="row" style="margin-top: 14px; gap: 10px;">
+    <button id="reanalyzeMealBtn" style="display:none; width:100%; margin-top: 12px;" onclick="reanalyzeMeal()">🔄 Re-analyze (update calories + protein)</button>
+    <div class="row" style="margin-top: 10px; gap: 10px;">
       <button class="grow primary" onclick="saveMeal()">Save</button>
       <button class="ghost" onclick="closeMealModal()">Cancel</button>
     </div>
@@ -1615,6 +1616,7 @@ async function openMealModal(mealId = null) {
   }
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
+  document.getElementById('reanalyzeMealBtn').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
   // Reset chat if opening a different meal, then restore from persisted history
   if (_mealChatId !== editingMealId) {
     resetMealChat();
@@ -2153,6 +2155,20 @@ function parseJSONResponse(text) {
   const match = clean.match(/\{[\s\S]*\}/);
   if (match) { try { return JSON.parse(match[0]); } catch {} }
   return null;
+}
+
+async function reanalyzeMeal() {
+  if (!editingMealId) return;
+  const btn = document.getElementById('reanalyzeMealBtn');
+  btn.disabled = true;
+  btn.textContent = '⟳ Analyzing…';
+  const ok = await autoAnalyzeMeal(editingMealId, { force: true });
+  btn.disabled = false;
+  btn.textContent = '🔄 Re-analyze (update calories + protein)';
+  if (ok) {
+    const m = await getMeal(editingMealId);
+    if (m) toast(`Updated: ~${m.calories} kcal${m.protein ? ' · ' + m.protein + 'g protein' : ''}`);
+  }
 }
 
 async function autoAnalyzeMeal(mealId, opts = {}) {
