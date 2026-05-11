@@ -90,7 +90,7 @@ CONTEXT:
 - Daily intake target: 1700 kcal for mild fat loss.
 - BMR: 1415 kcal (resting burn).
 - Daily steps target: 10000.
-- Protein target: 120g/day (~2g/kg for recomposition).
+- Protein target: 95g/day (~1.6g/kg for recomposition).
 
 REQUIRED DATA — flag if missing:
 - Steps (must always be logged)
