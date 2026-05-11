@@ -2762,10 +2762,22 @@ async function analyzeAllMissing() {
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
   const meals = await getAllMeals();
   // Meals with no calories OR meals that have calories but no protein yet
-  const mealsToAnalyze = meals.filter(m => !m.calories || m.protein == null);
+  const mealsToAnalyze = meals.filter(m => !m.calories || !(typeof m.protein === 'number' && m.protein > 0));
   const missingSessions = (state.sessions || []).filter(s => !s.caloriesBurned);
   const total = mealsToAnalyze.length + missingSessions.length;
-  if (total === 0) return toast('Everything up to date ✓');
+  if (total === 0) {
+    if (!confirm('All meals already have estimates.\nRe-analyze everything to refresh protein?')) return;
+    const allMeals = meals;
+    let done = 0, ok = 0;
+    for (const m of allMeals) {
+      toast(`Analyzing ${++done}/${allMeals.length}…`, { persistent: true });
+      if (await autoAnalyzeMeal(m.id, { silent: true })) ok++;
+    }
+    hideToast();
+    toast(`Refreshed ${ok}/${allMeals.length} ✓`);
+    renderAnalysis(); renderMeals();
+    return;
+  }
   let done = 0, ok = 0;
   for (const m of mealsToAnalyze) {
     toast(`Analyzing ${++done}/${total}…`, { persistent: true });
