@@ -2928,11 +2928,14 @@ async function exportData(opts = {}) {
 
   // Always include meal metadata (description + calories, no photo blobs) — small, syncs across devices
   const allMeals = await getAllMeals();
-  payload.meals = allMeals.map(m => ({
+  const mealMeta = m => ({
     date: m.date, time: m.time, description: m.description,
-    calories: m.calories, created: m.created,
-    dataUrls: []
-  }));
+    calories: m.calories, protein: m.protein ?? null, created: m.created,
+    breakdown: m.breakdown || [], confidence: m.confidence || null,
+    aiSaw: m.aiSaw || null, questions: m.questions || []
+  });
+
+  payload.meals = allMeals.map(m => ({ ...mealMeta(m), dataUrls: [] }));
 
   if (includePhotos) {
     const photos = await getAllPhotos();
@@ -2943,8 +2946,7 @@ async function exportData(opts = {}) {
     payload.meals = await Promise.all(allMeals.map(async m => {
       const blobs = mealBlobs(m);
       return {
-        date: m.date, time: m.time, description: m.description,
-        calories: m.calories, created: m.created,
+        ...mealMeta(m),
         dataUrls: await Promise.all(blobs.map(b => blobToDataUrl(b)))
       };
     }));
@@ -3058,6 +3060,9 @@ async function applyDrivePayload(payload, updatedAt) {
       await putMeal({
         date: m.date, time: m.time, created: m.created,
         description: m.description, calories: m.calories,
+        protein: m.protein ?? null,
+        breakdown: m.breakdown || [], confidence: m.confidence || null,
+        aiSaw: m.aiSaw || null, questions: m.questions || [],
         blobs
       });
     }
@@ -3083,6 +3088,7 @@ async function applyDrivePayload(payload, updatedAt) {
   renderBody();
   if (typeof renderMeals === 'function') renderMeals();
   if (typeof renderPhotos === 'function') renderPhotos();
+  if (typeof renderAnalysis === 'function') renderAnalysis();
 }
 
 async function uploadToDrive(payload, filename) {
