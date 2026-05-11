@@ -1854,10 +1854,14 @@ async function drawEnergyChart(elementId = 'energyChart') {
 
 function shiftAnalysisDate(delta) {
   const base = analysisViewDate || todayISO();
-  const d = new Date(base);
-  d.setDate(d.getDate() + delta);
-  const shifted = d.toISOString().slice(0, 10);
-  if (shifted > todayISO()) return; // don't go into future
+  const [y, m, d] = base.split('-').map(Number);
+  const date = new Date(y, m - 1, d + delta);
+  const shifted = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+  if (shifted > todayISO()) return;
   analysisViewDate = shifted === todayISO() ? null : shifted;
   renderAnalysis();
 }
