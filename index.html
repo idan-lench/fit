@@ -1613,7 +1613,7 @@ async function removePhoto(id) {
 let pendingMealBlobs = [];
 let editingMealId = null;
 
-async function openMealModal(mealId = null) {
+async function openMealModal(mealId = null, triggerReanalyze = false) {
   pendingMealBlobs = [];
   editingMealId = null;
   if (mealId) {
@@ -1665,6 +1665,7 @@ async function openMealModal(mealId = null) {
   }
   renderMealPreview();
   document.getElementById('mealModal').classList.add('show');
+  if (triggerReanalyze && editingMealId) setTimeout(() => reanalyzeMeal(), 100);
 }
 function closeMealModal() {
   document.getElementById('mealModal').classList.remove('show');
@@ -2096,6 +2097,9 @@ async function renderMeals() {
           <div class="small muted" style="margin-top: 6px;">Tap the meal to answer via "Refine".</div>
         </div>`
       : '';
+    const reanalyzeBtn = getGeminiKey()
+      ? `<button class="ghost" style="padding: 4px 10px; font-size: 12px; margin-top: 6px;" onclick="event.stopPropagation(); openMealModal(${m.id}, true)">🔄 Re-analyze</button>`
+      : '';
     card.innerHTML = `
       <div class="row between" style="align-items: flex-start;">
         <div class="grow" style="min-width: 0; word-wrap: break-word; line-height: 1.6;">
@@ -2106,6 +2110,7 @@ async function renderMeals() {
       ${thumbs}
       ${questionsHtml}
       ${breakdownHtml}
+      ${reanalyzeBtn}
     `;
     card.addEventListener('click', () => openMealModal(m.id));
     dayGroup.appendChild(card);
@@ -2461,7 +2466,12 @@ function renderMealRefineChat() {
     </div>`;
   }
   div.innerHTML = html;
-  div.scrollTop = div.scrollHeight;
+  // Scroll the inner chat list to bottom (it has max-height + overflow-y)
+  const inner = div.querySelector('div[style*="max-height"]');
+  if (inner) inner.scrollTop = inner.scrollHeight;
+  // Also scroll the modal itself so the proposal/input is visible
+  const modal = document.getElementById('mealModal');
+  if (modal) setTimeout(() => modal.scrollTop = modal.scrollHeight, 50);
 }
 
 async function applyRefineResult() {
