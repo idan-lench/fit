@@ -2827,14 +2827,16 @@ async function smartUpdateSummaries() {
   }
 
   const notesArr = state.dailyNotes || [];
+  const currentHour = new Date().getHours();
   const daysNeedingUpdate = [];
   for (const date of daysToCheck) {
+    // Skip today unless it's after 21:00 — let midnight script handle the final note
+    if (date === today && currentHour < 21) continue;
     const fp = await dayFingerprint(date);
     const isEmpty = fp === '§§'; // no meals, sessions, or steps
     if (isEmpty) continue;
     const existing = notesArr.find(n => n.date === date);
-    const isPartial = existing && existing.note.includes('(Partial') && date !== today;
-    if (!existing || isPartial || existing.fingerprint !== fp) {
+    if (!existing || existing.fingerprint !== fp) {
       daysNeedingUpdate.push({ date, fp });
     }
   }
@@ -2918,11 +2920,10 @@ function scheduleMidnightGen() {
   _midnightTimer = setTimeout(async () => {
     if (getGeminiKey()) {
       const today = todayISO();
-      // Only generate if not already done (avoid duplicate from another device)
-      const hasToday = (state.dailyNotes || []).some(n => n.date === today);
       const stepsToday = (state.steps || []).find(s => s.date === today);
-      if (!hasToday && stepsToday) {
-        await runDailyAnalysis({ date: today, silent: true });
+      if (stepsToday) {
+        const fp = await dayFingerprint(today);
+        await runDailyAnalysis({ date: today, silent: true, fingerprint: fp });
       }
     }
     scheduleMidnightGen(); // schedule next day
