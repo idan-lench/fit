@@ -1645,9 +1645,12 @@ async function openMealModal(mealId = null) {
       getMeal(mealId).then(m => {
         if (!m) return;
         _mealChatId = mealId;
-        // Restore prior chat
+        // Restore prior chat — strip model messages that falsely claimed to update values
         if (m.chatHistory && m.chatHistory.length) {
-          _mealChatHistory = m.chatHistory.slice();
+          const updateClaims = /\b(i('ve| have) (updated|adjusted|set|changed|saved)|it'?s (already |now )?set to|done[,.]?\s*i('ve| have))/i;
+          _mealChatHistory = m.chatHistory.filter(msg =>
+            msg.role !== 'model' || !updateClaims.test(msg.text)
+          );
         } else if (m.questions && m.questions.length) {
           // First time opening — seed with the AI's questions
           const questionText = "I had a few things I wasn't sure about:\n\n" + m.questions.map((q, i) => `${i + 1}. ${q}`).join('\n') + '\n\nCan you clarify?';
@@ -2352,7 +2355,8 @@ async function refineMealEstimate() {
     // Persist chat history on the meal so it survives across modal opens / device sync
     const fresh = await getMeal(editingMealId);
     if (fresh) {
-      fresh.chatHistory = _mealChatHistory.slice(-40); // keep last 40 turns
+      const updateClaims = /\b(i('ve| have) (updated|adjusted|set|changed|saved)|it'?s (already |now )?set to|done[,.]?\s*i('ve| have))/i;
+      fresh.chatHistory = _mealChatHistory.filter(msg => msg.role !== 'model' || !updateClaims.test(msg.text)).slice(-40);
       await putMeal(fresh);
     }
 
