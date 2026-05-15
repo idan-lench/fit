@@ -2289,6 +2289,21 @@ async function refineMealEstimate() {
   const meal = await getMeal(editingMealId);
   if (!meal) return;
 
+  // Direct number override: "update to 450", "set 400 cal", "450", "450 kcal", etc.
+  const directMatch = text.match(/^(?:(?:update|set|change|make|use|apply)(?:\s+(?:it|calories?|kcal|to|at))?\s+(?:to\s+)?)?(\d{2,4})\s*(?:kcal|cal(?:ories?)?)?$/i);
+  if (directMatch) {
+    const cal = parseInt(directMatch[1], 10);
+    if (cal >= 50 && cal <= 5000) {
+      document.getElementById('refineInput').value = '';
+      _pendingRefine = { total: cal, items: meal.breakdown || [], saw: meal.aiSaw, confidence: meal.confidence, changeNote: `Manually set to ${cal} kcal` };
+      if (_mealChatId !== editingMealId) { _mealChatHistory = []; _mealChatId = editingMealId; }
+      _mealChatHistory.push({ role: 'user', text });
+      _mealChatHistory.push({ role: 'model', text: `Got it — I'll set this to ${cal} kcal. Tap "Apply ${cal} kcal" below to save.` });
+      renderMealRefineChat();
+      return;
+    }
+  }
+
   if (_mealChatId !== editingMealId) {
     _mealChatHistory = [];
     _mealChatId = editingMealId;
@@ -2357,7 +2372,7 @@ async function requestMealEstimateUpdate() {
   const meal = await getMeal(editingMealId);
   if (!meal) return;
 
-  toast('Updating estimate…', { persistent: true });
+  toast('Generating proposal…', { persistent: true });
   try {
     const blobs = mealBlobs(meal);
     const systemInstruction = PROMPTS.mealChatSystem
@@ -2372,7 +2387,6 @@ async function requestMealEstimateUpdate() {
       .replace('{breakdown}', JSON.stringify(meal.breakdown || []))
       .replace('{aiSaw}', meal.aiSaw || '(none)');
 
-    // Build contents: chat history + final update request
     const contents = [];
     for (const m of _mealChatHistory) {
       const parts = [{ text: m.text }];
@@ -2385,7 +2399,6 @@ async function requestMealEstimateUpdate() {
       }
       contents.push({ role: m.role === 'user' ? 'user' : 'model', parts });
     }
-    // Append the final JSON request as a new user message
     const updateParts = [{ text: updatePrompt }];
     if (blobs.length) {
       for (const blob of blobs) {
@@ -2399,20 +2412,14 @@ async function requestMealEstimateUpdate() {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents
-      })
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: systemInstruction }] }, contents })
     });
     if (!res.ok) throw new Error('Gemini ' + res.status);
     const data = await res.json();
     const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     const parsed = parseJSONResponse(reply);
     hideToast();
-    if (!parsed || typeof parsed.total !== 'number') {
-      toast('Could not parse update');
-      return;
-    }
+    if (!parsed || typeof parsed.total !== 'number') { toast('Could not parse proposal'); return; }
     _pendingRefine = parsed;
     renderMealRefineChat();
   } catch (e) {
