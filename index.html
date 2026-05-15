@@ -2923,7 +2923,10 @@ function scheduleMidnightGen() {
       const stepsToday = (state.steps || []).find(s => s.date === today);
       if (stepsToday) {
         const fp = await dayFingerprint(today);
-        await runDailyAnalysis({ date: today, silent: true, fingerprint: fp });
+        const existing = (state.dailyNotes || []).find(n => n.date === today);
+        if (!existing || existing.fingerprint !== fp) {
+          await runDailyAnalysis({ date: today, silent: true, fingerprint: fp });
+        }
       }
     }
     scheduleMidnightGen(); // schedule next day
