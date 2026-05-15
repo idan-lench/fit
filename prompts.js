@@ -77,40 +77,46 @@ Return ONLY valid JSON. No markdown, no code fences. Format:
 
 
   // ---------------- DAILY ANALYSIS ----------------
-  // Generates the day's summary note (Analysis tab → Claude's notes).
-  // Placeholders: {date}, {time}, {steps}, {meals}, {sessions}
-  // Returns JSON: { isFinal, eaten, burned, net, verdict, wins, watch, missing, recommendations }
-  dailyAnalysis: `You are reviewing today's fitness data for a 58kg, 44yo adult male.
-Goal: drop waist from 78cm to 75cm + build upper-body muscle.
+  // Generates the day's summary note (Analysis tab → AI notes).
+  // Placeholders: {date}, {time}, {steps}, {eaten}, {burned}, {protein}, {meals}, {sessions}, {recentDays}
+  // Returns JSON: { isFinal, verdict, wins, watch, pattern, missing, tomorrow }
+  dailyAnalysis: `You are writing a qualitative daily coaching note for a 58kg, 44yo adult male.
+Goals: drop waist 78cm → 75cm + build upper-body muscle (recomposition, not just weight loss).
+Targets: 1700 kcal/day · 95g protein/day · 10,000 steps/day.
 
-CONTEXT:
-- Today's date: {date}
-- Current time: {time}
-- This is FINAL summary if time > 21:00, otherwise PARTIAL check-in.
-- Daily intake target: 1700 kcal for mild fat loss.
-- BMR: 1415 kcal (resting burn).
-- Daily steps target: 10000.
-- Protein target: 95g/day (~1.6g/kg for recomposition).
+IMPORTANT — DO NOT repeat the calorie/protein totals in your output. Those numbers are already shown in the app. Your job is to interpret, not restate.
+
+Focus on things the numbers alone don't reveal:
+- Meal timing and distribution (e.g. "all protein in one meal", "long fasting gap until 3pm")
+- Protein food quality (e.g. "relied on eggs only — add variety")
+- Workout quality vs previous session (e.g. "pull-up reps up 3 vs last week")
+- Recovery context (e.g. "day after hard hike — low steps expected")
+- Multi-day patterns (use recentDays) — flag streaks, regressions, or improvements
+- One specific, actionable tomorrow recommendation — not generic advice
+
+TODAY:
+- Date: {date}
+- Time now: {time} (FINAL if > 21:00, otherwise PARTIAL)
+- Steps: {steps} (target: 10,000)
+- Total eaten: {eaten} kcal · Total protein: {protein}g · Total burned: {burned} kcal
+- Meals (with timing and breakdown): {meals}
+- Workout sessions: {sessions}
+
+RECENT DAYS (for pattern detection):
+{recentDays}
 
 REQUIRED DATA — flag if missing:
-- Steps (must always be logged)
-
-DATA:
-- Steps: {steps}
-- Meals (with calorie estimates): {meals}
-- Sessions (with burn estimates): {sessions}
+- Steps must always be logged
 
 Return ONLY valid JSON. No markdown. Format:
 {
   "isFinal": boolean,
-  "eaten": number,
-  "burned": number,
-  "net": number,
-  "verdict": "1-sentence overall judgement",
-  "wins": ["string"],
-  "watch": ["string"],
-  "missing": ["any required data not logged"],
-  "recommendations": "1-2 sentences for tomorrow (if final) or rest of day (if partial)"
+  "verdict": "1 sentence: honest overall picture — quality not just totals",
+  "wins": ["specific achievement with context, not generic praise"],
+  "watch": ["specific concern with reason, not just 'low protein'"],
+  "pattern": "1 sentence on a multi-day trend, or null if not enough data",
+  "missing": ["required data not logged"],
+  "tomorrow": "1 specific action based on today's actual data — concrete, not generic"
 }`,
 
 

@@ -398,8 +398,7 @@
 
     <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--warn); background: rgba(255,184,107,0.12);"></div>
     <div class="row" style="gap: 8px; margin: 8px 0;">
-      <button class="ghost grow" onclick="analyzeAllMissing()">🤖 Analyze &amp; update</button>
-      <button class="primary grow" id="dailySummaryBtn" onclick="confirmDailyRegenerate()">✨ Generate daily summary</button>
+      <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">🤖 Update summaries</button>
     </div>
 
     <h2>7-day trend</h2>
@@ -1992,12 +1991,6 @@ async function renderAnalysis() {
   const notesArr = state.dailyNotes || [];
   const viewNote = notesArr.find(n => n.date === viewDate);
   const isPartial = viewNote && viewNote.note.includes('(Partial');
-  const btn = document.getElementById('dailySummaryBtn');
-  if (btn) {
-    if (!viewNote) btn.textContent = isToday ? '✨ Generate daily summary' : `✨ Generate summary for ${formatDate(viewDate)}`;
-    else if (isPartial) btn.textContent = '🔄 Day complete? Regenerate final';
-    else btn.textContent = '🔄 Regenerate summary';
-  }
 
   // Show note for the viewed date
   const notesEl = document.getElementById('analysisNotes');
@@ -2706,7 +2699,11 @@ async function runDailyAnalysis(opts = {}) {
   const e = await computeDailyEnergy(targetDate);
   const meals = await getAllMeals();
   const dayMeals = meals.filter(m => m.date === targetDate).map(m => ({
-    time: m.time, description: m.description || '(none)', calories: m.calories || null
+    time: m.time,
+    description: m.description || '(none)',
+    calories: m.calories || null,
+    protein: m.protein || null,
+    breakdown: (m.breakdown || []).map(b => `${b.name} ${b.portion || ''}: ${b.calories}kcal ${b.protein ? b.protein + 'g P' : ''}`.trim())
   }));
   const daySessions = (state.sessions || []).filter(s => s.date === targetDate).map(s => ({
     type: PLAN[s.day]?.label || s.day,
@@ -2715,17 +2712,36 @@ async function runDailyAnalysis(opts = {}) {
     exercises: (s.entries || []).filter(en => en.sets?.length).map(en => `${en.name}: ${en.sets.map(x=>x.reps).join(',')}`)
   }));
   const stepsDay = (state.steps || []).find(s => s.date === targetDate);
-  // For non-today, treat current time as 23:59 (assume end of day for past dates)
   const time = isToday
     ? (() => { const n = new Date(); return String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0'); })()
     : '23:59';
+
+  // Last 3 days context for pattern detection
+  const recentContext = [];
+  for (let i = 1; i <= 7; i++) {
+    const [y, m, d] = targetDate.split('-').map(Number);
+    const dt = new Date(y, m - 1, d - i);
+    const pastDate = [dt.getFullYear(), String(dt.getMonth()+1).padStart(2,'0'), String(dt.getDate()).padStart(2,'0')].join('-');
+    const pastNote = (state.dailyNotes || []).find(n => n.date === pastDate);
+    const pastE = await computeDailyEnergy(pastDate);
+    recentContext.push({
+      date: pastDate,
+      eaten: pastE.eaten, burned: pastE.burned, protein: pastE.protein,
+      steps: ((state.steps || []).find(s => s.date === pastDate) || {}).count || 0,
+      verdict: pastNote ? pastNote.note.split('\n')[0] : null
+    });
+  }
 
   const prompt = PROMPTS.dailyAnalysis
     .replace('{date}', targetDate)
     .replace('{time}', time)
     .replace('{steps}', stepsDay ? String(stepsDay.count) : 'NOT LOGGED')
+    .replace('{eaten}', String(e.eaten))
+    .replace('{burned}', String(e.burned))
+    .replace('{protein}', String(e.protein))
     .replace('{meals}', JSON.stringify(dayMeals))
-    .replace('{sessions}', JSON.stringify(daySessions));
+    .replace('{sessions}', JSON.stringify(daySessions))
+    .replace('{recentDays}', JSON.stringify(recentContext));
 
   if (!opts.silent) toast('Generating daily analysis…', { persistent: true });
   try {
@@ -2738,12 +2754,15 @@ async function runDailyAnalysis(opts = {}) {
     state.dailyNotes = (state.dailyNotes || []).filter(n => n.date !== targetDate);
     const noteText = `${parsed.verdict || ''}
 
-📊 ${parsed.eaten || '?'} eaten · ${parsed.burned || '?'} burned · ${parsed.net !== undefined ? (parsed.net >= 0 ? '+' : '') + parsed.net : '?'} net
-
-${(parsed.wins || []).length ? '💪 Wins\n' + parsed.wins.map(w => '• ' + w).join('\n') + '\n\n' : ''}${(parsed.watch || []).length ? '⚠️ Watch\n' + parsed.watch.map(w => '• ' + w).join('\n') + '\n\n' : ''}${(parsed.missing || []).length ? '❗ Missing data: ' + parsed.missing.join(', ') + '\n\n' : ''}${parsed.recommendations ? '📝 ' + parsed.recommendations : ''}
+${(parsed.wins || []).length ? '💪 Wins\n' + parsed.wins.map(w => '• ' + w).join('\n') + '\n\n' : ''}${(parsed.watch || []).length ? '⚠️ Watch\n' + parsed.watch.map(w => '• ' + w).join('\n') + '\n\n' : ''}${parsed.pattern ? '📈 ' + parsed.pattern + '\n\n' : ''}${(parsed.missing || []).length ? '❗ Missing: ' + parsed.missing.join(', ') + '\n\n' : ''}${parsed.tomorrow ? '📝 ' + parsed.tomorrow : ''}
 
 ${parsed.isFinal ? '(Final summary)' : '(Partial — day in progress)'}`;
-    state.dailyNotes.push({ date: targetDate, note: noteText.trim(), addedAt: new Date().toISOString() });
+    state.dailyNotes.push({
+      date: targetDate,
+      note: noteText.trim(),
+      fingerprint: opts.fingerprint || null,
+      addedAt: new Date().toISOString()
+    });
     save();
     if (!opts.silent) { hideToast(); toast('Daily analysis updated ✓'); }
     if (typeof renderAnalysis === 'function') renderAnalysis();
@@ -2759,6 +2778,83 @@ function yesterdayISO() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+// --- FINGERPRINT HELPERS ---
+async function dayFingerprint(date) {
+  const allMeals = await getAllMeals();
+  const dayMeals = allMeals.filter(m => m.date === date);
+  const daySessions = (state.sessions || []).filter(s => s.date === date);
+  const daySteps = (state.steps || []).find(s => s.date === date);
+  const mealSig = dayMeals.map(m => `${m.created}:${m.calories ?? ''}:${m.protein ?? ''}`).sort().join('|');
+  const sessionSig = daySessions.map(s => `${s.savedAt}:${s.caloriesBurned ?? ''}`).sort().join('|');
+  const stepSig = daySteps ? String(daySteps.count) : '';
+  return [mealSig, sessionSig, stepSig].join('§');
+}
+
+function dayHasData(date) {
+  const hasSessions = (state.sessions || []).some(s => s.date === date);
+  const hasSteps = (state.steps || []).some(s => s.date === date);
+  return hasSessions || hasSteps; // meals checked async, but if sessions/steps exist that's enough
+}
+
+async function smartUpdateSummaries() {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  const btn = document.getElementById('smartUpdateBtn');
+
+  // Step 1: analyze meals/sessions missing estimates
+  const meals = await getAllMeals();
+  const mealsToAnalyze = meals.filter(m => !m.calories || !(typeof m.protein === 'number' && m.protein > 0));
+  const missingSessions = (state.sessions || []).filter(s => !s.caloriesBurned);
+  const totalItems = mealsToAnalyze.length + missingSessions.length;
+  let done = 0;
+  for (const m of mealsToAnalyze) {
+    if (btn) btn.textContent = `Analyzing meals… ${++done}/${totalItems}`;
+    await autoAnalyzeMeal(m.id, { silent: true });
+  }
+  for (const s of missingSessions) {
+    if (btn) btn.textContent = `Analyzing sessions… ${++done}/${totalItems}`;
+    await autoAnalyzeSession(s.savedAt, { silent: true });
+  }
+
+  // Step 2: re-generate daily summaries for days that changed
+  const today = todayISO();
+  const daysToCheck = [];
+  for (let i = 0; i <= 14; i++) {
+    const [y, m, d] = today.split('-').map(Number);
+    const dt = new Date(y, m - 1, d - i);
+    daysToCheck.push([dt.getFullYear(), String(dt.getMonth()+1).padStart(2,'0'), String(dt.getDate()).padStart(2,'0')].join('-'));
+  }
+
+  const notesArr = state.dailyNotes || [];
+  const daysNeedingUpdate = [];
+  for (const date of daysToCheck) {
+    const fp = await dayFingerprint(date);
+    const isEmpty = fp === '§§'; // no meals, sessions, or steps
+    if (isEmpty) continue;
+    const existing = notesArr.find(n => n.date === date);
+    const isPartial = existing && existing.note.includes('(Partial') && date !== today;
+    if (!existing || isPartial || existing.fingerprint !== fp) {
+      daysNeedingUpdate.push({ date, fp });
+    }
+  }
+
+  if (daysNeedingUpdate.length === 0 && totalItems === 0) {
+    toast('Everything up to date ✓');
+    return;
+  }
+
+  let summaryDone = 0;
+  for (const { date, fp } of daysNeedingUpdate) {
+    if (btn) btn.textContent = `Summaries ${++summaryDone}/${daysNeedingUpdate.length}…`;
+    await runDailyAnalysis({ date, silent: true, fingerprint: fp });
+  }
+
+  if (btn) btn.textContent = '🤖 Update summaries';
+  const total = totalItems + daysNeedingUpdate.length;
+  toast(`Updated ${total} item${total !== 1 ? 's' : ''} ✓`);
+  renderMeals();
+  renderAnalysis();
 }
 
 async function confirmDailyRegenerate() {
