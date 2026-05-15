@@ -154,8 +154,9 @@ ORIGINAL MEAL:
 
 Return ONLY valid JSON, no markdown, no code fences:
 {
-  "items": [{"name": "string", "portion": "string", "calories": number}],
+  "items": [{"name": "string", "portion": "string", "calories": number, "protein": number}],
   "total": number,
+  "totalProtein": number,
   "confidence": "high" | "medium" | "low",
   "saw": "your final understanding of what's in the photo",
   "changeNote": "1-sentence summary of what changed from initial"

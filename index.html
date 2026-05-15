@@ -1113,7 +1113,7 @@ const EXERCISE_LIBRARY = {
   ],
   Lower: [
     'Squats', 'Lunges (each leg)', 'Bulgarian split squats', 'Glute bridges',
-    'Single-leg glute bridges', 'Calf raises', 'Wall sit (sec)', 'Step-ups'
+    'Single-leg glute bridges', 'Calf raises', 'Wall sit (sec)', 'Step-ups', 'Leg press'
   ],
   Core: [
     'Plank (sec)', 'Side plank (sec)', 'Hanging leg raises', 'Hanging knee tucks',
@@ -2440,11 +2440,11 @@ function renderMealRefineChat() {
   if (_pendingRefine && typeof _pendingRefine.total === 'number') {
     html += `<div style="margin-top: 12px; padding: 12px; background: rgba(122, 209, 195, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
       <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Proposed estimate</div>
-      <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${_pendingRefine.total} kcal</div>
+      <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${_pendingRefine.total} kcal${_pendingRefine.totalProtein != null ? ` · <span style="color: var(--accent2)">${_pendingRefine.totalProtein}g protein</span>` : ''}</div>
       ${_pendingRefine.changeNote ? `<div class="small" style="font-style: italic; margin-bottom: 6px;">${escapeHtml(_pendingRefine.changeNote)}</div>` : ''}
-      ${(_pendingRefine.items || []).map(i => `<div class="small" style="padding: 1px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal</div>`).join('')}
+      ${(_pendingRefine.items || []).map(i => `<div class="small" style="padding: 1px 0;">• ${escapeHtml(i.name)} (${escapeHtml(i.portion || '')}): ${i.calories} kcal${i.protein != null ? ` · ${i.protein}g` : ''}</div>`).join('')}
       <div class="row" style="margin-top: 10px; gap: 6px;">
-        <button class="primary grow" onclick="applyRefineResult()">Apply ${_pendingRefine.total} kcal</button>
+        <button class="primary grow" onclick="applyRefineResult()">Apply ${_pendingRefine.total} kcal${_pendingRefine.totalProtein != null ? ` / ${_pendingRefine.totalProtein}g` : ''}</button>
         <button class="ghost" onclick="_pendingRefine=null;renderMealRefineChat();">Discard</button>
       </div>
     </div>`;
@@ -2458,6 +2458,7 @@ async function applyRefineResult() {
   const meal = await getMeal(editingMealId);
   if (!meal) return;
   meal.calories = _pendingRefine.total;
+  if (_pendingRefine.totalProtein != null) meal.protein = _pendingRefine.totalProtein;
   meal.breakdown = _pendingRefine.items || [];
   meal.aiSaw = _pendingRefine.saw || meal.aiSaw;
   meal.confidence = _pendingRefine.confidence || meal.confidence;
