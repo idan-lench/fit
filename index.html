@@ -398,7 +398,7 @@
 
     <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--warn); background: rgba(255,184,107,0.12);"></div>
     <div class="row" style="gap: 8px; margin: 8px 0;">
-      <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">🤖 Update summaries</button>
+      <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">🤖 Generate Daily Analysis</button>
     </div>
 
     <h2>7-day trend</h2>
@@ -2756,7 +2756,7 @@ async function runDailyAnalysis(opts = {}) {
 
 ${(parsed.wins || []).length ? '💪 Wins\n' + parsed.wins.map(w => '• ' + w).join('\n') + '\n\n' : ''}${(parsed.watch || []).length ? '⚠️ Watch\n' + parsed.watch.map(w => '• ' + w).join('\n') + '\n\n' : ''}${parsed.pattern ? '📈 ' + parsed.pattern + '\n\n' : ''}${(parsed.missing || []).length ? '❗ Missing: ' + parsed.missing.join(', ') + '\n\n' : ''}${parsed.tomorrow ? '📝 ' + parsed.tomorrow : ''}
 
-${parsed.isFinal ? '(Final summary)' : '(Partial — day in progress)'}`;
+${parsed.isFinal ? '(Final summary)' : '(Partial — day in progress)'} · Generated ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
     state.dailyNotes.push({
       date: targetDate,
       note: noteText.trim(),
@@ -2852,7 +2852,7 @@ async function smartUpdateSummaries() {
     await runDailyAnalysis({ date, silent: true, fingerprint: fp });
   }
 
-  if (btn) btn.textContent = '🤖 Update summaries';
+  if (btn) btn.textContent = '🤖 Generate Daily Analysis';
   const total = totalItems + daysNeedingUpdate.length;
   toast(`Updated ${total} item${total !== 1 ? 's' : ''} ✓`);
   renderMeals();
