@@ -2476,6 +2476,11 @@ async function applyRefineResult() {
   // User explicitly approved this estimate — clear any stale AI questions
   meal.questions = [];
   await putMeal(meal);
+  // Sync the modal's input fields so a subsequent Save won't overwrite our change
+  const calInput = document.getElementById('mealCalInput');
+  const protInput = document.getElementById('mealProteinInput');
+  if (calInput) calInput.value = meal.calories ?? '';
+  if (protInput) protInput.value = meal.protein ?? '';
   toast('Updated ✓');
   // Don't reset chat — keep history so user can continue refining later
   _pendingRefine = null;
