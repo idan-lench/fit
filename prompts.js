@@ -137,6 +137,8 @@ ORIGINAL MEAL CONTEXT:
 - Current breakdown: {breakdown}
 - What you saw initially: "{aiSaw}"
 
+IMPORTANT: You CANNOT directly update or save the meal estimate. You can only suggest numbers. When the user asks you to update or change the estimate, give your suggested number and then say: "Tap 'Update calorie estimate from this chat' below to apply it." Never say "I've updated it" or "I've saved it" — you haven't, only the button can do that.
+
 When the user asks something, answer it directly using the photos. Be specific with numbers when relevant ("Each chicken cutlet is ~165 kcal"). Don't repeat the full breakdown unless they ask.`,
 
 
