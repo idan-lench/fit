@@ -1467,28 +1467,29 @@ function renderHistory() {
     const cardio = s.cardioNote ? escapeHtml(s.cardioNote) : '';
     const notes = s.notes ? escapeHtml(s.notes) : '';
     const burnQs = s.burnQuestions || [];
-    const headerBits = [];
-    if (s.time) headerBits.push(s.time);
-    if (typeof s.caloriesBurned === 'number') headerBits.push(`~${s.caloriesBurned} kcal`);
-    const headerMeta = headerBits.length
-      ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ${headerBits.join(' · ')}</span>`
+    const timeHtml = s.time
+      ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ${s.time}</span>`
+      : `<button class="ghost" style="margin-left: 4px; padding: 2px 8px; font-size: 12px; color: var(--accent);" onclick="setSessionTime(${s.savedAt})">+ Add time</button>`;
+    const burnHtml = typeof s.caloriesBurned === 'number'
+      ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ~${s.caloriesBurned} kcal</span>`
       : '';
     return `
-      <div data-saved-at="${s.savedAt}" style="padding: 10px 0; border-top: 1px solid var(--line);">
-        <div style="font-weight: 600;">${PLAN[s.day]?.label || s.day}${headerMeta}</div>
+      <div data-saved-at="${s.savedAt}" style="padding: 12px 0; border-top: 1px solid var(--line);">
+        <div style="font-weight: 600;">${PLAN[s.day]?.label || s.day}${timeHtml}${burnHtml}</div>
         ${cardio ? `<div class="small" style="margin-top: 4px; color: var(--muted);">${cardio}</div>` : ''}
         ${s.entries.filter(e => e.sets.length).map(e => `
           <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}</div>
         `).join('')}
-        ${s.burnBreakdown && s.burnBreakdown.length ? `<details style="margin-top: 6px; padding: 6px 10px; background: var(--bg); border-radius: 8px;"><summary class="small muted">Burn breakdown</summary>
+        ${s.burnBreakdown && s.burnBreakdown.length ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
+          <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">Burn breakdown</div>
           ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
-          ${s.burnNotes ? `<div class="small muted" style="margin-top: 4px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
-        </details>` : ''}
+          ${s.burnNotes ? `<div class="small muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
+        </div>` : ''}
         ${burnQs.length ? `<div class="small" style="margin-top: 6px; color: var(--warn);">❓ ${burnQs.length} question${burnQs.length > 1 ? 's' : ''}: ${burnQs.map(escapeHtml).join(' · ')}</div>` : ''}
         ${notes ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
-        <div class="row" style="margin-top: 8px; gap: 6px; flex-wrap: wrap;">
+        <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
           <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="editSession(${s.savedAt})">Edit</button>
-          <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="openSessionRefine(${s.savedAt})">Refine</button>
+          <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="openSessionRefine(${s.savedAt})">Discuss burn</button>
           <button class="ghost danger" style="padding: 4px 10px; font-size: 13px;" onclick="deleteSession(${s.savedAt})">Delete</button>
         </div>
       </div>
@@ -1534,6 +1535,17 @@ function editSession(savedAt) {
   toast('Editing past session');
   switchTab('workout');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function setSessionTime(savedAt) {
+  const s = state.sessions.find(x => x.savedAt === savedAt);
+  if (!s) return;
+  const newTime = prompt('Enter time (HH:MM, 24h):', s.time || '');
+  if (!newTime) return;
+  if (!/^\d{1,2}:\d{2}$/.test(newTime.trim())) return toast('Invalid time format');
+  s.time = newTime.trim();
+  save();
+  renderHistory();
 }
 
 function deleteSession(savedAt) {
