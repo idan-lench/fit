@@ -3,32 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0b1220">
+<meta name="theme-color" content="#ffffff">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Fit">
 <title>Fit Tracker</title>
 <style>
   :root {
-    --bg: #0b1220;
-    --panel: #131c2f;
-    --panel2: #1a2540;
-    --line: #243154;
-    --text: #e7ecf5;
-    --muted: #8a98b5;
-    --accent: #4f8cff;
-    --accent2: #7ad1c3;
-    --warn: #ffb86b;
-    --danger: #ff6b8a;
-    --radius: 14px;
+    --bg: #ffffff;
+    --panel: #f5f5f7;
+    --panel2: #ebebed;
+    --line: #e5e5e7;
+    --text: #1d1d1f;
+    --muted: #86868b;
+    --accent: #0071e3;
+    --accent2: #34c759;
+    --warn: #ff9500;
+    --danger: #ff3b30;
+    --radius: 16px;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; padding: 0;
     background: var(--bg);
     color: var(--text);
-    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    font: 17px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     overscroll-behavior: none;
+    -webkit-font-smoothing: antialiased;
   }
   body {
     padding-top: env(safe-area-inset-top);
@@ -37,21 +38,21 @@
     margin: 0 auto;
   }
   header {
-    padding: 14px 18px 8px;
-    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px 4px;
+    display: flex; align-items: flex-end; justify-content: space-between;
   }
-  header h1 { font-size: 22px; margin: 0; letter-spacing: -0.2px; }
-  header .sub { color: var(--muted); font-size: 13px; }
-  main { padding: 0 14px; }
+  header h1 { font-size: 32px; margin: 0; letter-spacing: -0.6px; font-weight: 700; }
+  header .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  main { padding: 0 16px; }
   section { display: none; }
   section.active { display: block; }
-  h2 { font-size: 17px; margin: 18px 4px 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; }
+  h2 { font-size: 20px; margin: 24px 4px 10px; color: var(--text); font-weight: 600; letter-spacing: -0.3px; }
   .card {
     background: var(--panel);
     border-radius: var(--radius);
-    padding: 14px;
+    padding: 16px;
     margin-bottom: 12px;
-    border: 1px solid var(--line);
+    border: none;
   }
   .row { display: flex; align-items: center; gap: 10px; }
   .row.between { justify-content: space-between; }
@@ -60,31 +61,33 @@
   .small { font-size: 13px; }
   .big { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
   button, .btn {
-    background: var(--panel2);
+    background: var(--panel);
     color: var(--text);
-    border: 1px solid var(--line);
-    padding: 12px 14px;
+    border: none;
+    padding: 12px 16px;
     border-radius: 12px;
-    font-size: 15px;
+    font-size: 16px;
     font-weight: 600;
     cursor: pointer;
-    transition: transform 0.05s ease, background 0.15s ease;
+    transition: transform 0.05s ease, background 0.15s ease, opacity 0.15s ease;
   }
-  button:active { transform: scale(0.97); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: white; }
-  button.ghost { background: transparent; }
+  button:active { transform: scale(0.97); opacity: 0.85; }
+  button.primary { background: var(--accent); color: white; }
+  button.ghost { background: transparent; color: var(--accent); }
   button.danger { color: var(--danger); }
   button.icon {
     padding: 0;
     width: 38px; height: 38px;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 20px;
+    background: transparent;
+    color: var(--accent);
   }
-  input[type=number], input[type=text], input[type=date], textarea {
-    background: var(--panel2);
-    border: 1px solid var(--line);
+  input[type=number], input[type=text], input[type=date], input[type=time], textarea {
+    background: var(--panel);
+    border: none;
     color: var(--text);
-    padding: 12px;
+    padding: 12px 14px;
     border-radius: 12px;
     font-size: 16px;
     width: 100%;
@@ -96,56 +99,57 @@
   .nav {
     position: fixed;
     bottom: 0; left: 0; right: 0;
-    background: rgba(11, 18, 32, 0.92);
-    backdrop-filter: saturate(160%) blur(14px);
-    -webkit-backdrop-filter: saturate(160%) blur(14px);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
     border-top: 1px solid var(--line);
     display: flex;
-    padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+    padding: 6px 4px calc(4px + env(safe-area-inset-bottom));
     z-index: 10;
   }
   .nav button {
     flex: 1; background: transparent; border: none; color: var(--muted);
-    padding: 8px 0;
-    font-size: 12px; font-weight: 600;
+    padding: 6px 0;
+    font-size: 11px; font-weight: 500;
     display: flex; flex-direction: column; align-items: center; gap: 3px;
+    transition: color 0.15s ease;
   }
-  .nav button .ic { font-size: 20px; }
+  .nav button .ic { font-size: 22px; line-height: 1; }
   .nav button.active { color: var(--accent); }
   .ex {
-    background: var(--panel2);
+    background: var(--panel);
     border-radius: 12px;
-    padding: 12px;
+    padding: 14px;
     margin-bottom: 10px;
   }
-  .ex .name { font-weight: 600; }
-  .ex .target { color: var(--muted); font-size: 13px; margin-top: 2px; }
-  .sets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .ex .name { font-weight: 600; font-size: 17px; }
+  .ex .target { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .sets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
   .set-pill {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    padding: 8px 12px;
+    background: var(--bg);
+    border: none;
+    padding: 8px 14px;
     border-radius: 999px;
     font-variant-numeric: tabular-nums;
     font-weight: 600;
-    font-size: 14px;
+    font-size: 15px;
   }
-  .set-pill.empty { color: var(--muted); font-weight: 400; }
+  .set-pill.empty { color: var(--muted); font-weight: 500; }
   .stepper { display: flex; gap: 8px; align-items: center; }
   .stepper button { padding: 0; width: 38px; height: 38px; font-size: 22px; }
-  .stepper .val { min-width: 56px; text-align: center; font-weight: 700; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .stepper .val { min-width: 56px; text-align: center; font-weight: 700; font-size: 22px; font-variant-numeric: tabular-nums; }
   .chip {
     display: inline-block;
-    background: var(--panel2);
-    color: var(--muted);
-    border: 1px solid var(--line);
-    padding: 4px 10px;
+    background: var(--panel);
+    color: var(--text);
+    border: none;
+    padding: 6px 14px;
     border-radius: 999px;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 500;
     margin-right: 6px;
   }
-  .chip.on { background: var(--accent); color: white; border-color: var(--accent); }
+  .chip.on { background: var(--accent); color: white; }
   svg { display: block; width: 100%; height: auto; }
   .photoGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .photoGrid img { width: 100%; aspect-ratio: 3/4; object-fit: cover; border-radius: 12px; background: var(--panel2); }
@@ -168,23 +172,26 @@
   }
   .modal {
     position: fixed; inset: 0;
-    background: rgba(5, 8, 16, 0.85);
+    background: rgba(0, 0, 0, 0.4);
     display: none;
     align-items: center; justify-content: center;
     padding: 20px;
     z-index: 20;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
   }
   .modal.show { display: flex; }
   .modal .body {
-    background: var(--panel);
-    border-radius: 18px;
-    padding: 18px;
+    background: var(--bg);
+    border-radius: 20px;
+    padding: 20px;
     width: 100%;
     max-width: 420px;
     max-height: 90vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    border: 1px solid var(--line);
+    border: none;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.15);
   }
   .toast {
     position: fixed;
@@ -210,28 +217,46 @@
     font-size: 14px;
   }
   hr.div { border: none; border-top: 1px solid var(--line); margin: 14px 0; }
-  details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+  details { background: var(--panel); border: none; border-radius: 12px; padding: 14px; margin-bottom: 10px; }
   details summary { cursor: pointer; font-weight: 600; }
-  details[open] summary { margin-bottom: 8px; }
+  details[open] summary { margin-bottom: 10px; }
   .stat {
     background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 14px;
+    border: none;
+    border-radius: 16px;
+    padding: 16px;
     flex: 1;
   }
-  .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-  .stat .v { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
-  .stat .delta { font-size: 12px; margin-top: 2px; }
+  .stat .label { font-size: 14px; color: var(--muted); font-weight: 500; }
+  .stat .v { font-size: 28px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: -0.5px; }
+  .stat .delta { font-size: 13px; margin-top: 2px; font-weight: 500; }
   .stat .delta.down { color: var(--accent2); }
   .stat .delta.up { color: var(--warn); }
+  /* Segmented control */
+  .segmented {
+    display: inline-flex;
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 2px;
+    gap: 0;
+  }
+  .segmented button {
+    background: transparent;
+    color: var(--text);
+    padding: 6px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    border: none;
+  }
+  .segmented button.on { background: var(--bg); box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-weight: 600; }
 </style>
 </head>
 <body>
 
 <header>
   <div>
-    <h1>Fit</h1>
+    <h1 id="pageTitle">Workout</h1>
     <div class="sub" id="todayLabel">—</div>
   </div>
   <button class="icon ghost" onclick="openSettings()" aria-label="Settings">⚙︎</button>
@@ -241,21 +266,35 @@
 
   <!-- WORKOUT TAB -->
   <section id="tab-workout" class="active">
-    <div class="row" style="gap: 6px; flex-wrap: wrap; padding: 4px 4px 0;">
-      <span class="chip" data-day="tue" onclick="selectDay('tue')">Tue · Run + Upper</span>
-      <span class="chip" data-day="wed" onclick="selectDay('wed')">Wed · Movement</span>
-      <span class="chip" data-day="thu" onclick="selectDay('thu')">Thu · Intervals + Upper</span>
-      <span class="chip" data-day="sat" onclick="selectDay('sat')">Sat · Legs</span>
-      <span class="chip" data-day="hike" onclick="selectDay('hike')">🥾 Hike</span>
-      <span class="chip" data-day="bike" onclick="selectDay('bike')">🚴 Bike</span>
-      <span class="chip" data-day="custom" onclick="selectDay('custom')">Custom</span>
+    <div class="row between" style="align-items: center; padding: 4px 4px 0;">
+      <button class="icon ghost" onclick="shiftWorkoutDate(-1)" aria-label="Previous">‹</button>
+      <span id="workoutDateLabel" style="font-weight: 600; font-size: 16px;"></span>
+      <button class="icon ghost" id="workoutNextBtn" onclick="shiftWorkoutDate(1)" aria-label="Next">›</button>
     </div>
-    <div class="row" style="gap: 8px; align-items: center; padding: 12px 4px 0; flex-wrap: wrap;">
-      <label class="muted small" style="margin: 0;">Date:</label>
-      <input type="date" id="sessionDate" style="flex: 1; max-width: 160px;" onchange="updateSessionDate(this.value)">
+
+    <!-- Plan banner: shown only when viewing a day with a planned workout and no session loaded -->
+    <div id="workoutPlanBanner" class="card" style="display: none; background: rgba(0, 113, 227, 0.08);">
+      <div class="muted small">Today's plan</div>
+      <div id="workoutPlanLabel" style="font-weight: 600; font-size: 17px; margin-top: 2px;"></div>
+      <div class="row" style="gap: 8px; margin-top: 10px;">
+        <button class="primary grow" onclick="loadWorkoutPlan()">+ Load plan</button>
+        <button class="ghost" onclick="openWorkoutTypePicker()">More…</button>
+      </div>
+    </div>
+
+    <!-- Empty state for non-plan days: just show the action buttons -->
+    <div id="workoutEmptyState" class="card" style="display: none;">
+      <div class="muted small" style="margin-bottom: 10px;">No workout for this day yet.</div>
+      <div class="row" style="gap: 8px;">
+        <button class="primary grow" onclick="startWorkout('custom')">+ Custom</button>
+        <button class="grow" onclick="openWorkoutTypePicker()">+ Hike / Bike / Other</button>
+      </div>
+    </div>
+
+    <div class="row" style="gap: 8px; align-items: center; padding: 8px 4px 0; flex-wrap: wrap;" id="sessionMetaRow">
       <label class="muted small" style="margin: 0;">Time:</label>
       <input type="time" id="sessionTime" style="flex: 1; max-width: 120px;" onchange="updateSessionTime(this.value)">
-      <button class="ghost" style="padding: 8px 12px; font-size: 13px;" onclick="openPlanModal()">📅 View plan</button>
+      <button class="ghost" style="padding: 8px 12px; font-size: 14px;" onclick="openPlanModal()">📅 View plan</button>
     </div>
 
     <h2 id="workoutTitle">Workout</h2>
@@ -307,43 +346,25 @@
       <div id="waistList" style="margin-top: 8px;"></div>
     </div>
 
-    <h2>Steps</h2>
+    <h2>Photos</h2>
     <div class="card">
-      <div class="row" style="gap: 10px;">
-        <div style="flex: 1;">
-          <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Today</div>
-          <div class="big" id="stepsTodayValue" style="margin-top: 4px;">—</div>
-          <div class="small" id="stepsTodayProgress" style="margin-top: 2px;">&nbsp;</div>
-        </div>
-        <div style="flex: 1;">
-          <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">7-day avg</div>
-          <div class="big" id="stepsAvgValue" style="margin-top: 4px;">—</div>
-          <div class="small muted" style="margin-top: 2px;">last 7 entries</div>
-        </div>
+      <input type="file" accept="image/*" capture="environment" id="photoCameraInput" style="display:none" onchange="onPhotoPicked(event)">
+      <input type="file" accept="image/*" id="photoGalleryInput" multiple style="display:none" onchange="onPhotoPicked(event)">
+      <div class="row" style="gap: 8px;">
+        <button class="primary grow" onclick="document.getElementById('photoCameraInput').click()">📷 Take photo</button>
+        <button class="grow" onclick="document.getElementById('photoGalleryInput').click()">🖼 From gallery</button>
       </div>
+      <div class="small muted" style="margin-top: 8px;">Tip: same lighting, same pose, same time of day. Mornings work best.</div>
     </div>
 
-    <h2>Add steps</h2>
-    <div class="card">
-      <div class="row" style="gap: 10px; align-items: flex-end;">
-        <div class="grow">
-          <label>Steps</label>
-          <input type="number" id="stepsInput" inputmode="numeric" placeholder="e.g. 8500">
-        </div>
-        <div style="width: 150px;">
-          <label>Date</label>
-          <input type="date" id="stepsDate">
-        </div>
-      </div>
-      <button class="primary" style="width: 100%; margin-top: 12px;" onclick="addSteps()">Save</button>
-      <div class="muted small" style="margin-top: 6px;">Open Google Fit on your phone, glance at today's step count, type it here.</div>
+    <h2 id="compareLabel">Compare</h2>
+    <div class="card" id="compareCard">
+      <div class="muted small" id="compareHint">Select two photos below to compare side by side.</div>
+      <div class="photoGrid" id="compareGrid" style="margin-top: 10px; display: none;"></div>
     </div>
 
-    <h2>Steps trend</h2>
-    <div class="card">
-      <div id="stepsChart"></div>
-      <div id="stepsList" style="margin-top: 8px;"></div>
-    </div>
+    <div id="photoGrid" class="photoGrid"></div>
+    <div class="empty" id="photoEmpty">No photos yet.</div>
   </section>
 
   <!-- MEALS TAB -->
@@ -353,7 +374,7 @@
       <button class="primary" style="width:100%;" onclick="openMealModal()">+ Add meal</button>
       <div class="muted small" style="margin-top: 8px;">Optional. Photo + short note. Logs locally — Claude only sees them when you do "Full backup (with photos)" in Settings.</div>
     </div>
-    <div id="proteinBar" style="display:none; margin-bottom: 12px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);">
+    <div id="proteinBar" style="display:none; margin-bottom: 12px; padding: 14px 16px; background: var(--panel); border-radius: var(--radius);">
       <div class="row between" style="margin-bottom: 6px;">
         <span class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Protein today</span>
         <span class="small" id="proteinBarLabel" style="font-weight: 600;"></span>
@@ -370,45 +391,124 @@
 
   <!-- ANALYSIS TAB -->
   <section id="tab-analysis">
-    <div class="row between" style="align-items: center; padding: 4px 4px 0;">
-      <button class="icon ghost" onclick="shiftAnalysisDate(-1)" aria-label="Previous day">‹</button>
-      <span id="analysisDateLabel" style="font-weight: 600; font-size: 15px;"></span>
-      <button class="icon ghost" id="analysisNextBtn" onclick="shiftAnalysisDate(1)" aria-label="Next day">›</button>
+    <div class="row" style="justify-content: center; padding: 4px 4px 8px;">
+      <div class="segmented">
+        <button id="analysisModeDay" class="on" onclick="setAnalysisMode('day')">Day</button>
+        <button id="analysisModeWeek" onclick="setAnalysisMode('week')">Week</button>
+      </div>
     </div>
-    <h2 id="analysisEnergyTitle">Energy</h2>
-    <div class="card">
-      <div class="row" style="gap: 10px;">
-        <div style="flex: 1;">
-          <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Eaten</div>
-          <div class="big" id="analysisEaten">—</div>
-          <div class="small" id="analysisEatenSub">No meals logged</div>
+    <div class="row between" style="align-items: center; padding: 4px 4px 0;">
+      <button class="icon ghost" onclick="shiftAnalysisDate(-1)" aria-label="Previous">‹</button>
+      <span id="analysisDateLabel" style="font-weight: 600; font-size: 16px;"></span>
+      <button class="icon ghost" id="analysisNextBtn" onclick="shiftAnalysisDate(1)" aria-label="Next">›</button>
+    </div>
+
+    <!-- DAY VIEW -->
+    <div id="analysisDayView">
+      <h2 id="analysisEnergyTitle">Energy</h2>
+      <div class="card">
+        <div class="row" style="gap: 10px;">
+          <div style="flex: 1;">
+            <div class="muted small">Eaten</div>
+            <div class="big" id="analysisEaten">—</div>
+            <div class="small" id="analysisEatenSub">No meals logged</div>
+          </div>
+          <div style="flex: 1;">
+            <div class="muted small">Burned</div>
+            <div class="big" id="analysisBurned">—</div>
+            <div class="small muted" id="analysisBurnedSub">BMR + activity</div>
+          </div>
         </div>
-        <div style="flex: 1;">
-          <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Burned</div>
-          <div class="big" id="analysisBurned">—</div>
-          <div class="small muted" id="analysisBurnedSub">BMR + activity</div>
+        <div id="analysisStatus" style="margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--panel2);"></div>
+        <div id="analysisProtein" style="margin-top: 10px;"></div>
+      </div>
+
+      <h2>Steps</h2>
+      <div class="card">
+        <div class="row" style="gap: 10px;">
+          <div style="flex: 1;">
+            <div class="muted small">Today</div>
+            <div class="big" id="stepsTodayValue" style="margin-top: 4px;">—</div>
+            <div class="small" id="stepsTodayProgress" style="margin-top: 2px;">&nbsp;</div>
+          </div>
+          <div style="flex: 1;">
+            <div class="muted small">7-day avg</div>
+            <div class="big" id="stepsAvgValue" style="margin-top: 4px;">—</div>
+            <div class="small muted" style="margin-top: 2px;">last 7 entries</div>
+          </div>
+        </div>
+        <div class="row" style="gap: 10px; align-items: flex-end; margin-top: 14px;">
+          <div class="grow">
+            <label>Steps</label>
+            <input type="number" id="stepsInput" inputmode="numeric" placeholder="e.g. 8500">
+          </div>
+          <div style="width: 150px;">
+            <label>Date</label>
+            <input type="date" id="stepsDate">
+          </div>
+        </div>
+        <button class="primary" style="width: 100%; margin-top: 12px;" onclick="addSteps()">Save</button>
+      </div>
+
+      <h2>Steps trend</h2>
+      <div class="card">
+        <div id="stepsChart"></div>
+        <div id="stepsList" style="margin-top: 8px;"></div>
+      </div>
+
+      <h2>Detailed breakdown</h2>
+      <div class="card" id="analysisBreakdown"></div>
+
+      <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 10px; border-left: 3px solid var(--warn); background: rgba(255, 149, 0,0.12);"></div>
+      <div class="row" style="gap: 8px; margin: 8px 0;">
+        <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">🤖 Generate Daily Analysis</button>
+      </div>
+
+      <h2>7-day trend</h2>
+      <div class="card">
+        <div id="analysisChart"></div>
+        <div class="muted small" style="margin-top: 8px; text-align: center;">Net = eaten − burned. Bars below 0 = deficit ✓</div>
+      </div>
+
+      <h2>AI notes</h2>
+      <div class="card" id="analysisNotes"></div>
+    </div>
+
+    <!-- WEEK VIEW -->
+    <div id="analysisWeekView" style="display: none;">
+      <h2>Week totals</h2>
+      <div class="row" style="gap: 10px; margin-bottom: 4px;">
+        <div class="stat">
+          <div class="label">Avg daily net</div>
+          <div class="v" id="weekAvgNet">—</div>
+          <div class="delta" id="weekAvgNetSub">&nbsp;</div>
+        </div>
+        <div class="stat">
+          <div class="label">Days hit protein</div>
+          <div class="v" id="weekProteinHits">—</div>
+          <div class="delta" id="weekProteinSub">&nbsp;</div>
         </div>
       </div>
-      <div id="analysisStatus" style="margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--panel2);"></div>
-      <div id="analysisProtein" style="margin-top: 10px;"></div>
+      <div class="row" style="gap: 10px;">
+        <div class="stat">
+          <div class="label">Avg steps</div>
+          <div class="v" id="weekAvgSteps">—</div>
+          <div class="delta" id="weekStepsSub">&nbsp;</div>
+        </div>
+        <div class="stat">
+          <div class="label">Workouts</div>
+          <div class="v" id="weekWorkouts">—</div>
+          <div class="delta" id="weekWorkoutsSub">&nbsp;</div>
+        </div>
+      </div>
+
+      <div class="row" style="gap: 8px; margin: 12px 0;">
+        <button class="primary grow" id="weeklyUpdateBtn" onclick="generateWeeklyAnalysis()">🤖 Generate Weekly Analysis</button>
+      </div>
+
+      <h2>Weekly AI notes</h2>
+      <div class="card" id="weeklyNotes"></div>
     </div>
-
-    <h2>Detailed breakdown</h2>
-    <div class="card" id="analysisBreakdown"></div>
-
-    <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 8px; border-left: 3px solid var(--warn); background: rgba(255,184,107,0.12);"></div>
-    <div class="row" style="gap: 8px; margin: 8px 0;">
-      <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">🤖 Generate Daily Analysis</button>
-    </div>
-
-    <h2>7-day trend</h2>
-    <div class="card">
-      <div id="analysisChart"></div>
-      <div class="muted small" style="margin-top: 8px; text-align: center;">Net = eaten − burned. Bars below 0 = deficit ✓</div>
-    </div>
-
-    <h2>Claude's notes</h2>
-    <div class="card" id="analysisNotes"></div>
   </section>
 
   <!-- AI TAB -->
@@ -436,30 +536,6 @@
     </div>
   </section>
 
-  <!-- PHOTOS TAB -->
-  <section id="tab-photos">
-    <h2>Add photo</h2>
-    <div class="card">
-      <label>Pick from camera or gallery</label>
-      <input type="file" accept="image/*" capture="environment" id="photoCameraInput" style="display:none" onchange="onPhotoPicked(event)">
-      <input type="file" accept="image/*" id="photoGalleryInput" multiple style="display:none" onchange="onPhotoPicked(event)">
-      <div class="row" style="gap: 8px;">
-        <button class="primary grow" onclick="document.getElementById('photoCameraInput').click()">📷 Take photo</button>
-        <button class="grow" onclick="document.getElementById('photoGalleryInput').click()">🖼 From gallery</button>
-      </div>
-      <div class="small muted" style="margin-top: 8px;">Tip: same lighting, same pose, same time of day. Mornings work best. Pick multiple at once for front/side/back.</div>
-    </div>
-
-    <h2 id="compareLabel">Compare</h2>
-    <div class="card" id="compareCard">
-      <div class="muted small" id="compareHint">Select two photos below to compare side by side.</div>
-      <div class="photoGrid" id="compareGrid" style="margin-top: 10px; display: none;"></div>
-    </div>
-
-    <h2>Photos</h2>
-    <div id="photoGrid" class="photoGrid"></div>
-    <div class="empty" id="photoEmpty">No photos yet.</div>
-  </section>
 
 </main>
 
@@ -468,20 +544,17 @@
   <button class="active" data-tab="workout" onclick="switchTab('workout')">
     <span class="ic">🏋︎</span>Workout
   </button>
-  <button data-tab="body" onclick="switchTab('body')">
-    <span class="ic">📏</span>Body
-  </button>
   <button data-tab="meals" onclick="switchTab('meals')">
     <span class="ic">🍽</span>Meals
   </button>
   <button data-tab="analysis" onclick="switchTab('analysis')">
     <span class="ic">📊</span>Analysis
   </button>
-  <button data-tab="ai" onclick="switchTab('ai')">
-    <span class="ic">✨</span>AI
+  <button data-tab="body" onclick="switchTab('body')">
+    <span class="ic">📏</span>Body
   </button>
-  <button data-tab="photos" onclick="switchTab('photos')">
-    <span class="ic">📸</span>Photos
+  <button data-tab="ai" onclick="switchTab('ai')">
+    <span class="ic">✨</span>Chat
   </button>
 </nav>
 
@@ -943,26 +1016,88 @@ function switchTab(name) {
   document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  if (name === 'body') renderBody();
-  if (name === 'photos') renderPhotos();
+  const titles = { workout: 'Workout', meals: 'Meals', analysis: 'Analysis', body: 'Body', ai: 'Chat' };
+  const titleEl = document.getElementById('pageTitle');
+  if (titleEl && titles[name]) titleEl.textContent = titles[name];
+  if (name === 'workout') renderWorkout();
+  if (name === 'body') { renderBody(); renderPhotos(); }
   if (name === 'meals') renderMeals();
   if (name === 'analysis') renderAnalysis();
   if (name === 'ai') renderAI();
 }
 
 // ---------- WORKOUT ----------
+let workoutViewDate = null; // null = today
+
+function workoutCurrentDate() {
+  return workoutViewDate || todayISO();
+}
+
+function shiftWorkoutDate(delta) {
+  const base = workoutCurrentDate();
+  const [y, m, d] = base.split('-').map(Number);
+  const date = new Date(y, m - 1, d + delta);
+  const shifted = [date.getFullYear(), String(date.getMonth()+1).padStart(2,'0'), String(date.getDate()).padStart(2,'0')].join('-');
+  workoutViewDate = shifted === todayISO() ? null : shifted;
+  renderWorkout();
+}
+
+function getPlanKeyForDate(dateISO) {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  const dow = new Date(y, m - 1, d).getDay(); // 0=Sun..6=Sat
+  const map = { 2: 'tue', 3: 'wed', 4: 'thu', 6: 'sat' };
+  return map[dow] || null;
+}
+
+function loadWorkoutPlan() {
+  const date = workoutCurrentDate();
+  const planKey = getPlanKeyForDate(date);
+  if (!planKey) return;
+  startWorkout(planKey);
+}
+
+function startWorkout(dayKey) {
+  const date = workoutCurrentDate();
+  currentDay = dayKey;
+  state.current = {
+    day: dayKey,
+    date,
+    cardio: PLAN[dayKey].cardio,
+    entries: PLAN[dayKey].exercises.map(name => ({ name, sets: [] }))
+  };
+  save();
+  renderWorkout();
+}
+
+function openWorkoutTypePicker() {
+  const choice = prompt('Workout type:\nhike, bike, or custom');
+  if (!choice) return;
+  const k = choice.trim().toLowerCase();
+  if (PLAN[k]) startWorkout(k);
+}
+
 function selectDay(day) {
   currentDay = day;
   document.querySelectorAll('[data-day]').forEach(c => c.classList.toggle('on', c.dataset.day === day));
   if (!state.current || state.current.day !== day) {
     state.current = {
       day,
-      date: todayISO(),
+      date: workoutCurrentDate(),
       cardio: PLAN[day].cardio,
       entries: PLAN[day].exercises.map(name => ({ name, sets: [] }))
     };
   }
   renderWorkout();
+}
+
+function formatWorkoutDateLabel(dateISO) {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = todayISO();
+  const ydaY = (() => { const t = new Date(); t.setDate(t.getDate()-1); return [t.getFullYear(), String(t.getMonth()+1).padStart(2,'0'), String(t.getDate()).padStart(2,'0')].join('-'); })();
+  if (dateISO === today) return 'Today, ' + date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (dateISO === ydaY) return 'Yesterday, ' + date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
 function isCurrentFresh() {
@@ -995,16 +1130,54 @@ function startNewSession() {
 }
 
 function renderWorkout() {
+  const viewDate = workoutCurrentDate();
+  const dateLabel = document.getElementById('workoutDateLabel');
+  if (dateLabel) dateLabel.textContent = formatWorkoutDateLabel(viewDate);
+  const nextBtn = document.getElementById('workoutNextBtn');
+  if (nextBtn) nextBtn.style.visibility = viewDate >= todayISO() ? 'hidden' : 'visible';
+
+  const banner = document.getElementById('workoutPlanBanner');
+  const empty = document.getElementById('workoutEmptyState');
+  const list = document.getElementById('exerciseList');
+  const metaRow = document.getElementById('sessionMetaRow');
+  const title = document.getElementById('workoutTitle');
+  const saveRow = document.getElementById('saveRow');
+
+  const hasCurrentForViewDate = state.current && state.current.date === viewDate;
+
+  if (!hasCurrentForViewDate) {
+    // No active session for this date — show banner if planned, else empty state
+    if (banner) banner.style.display = 'none';
+    if (empty) empty.style.display = 'none';
+    if (metaRow) metaRow.style.display = 'none';
+    if (title) title.style.display = 'none';
+    if (saveRow) saveRow.style.display = 'none';
+    if (list) list.innerHTML = '';
+
+    const planKey = getPlanKeyForDate(viewDate);
+    if (planKey && banner) {
+      document.getElementById('workoutPlanLabel').textContent = PLAN[planKey].label;
+      banner.style.display = 'block';
+    } else if (empty) {
+      empty.style.display = 'block';
+    }
+    renderHistory();
+    return;
+  }
+
+  // Active session exists for this date
+  if (banner) banner.style.display = 'none';
+  if (empty) empty.style.display = 'none';
+  if (metaRow) metaRow.style.display = 'flex';
+  if (title) title.style.display = '';
+
   const editing = !!state.current?._editingId;
-  document.getElementById('workoutTitle').textContent = (editing ? '✏ Editing — ' : '+ New ') + PLAN[currentDay].label;
-  const dateInput = document.getElementById('sessionDate');
-  if (dateInput && state.current) dateInput.value = state.current.date || todayISO();
+  if (title) title.textContent = (editing ? '✏ Editing — ' : '') + PLAN[state.current.day].label;
   const timeInput = document.getElementById('sessionTime');
   if (timeInput && state.current) timeInput.value = state.current.time || '';
-  const saveRow = document.getElementById('saveRow');
   if (saveRow) saveRow.style.display = (editing || !isCurrentFresh()) ? 'flex' : 'none';
-  const list = document.getElementById('exerciseList');
   list.innerHTML = '';
+  currentDay = state.current.day; // sync
 
   if (PLAN[currentDay].cardio) {
     const c = document.createElement('div');
@@ -1057,7 +1230,6 @@ function renderWorkout() {
   list.appendChild(addBtn);
 
   renderHistory();
-  document.querySelectorAll('[data-day]').forEach(c => c.classList.toggle('on', c.dataset.day === currentDay));
 }
 
 function lastSetsFor(name) {
@@ -1214,7 +1386,7 @@ function finishSession() {
     }
     state.current = null;
     save();
-    selectDay(currentDay);
+    renderWorkout();
     toast('Updated ✓');
   } else {
     savedAt = Date.now();
@@ -1806,16 +1978,16 @@ async function renderEnergy() {
   const goalGap = e.eaten - DAILY_CAL_GOAL;
   let bg, text;
   if (net < -800) {
-    bg = 'rgba(255, 184, 107, 0.15)';
+    bg = 'rgba(255, 149, 0, 0.15)';
     text = `<b>Net: ${net} cal</b> · big deficit. Eat more — especially protein.`;
   } else if (net < -200) {
-    bg = 'rgba(122, 209, 195, 0.18)';
+    bg = 'rgba(52, 199, 89, 0.18)';
     text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`;
   } else if (net < 200) {
-    bg = 'rgba(79, 140, 255, 0.15)';
+    bg = 'rgba(0, 113, 227, 0.15)';
     text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance — no fat change today`;
   } else {
-    bg = 'rgba(255, 107, 138, 0.15)';
+    bg = 'rgba(255, 59, 48, 0.15)';
     text = `<b>Net: +${net} cal</b> · surplus`;
   }
   if (e.estimatedCount < e.mealCount) {
@@ -1874,10 +2046,22 @@ async function drawEnergyChart(elementId = 'energyChart') {
   `;
 }
 
+let analysisMode = 'day'; // 'day' or 'week'
+
+function setAnalysisMode(mode) {
+  analysisMode = mode;
+  document.getElementById('analysisModeDay').classList.toggle('on', mode === 'day');
+  document.getElementById('analysisModeWeek').classList.toggle('on', mode === 'week');
+  document.getElementById('analysisDayView').style.display = mode === 'day' ? 'block' : 'none';
+  document.getElementById('analysisWeekView').style.display = mode === 'week' ? 'block' : 'none';
+  renderAnalysis();
+}
+
 function shiftAnalysisDate(delta) {
   const base = analysisViewDate || todayISO();
+  const step = analysisMode === 'week' ? 7 : 1;
   const [y, m, d] = base.split('-').map(Number);
-  const date = new Date(y, m - 1, d + delta);
+  const date = new Date(y, m - 1, d + delta * step);
   const shifted = [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, '0'),
@@ -1888,7 +2072,69 @@ function shiftAnalysisDate(delta) {
   renderAnalysis();
 }
 
+// Returns the Sunday-anchored week start ISO for a given date
+function weekStartFor(dateISO) {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const dow = date.getDay(); // 0=Sun
+  date.setDate(date.getDate() - dow);
+  return [date.getFullYear(), String(date.getMonth()+1).padStart(2,'0'), String(date.getDate()).padStart(2,'0')].join('-');
+}
+
+function weekDates(weekStartISO) {
+  const [y, m, d] = weekStartISO.split('-').map(Number);
+  const out = [];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(y, m - 1, d + i);
+    out.push([dt.getFullYear(), String(dt.getMonth()+1).padStart(2,'0'), String(dt.getDate()).padStart(2,'0')].join('-'));
+  }
+  return out;
+}
+
+async function renderWeekView() {
+  const viewDate = analysisViewDate || todayISO();
+  const weekStart = weekStartFor(viewDate);
+  const days = weekDates(weekStart);
+
+  const labelEl = document.getElementById('analysisDateLabel');
+  const startDate = new Date(...weekStart.split('-').map((v,i) => i===1 ? Number(v)-1 : Number(v)));
+  const endDate = new Date(...days[6].split('-').map((v,i) => i===1 ? Number(v)-1 : Number(v)));
+  if (labelEl) labelEl.textContent = startDate.toLocaleDateString(undefined, {month:'short', day:'numeric'}) + ' – ' + endDate.toLocaleDateString(undefined, {month:'short', day:'numeric'});
+  const nextBtn = document.getElementById('analysisNextBtn');
+  if (nextBtn) nextBtn.style.opacity = weekStart >= weekStartFor(todayISO()) ? '0.3' : '1';
+
+  let totalNet = 0, totalSteps = 0, proteinHits = 0, workouts = 0, daysWithData = 0;
+  for (const d of days) {
+    const e = await computeDailyEnergy(d);
+    if (e.mealCount > 0 || e.sessionBurn > 0) daysWithData++;
+    totalNet += (e.eaten - e.burned);
+    const stepRec = (state.steps || []).find(s => s.date === d);
+    if (stepRec) totalSteps += stepRec.count;
+    if (e.protein >= 95) proteinHits++;
+    workouts += (state.sessions || []).filter(s => s.date === d).length;
+  }
+  const avgNet = daysWithData ? Math.round(totalNet / daysWithData) : 0;
+  const avgSteps = Math.round(totalSteps / 7);
+  document.getElementById('weekAvgNet').textContent = (avgNet >= 0 ? '+' : '') + avgNet;
+  document.getElementById('weekProteinHits').textContent = proteinHits + ' / 7';
+  document.getElementById('weekAvgSteps').textContent = avgSteps.toLocaleString();
+  document.getElementById('weekWorkouts').textContent = workouts;
+
+  // Show weekly note for this week
+  const weeklyNote = (state.weeklyNotes || []).find(n => n.weekStart === weekStart);
+  const notesEl = document.getElementById('weeklyNotes');
+  if (notesEl) {
+    if (weeklyNote) notesEl.innerHTML = '<div style="white-space: pre-wrap; line-height: 1.5;">' + escapeHtml(weeklyNote.note) + '</div>';
+    else notesEl.innerHTML = '<div class="muted small">No weekly analysis yet. Tap the button above to generate one.</div>';
+  }
+}
+
 async function renderAnalysis() {
+  if (analysisMode === 'week') {
+    return renderWeekView();
+  }
+  // Update steps section (lives in analysis tab now)
+  renderSteps();
   const today = todayISO();
   const viewDate = analysisViewDate || today;
   const isToday = viewDate === today;
@@ -1921,10 +2167,10 @@ async function renderAnalysis() {
   } else {
     const net = Math.round(e.eaten - e.burned);
     let bg, text;
-    if (net < -800) { bg = 'rgba(255, 184, 107, 0.15)'; text = `<b>Net: ${net} cal</b> · big deficit. Eat more — especially protein.`; }
-    else if (net < -200) { bg = 'rgba(122, 209, 195, 0.18)'; text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`; }
-    else if (net < 200) { bg = 'rgba(79, 140, 255, 0.15)'; text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance`; }
-    else { bg = 'rgba(255, 107, 138, 0.15)'; text = `<b>Net: +${net} cal</b> · surplus`; }
+    if (net < -800) { bg = 'rgba(255, 149, 0, 0.15)'; text = `<b>Net: ${net} cal</b> · big deficit. Eat more — especially protein.`; }
+    else if (net < -200) { bg = 'rgba(52, 199, 89, 0.18)'; text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`; }
+    else if (net < 200) { bg = 'rgba(0, 113, 227, 0.15)'; text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance`; }
+    else { bg = 'rgba(255, 59, 48, 0.15)'; text = `<b>Net: +${net} cal</b> · surplus`; }
     status.style.background = bg;
     status.innerHTML = text;
   }
@@ -2084,14 +2330,14 @@ async function renderMeals() {
         </details>`
       : '';
     const questionsHtml = (m.questions && m.questions.length)
-      ? `<div style="margin-top: 6px; padding: 8px 10px; background: rgba(255, 184, 107, 0.12); border-left: 3px solid var(--warn); border-radius: 6px;">
+      ? `<div style="margin-top: 6px; padding: 8px 10px; background: rgba(255, 149, 0, 0.12); border-left: 3px solid var(--warn); border-radius: 6px;">
           <div class="small" style="font-weight: 600; color: var(--warn);">❓ AI has ${m.questions.length} question${m.questions.length > 1 ? 's' : ''}:</div>
           ${m.questions.map(q => `<div class="small" style="margin-top: 4px;">• ${escapeHtml(q)}</div>`).join('')}
           <div class="small muted" style="margin-top: 6px;">Tap the meal to answer via "Refine".</div>
         </div>`
       : '';
     const reanalyzeBtn = getGeminiKey()
-      ? `<button class="ghost" style="padding: 4px 10px; font-size: 12px; margin-top: 6px;" onclick="event.stopPropagation(); openMealModal(${m.id}, true)">🔄 Re-analyze</button>`
+      ? `<button class="ghost" id="reanalyzeCard-${m.id}" style="padding: 4px 10px; font-size: 12px; margin-top: 6px;" onclick="event.stopPropagation(); reanalyzeMealInPlace(${m.id})">🔄 Re-analyze</button>`
       : '';
     card.innerHTML = `
       <div class="row between" style="align-items: flex-start;">
@@ -2200,6 +2446,30 @@ async function reanalyzeMeal() {
     const m = await getMeal(editingMealId);
     if (m) toast(`Updated: ~${m.calories} kcal${m.protein ? ' · ' + m.protein + 'g protein' : ''}`);
   }
+}
+
+// In-place re-analyze from meal card — no modal opens
+async function reanalyzeMealInPlace(mealId) {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  const before = await getMeal(mealId);
+  if (!before) return;
+  const oldCal = before.calories || 0;
+  const oldProt = before.protein || 0;
+
+  const btn = document.getElementById(`reanalyzeCard-${mealId}`);
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Analyzing…'; }
+  const ok = await autoAnalyzeMeal(mealId, { silent: true, force: true });
+  if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-analyze'; }
+  if (!ok) return toast('Re-analyze failed');
+
+  const after = await getMeal(mealId);
+  const newCal = after.calories || 0;
+  const newProt = after.protein || 0;
+  const calDelta = `${oldCal} → ${newCal} kcal`;
+  const protDelta = newProt ? ` · ${oldProt}g → ${newProt}g protein` : '';
+  toast(calDelta + protDelta);
+  renderMeals();
+  renderAnalysis();
 }
 
 async function autoAnalyzeMeal(mealId, opts = {}) {
@@ -2447,7 +2717,7 @@ function renderMealRefineChat() {
   html += '</div>';
   // Show estimate update preview only when Update Estimate button has been used and parsed JSON exists
   if (_pendingRefine && typeof _pendingRefine.total === 'number') {
-    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(122, 209, 195, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
+    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(52, 199, 89, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
       <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Proposed estimate</div>
       <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${_pendingRefine.total} kcal${_pendingRefine.totalProtein != null ? ` · <span style="color: var(--accent2)">${_pendingRefine.totalProtein}g protein</span>` : ''}</div>
       ${_pendingRefine.changeNote ? `<div class="small" style="font-style: italic; margin-bottom: 6px;">${escapeHtml(_pendingRefine.changeNote)}</div>` : ''}
@@ -2662,7 +2932,7 @@ function renderSessionRefineChat() {
   }
   html += '</div>';
   if (_pendingSessionRefine && typeof _pendingSessionRefine.total === 'number') {
-    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(122, 209, 195, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
+    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(52, 199, 89, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
       <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Proposed burn estimate</div>
       <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${_pendingSessionRefine.total} kcal</div>
       ${_pendingSessionRefine.changeNote ? `<div class="small" style="font-style: italic; margin-bottom: 6px;">${escapeHtml(_pendingSessionRefine.changeNote)}</div>` : ''}
@@ -2928,9 +3198,99 @@ function scheduleMidnightGen() {
           await runDailyAnalysis({ date: today, silent: true, fingerprint: fp });
         }
       }
+      // Saturday night: also generate weekly analysis for the just-finished week (Sun→Sat)
+      const dow = new Date().getDay();
+      if (dow === 6) { // Saturday
+        await maybeGenerateWeekly(weekStartFor(today));
+      }
     }
     scheduleMidnightGen(); // schedule next day
   }, ms);
+}
+
+async function weeklyFingerprint(weekStartISO) {
+  const days = weekDates(weekStartISO);
+  const fps = [];
+  for (const d of days) fps.push(await dayFingerprint(d));
+  return fps.join('||');
+}
+
+async function maybeGenerateWeekly(weekStartISO) {
+  const fp = await weeklyFingerprint(weekStartISO);
+  const existing = (state.weeklyNotes || []).find(n => n.weekStart === weekStartISO);
+  if (existing && existing.fingerprint === fp) return; // up to date
+  await runWeeklyAnalysis({ weekStart: weekStartISO, fingerprint: fp, silent: true });
+}
+
+async function generateWeeklyAnalysis() {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  const viewDate = analysisViewDate || todayISO();
+  const weekStart = weekStartFor(viewDate);
+  const fp = await weeklyFingerprint(weekStart);
+  await runWeeklyAnalysis({ weekStart, fingerprint: fp });
+}
+
+async function runWeeklyAnalysis(opts = {}) {
+  if (!getGeminiKey()) return null;
+  const weekStart = opts.weekStart || weekStartFor(todayISO());
+  const days = weekDates(weekStart);
+
+  // Gather full week data
+  const allMeals = await getAllMeals();
+  const weekData = [];
+  for (const d of days) {
+    const dayMeals = allMeals.filter(m => m.date === d).map(m => ({
+      time: m.time, description: m.description || '(none)',
+      calories: m.calories || null, protein: m.protein || null
+    }));
+    const daySessions = (state.sessions || []).filter(s => s.date === d).map(s => ({
+      type: PLAN[s.day]?.label || s.day,
+      cardio: s.cardioNote || null,
+      burn: s.caloriesBurned || null,
+      exercises: (s.entries || []).filter(en => en.sets?.length).map(en => `${en.name}: ${en.sets.map(x=>x.reps).join(',')}`)
+    }));
+    const e = await computeDailyEnergy(d);
+    const stepsRec = (state.steps || []).find(s => s.date === d);
+    weekData.push({
+      date: d,
+      dayName: new Date(...d.split('-').map((v,i) => i===1 ? Number(v)-1 : Number(v))).toLocaleDateString(undefined, {weekday: 'long'}),
+      eaten: e.eaten, burned: e.burned, protein: e.protein,
+      steps: stepsRec?.count || 0,
+      meals: dayMeals, sessions: daySessions
+    });
+  }
+
+  const prompt = (PROMPTS.weeklyAnalysis || '').replace('{weekStart}', weekStart).replace('{weekData}', JSON.stringify(weekData, null, 2));
+  if (!prompt) return null;
+
+  if (!opts.silent) toast('Generating weekly analysis…', { persistent: true });
+  try {
+    const result = await callGeminiAnalysis(prompt);
+    const parsed = parseJSONResponse(result);
+    if (!parsed) {
+      if (!opts.silent) { hideToast(); toast('Weekly analysis failed'); }
+      return null;
+    }
+    state.weeklyNotes = (state.weeklyNotes || []).filter(n => n.weekStart !== weekStart);
+    const noteText = `${parsed.headline || ''}
+
+${(parsed.wins || []).length ? '💪 Wins\n' + parsed.wins.map(w => '• ' + w).join('\n') + '\n\n' : ''}${(parsed.watch || []).length ? '⚠️ Watch\n' + parsed.watch.map(w => '• ' + w).join('\n') + '\n\n' : ''}${parsed.pattern ? '📈 ' + parsed.pattern + '\n\n' : ''}${(parsed.nextWeek || []).length ? '📝 Next week\n' + parsed.nextWeek.map(r => '• ' + r).join('\n') : ''}
+
+Generated ${new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})}`;
+    state.weeklyNotes.push({
+      weekStart,
+      note: noteText.trim(),
+      fingerprint: opts.fingerprint || null,
+      addedAt: new Date().toISOString()
+    });
+    save();
+    if (!opts.silent) { hideToast(); toast('Weekly analysis ✓'); }
+    if (typeof renderAnalysis === 'function') renderAnalysis();
+    return parsed;
+  } catch (e) {
+    if (!opts.silent) { hideToast(); toast('Weekly analysis failed'); }
+    return null;
+  }
 }
 
 async function analyzeAllMissing() {
