@@ -16,8 +16,8 @@
     --line: #e5e5e7;
     --text: #1d1d1f;
     --muted: #86868b;
-    --accent: #0071e3;
-    --accent2: #34c759;
+    --accent: #7c3aed;
+    --accent2: #10b981;
     --warn: #ff9500;
     --danger: #ff3b30;
     --radius: 16px;
@@ -272,12 +272,29 @@
       <button class="icon ghost" id="workoutNextBtn" onclick="shiftWorkoutDate(1)" aria-label="Next">›</button>
     </div>
 
+    <!-- Steps slot — always present in workout day view -->
+    <div class="card">
+      <div class="row between" style="margin-bottom: 8px;">
+        <div>
+          <div class="muted small">Steps</div>
+          <div class="big" id="workoutStepsValue" style="font-size: 26px;">—</div>
+        </div>
+        <div style="text-align: right;">
+          <div id="workoutStepsProgress" class="small" style="margin-top: 18px;">&nbsp;</div>
+        </div>
+      </div>
+      <div class="row" style="gap: 8px;">
+        <input type="number" id="workoutStepsInput" inputmode="numeric" placeholder="Log steps for this day" style="flex: 1;">
+        <button class="primary" onclick="saveWorkoutSteps()">Save</button>
+      </div>
+    </div>
+
     <!-- Plan banner: shown only when viewing a day with a planned workout and no session loaded -->
-    <div id="workoutPlanBanner" class="card" style="display: none; background: rgba(0, 113, 227, 0.08);">
+    <div id="workoutPlanBanner" class="card" style="display: none; background: rgba(124, 58, 237, 0.08);">
       <div class="muted small">Today's plan</div>
       <div id="workoutPlanLabel" style="font-weight: 600; font-size: 17px; margin-top: 2px;"></div>
       <div class="row" style="gap: 8px; margin-top: 10px;">
-        <button class="primary grow" onclick="loadWorkoutPlan()">+ Load plan</button>
+        <button class="primary grow" onclick="loadWorkoutPlan()">Load plan</button>
         <button class="ghost" onclick="openWorkoutTypePicker()">More…</button>
       </div>
     </div>
@@ -286,18 +303,20 @@
     <div id="workoutEmptyState" class="card" style="display: none;">
       <div class="muted small" style="margin-bottom: 10px;">No workout for this day yet.</div>
       <div class="row" style="gap: 8px;">
-        <button class="primary grow" onclick="startWorkout('custom')">+ Custom</button>
-        <button class="grow" onclick="openWorkoutTypePicker()">+ Hike / Bike / Other</button>
+        <button class="primary grow" onclick="startWorkout('custom')">Custom workout</button>
+        <button class="grow" onclick="openWorkoutTypePicker()">Hike / Bike / Other</button>
       </div>
     </div>
 
+    <div class="row between" style="margin-top: 18px; align-items: center;" id="sessionHeaderRow">
+      <h2 id="workoutTitle" style="margin: 0;">Workout</h2>
+      <button class="ghost" id="workoutCancelBtn" onclick="cancelSession()" style="display: none; padding: 6px 14px; font-size: 14px;">Cancel</button>
+    </div>
     <div class="row" style="gap: 8px; align-items: center; padding: 8px 4px 0; flex-wrap: wrap;" id="sessionMetaRow">
       <label class="muted small" style="margin: 0;">Time:</label>
       <input type="time" id="sessionTime" style="flex: 1; max-width: 120px;" onchange="updateSessionTime(this.value)">
-      <button class="ghost" style="padding: 8px 12px; font-size: 14px;" onclick="openPlanModal()">📅 View plan</button>
+      <button class="ghost" style="padding: 8px 12px; font-size: 14px;" onclick="openPlanModal()">View plan</button>
     </div>
-
-    <h2 id="workoutTitle">Workout</h2>
     <div id="exerciseList"></div>
 
     <div class="row" id="saveRow" style="margin-top: 8px; display: none;">
@@ -461,7 +480,7 @@
 
       <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 10px; border-left: 3px solid var(--warn); background: rgba(255, 149, 0,0.12);"></div>
       <div class="row" style="gap: 8px; margin: 8px 0;">
-        <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">🤖 Generate Daily Analysis</button>
+        <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">Generate Daily Analysis</button>
       </div>
 
       <h2>7-day trend</h2>
@@ -503,7 +522,7 @@
       </div>
 
       <div class="row" style="gap: 8px; margin: 12px 0;">
-        <button class="primary grow" id="weeklyUpdateBtn" onclick="generateWeeklyAnalysis()">🤖 Generate Weekly Analysis</button>
+        <button class="primary grow" id="weeklyUpdateBtn" onclick="generateWeeklyAnalysis()">Generate Weekly Analysis</button>
       </div>
 
       <h2>Weekly AI notes</h2>
@@ -644,7 +663,7 @@
       <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
     </div>
 
-    <button id="reanalyzeMealBtn" style="display:none; width:100%; margin-top: 12px;" onclick="reanalyzeMeal()">🔄 Re-analyze this meal</button>
+    <button id="reanalyzeMealBtn" style="display:none; width:100%; margin-top: 12px;" onclick="reanalyzeMeal()">Re-analyze this meal</button>
     <div class="row" style="margin-top: 10px; gap: 10px;">
       <button class="grow primary" onclick="saveMeal()">Save</button>
       <button class="ghost" onclick="closeMealModal()">Cancel</button>
@@ -1136,11 +1155,30 @@ function renderWorkout() {
   const nextBtn = document.getElementById('workoutNextBtn');
   if (nextBtn) nextBtn.style.visibility = viewDate >= todayISO() ? 'hidden' : 'visible';
 
+  // Populate steps slot for the viewed date
+  const stepsRec = (state.steps || []).find(s => s.date === viewDate);
+  const stepsVal = document.getElementById('workoutStepsValue');
+  const stepsProg = document.getElementById('workoutStepsProgress');
+  const stepsInput = document.getElementById('workoutStepsInput');
+  if (stepsVal) stepsVal.textContent = stepsRec ? stepsRec.count.toLocaleString() : '—';
+  if (stepsProg) {
+    if (stepsRec) {
+      const pct = Math.round((stepsRec.count / STEPS_GOAL) * 100);
+      const hit = stepsRec.count >= STEPS_GOAL;
+      stepsProg.innerHTML = `<span style="color: ${hit ? 'var(--accent2)' : 'var(--muted)'};">${pct}% of ${STEPS_GOAL.toLocaleString()}${hit ? ' ✓' : ''}</span>`;
+    } else {
+      stepsProg.innerHTML = '<span class="muted">Not logged yet</span>';
+    }
+  }
+  if (stepsInput) stepsInput.value = stepsRec ? stepsRec.count : '';
+
   const banner = document.getElementById('workoutPlanBanner');
   const empty = document.getElementById('workoutEmptyState');
   const list = document.getElementById('exerciseList');
   const metaRow = document.getElementById('sessionMetaRow');
+  const headerRow = document.getElementById('sessionHeaderRow');
   const title = document.getElementById('workoutTitle');
+  const cancelBtn = document.getElementById('workoutCancelBtn');
   const saveRow = document.getElementById('saveRow');
 
   const hasCurrentForViewDate = state.current && state.current.date === viewDate;
@@ -1150,7 +1188,7 @@ function renderWorkout() {
     if (banner) banner.style.display = 'none';
     if (empty) empty.style.display = 'none';
     if (metaRow) metaRow.style.display = 'none';
-    if (title) title.style.display = 'none';
+    if (headerRow) headerRow.style.display = 'none';
     if (saveRow) saveRow.style.display = 'none';
     if (list) list.innerHTML = '';
 
@@ -1169,10 +1207,11 @@ function renderWorkout() {
   if (banner) banner.style.display = 'none';
   if (empty) empty.style.display = 'none';
   if (metaRow) metaRow.style.display = 'flex';
-  if (title) title.style.display = '';
+  if (headerRow) headerRow.style.display = 'flex';
+  if (cancelBtn) cancelBtn.style.display = 'inline-flex';
 
   const editing = !!state.current?._editingId;
-  if (title) title.textContent = (editing ? '✏ Editing — ' : '') + PLAN[state.current.day].label;
+  if (title) title.textContent = (editing ? 'Editing — ' : '') + PLAN[state.current.day].label;
   const timeInput = document.getElementById('sessionTime');
   if (timeInput && state.current) timeInput.value = state.current.time || '';
   if (saveRow) saveRow.style.display = (editing || !isCurrentFresh()) ? 'flex' : 'none';
@@ -1405,29 +1444,38 @@ function finishSession() {
 function cancelSession() {
   if (!state.current) return;
   const wasEditing = !!state.current._editingId;
-  const msg = wasEditing
-    ? 'Discard your edits? The original saved session is unchanged.'
-    : 'Reset this session? Logged sets will be lost.';
-  if (!confirm(msg)) return;
+  const isFresh = isCurrentFresh();
+  if (!isFresh) {
+    const msg = wasEditing
+      ? 'Discard your edits? The original saved session is unchanged.'
+      : 'Cancel this session? Logged sets will be lost.';
+    if (!confirm(msg)) return;
+  }
   state.current = null;
-  selectDay(currentDay);
+  save();
+  renderWorkout();
   if (wasEditing) toast('Edits discarded');
 }
 
 function renderHistory() {
   const list = document.getElementById('historyList');
   if (!state.sessions.length) { list.innerHTML = '<div class="empty">No sessions yet.</div>'; return; }
-  const recent = state.sessions.slice().reverse().slice(0, 12);
-  list.innerHTML = recent.map(s => {
+
+  // Group sessions by date
+  const byDate = {};
+  for (const s of state.sessions) {
+    if (!byDate[s.date]) byDate[s.date] = [];
+    byDate[s.date].push(s);
+  }
+  const dates = Object.keys(byDate).sort().reverse().slice(0, 14);
+
+  const renderSession = s => {
     const cardio = s.cardioNote ? escapeHtml(s.cardioNote) : '';
     const notes = s.notes ? escapeHtml(s.notes) : '';
-    const summaryPreview = s.cardioNote
-      ? ' · <span class="muted" style="font-weight: 400; font-size: 13px;">' + escapeHtml(s.cardioNote.length > 50 ? s.cardioNote.slice(0, 50) + '…' : s.cardioNote) + '</span>'
-      : (s.notes ? ' <span class="muted" style="font-weight: 400; font-size: 13px;">· has notes</span>' : '');
     const burnQs = s.burnQuestions || [];
     const burnHtml = (typeof s.caloriesBurned === 'number')
-      ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--panel2); border-radius: 8px;">
-          <div class="row between"><div class="muted small" style="text-transform: uppercase; letter-spacing: 0.4px;">Burn</div><b>${s.caloriesBurned} kcal</b></div>
+      ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
+          <div class="row between"><div class="muted small">Burn</div><b>${s.caloriesBurned} kcal</b></div>
           ${s.burnBreakdown && s.burnBreakdown.length ? `<details style="margin-top: 6px;"><summary class="small muted">Breakdown</summary>
             ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
             ${s.burnNotes ? `<div class="small muted" style="margin-top: 4px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
@@ -1435,22 +1483,43 @@ function renderHistory() {
           ${burnQs.length ? `<div class="small" style="margin-top: 6px; color: var(--warn);">❓ ${burnQs.length} question${burnQs.length > 1 ? 's' : ''}: ${burnQs.map(escapeHtml).join(' · ')}</div>` : ''}
         </div>`
       : '';
+    const summaryPreview = s.cardioNote
+      ? ' · <span class="muted small">' + escapeHtml(s.cardioNote.length > 40 ? s.cardioNote.slice(0, 40) + '…' : s.cardioNote) + '</span>'
+      : '';
     return `
-    <details data-saved-at="${s.savedAt}">
-      <summary>${formatDate(s.date)}${s.time ? ' · ' + s.time : ''} — ${PLAN[s.day]?.label || s.day}${summaryPreview}</summary>
-      ${cardio ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--panel2); border-radius: 8px;"><div class="muted small" style="text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;">Cardio</div><div>${cardio}</div></div>` : ''}
-      ${s.entries.filter(e => e.sets.length).map(e => `
-        <div class="small" style="margin-top:6px;"><b>${e.name}</b>: ${e.sets.map(x=>x.reps).join(' · ')}</div>
-      `).join('')}
-      ${burnHtml}
-      ${notes ? `<div style="margin-top: 10px; padding: 8px 10px; background: var(--panel2); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small" style="text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px;">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
-      <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
-        <button class="ghost" style="padding: 6px 10px; font-size: 13px;" onclick="editSession(${s.savedAt})">✏ Edit</button>
-        <button class="ghost" style="padding: 6px 10px; font-size: 13px;" onclick="openSessionRefine(${s.savedAt})">💬 Refine</button>
-        <button class="ghost danger" style="padding: 6px 10px; font-size: 13px;" onclick="deleteSession(${s.savedAt})">✕ Delete</button>
+      <details data-saved-at="${s.savedAt}" style="background: var(--bg); margin-bottom: 6px; padding: 10px 12px;">
+        <summary>${s.time ? s.time + ' · ' : ''}${PLAN[s.day]?.label || s.day}${summaryPreview}</summary>
+        ${cardio ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--panel); border-radius: 8px;"><div class="muted small">Cardio</div><div>${cardio}</div></div>` : ''}
+        ${s.entries.filter(e => e.sets.length).map(e => `
+          <div class="small" style="margin-top:6px;"><b>${e.name}</b>: ${e.sets.map(x=>x.reps).join(' · ')}</div>
+        `).join('')}
+        ${burnHtml}
+        ${notes ? `<div style="margin-top: 10px; padding: 8px 10px; background: var(--panel); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
+        <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
+          <button class="ghost" style="padding: 6px 12px; font-size: 14px;" onclick="editSession(${s.savedAt})">Edit</button>
+          <button class="ghost" style="padding: 6px 12px; font-size: 14px;" onclick="openSessionRefine(${s.savedAt})">Refine</button>
+          <button class="ghost danger" style="padding: 6px 12px; font-size: 14px;" onclick="deleteSession(${s.savedAt})">Delete</button>
+        </div>
+      </details>
+    `;
+  };
+
+  list.innerHTML = dates.map(date => {
+    const sessions = byDate[date];
+    const labels = sessions.map(s => PLAN[s.day]?.label || s.day).join(' · ');
+    const dateHeader = formatDate(date);
+    if (sessions.length === 1) {
+      return `<div style="margin-bottom: 12px;">
+        <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">${dateHeader}</div>
+        ${renderSession(sessions[0])}
+      </div>`;
+    }
+    return `<div style="margin-bottom: 12px;">
+      <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">${dateHeader} · ${sessions.length} sessions</div>
+      <div style="padding: 10px 12px; background: var(--panel); border-radius: 12px;">
+        ${sessions.map(renderSession).join('')}
       </div>
-    </details>
-  `;
+    </div>`;
   }).join('');
 }
 
@@ -1550,6 +1619,17 @@ function addSteps() {
   document.getElementById('stepsInput').value = '';
   renderBody();
   toast('Saved ✓');
+}
+function saveWorkoutSteps() {
+  const v = parseInt(document.getElementById('workoutStepsInput').value, 10);
+  const d = workoutCurrentDate();
+  if (isNaN(v) || v <= 0) return toast('Enter a number');
+  state.steps = state.steps || [];
+  state.steps = state.steps.filter(s => s.date !== d);
+  state.steps.push({ date: d, count: v });
+  save();
+  renderWorkout();
+  toast('Steps saved ✓');
 }
 function removeSteps(date) {
   if (!confirm('Remove this entry?')) return;
@@ -1981,10 +2061,10 @@ async function renderEnergy() {
     bg = 'rgba(255, 149, 0, 0.15)';
     text = `<b>Net: ${net} cal</b> · big deficit. Eat more — especially protein.`;
   } else if (net < -200) {
-    bg = 'rgba(52, 199, 89, 0.18)';
+    bg = 'rgba(16, 185, 129, 0.18)';
     text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`;
   } else if (net < 200) {
-    bg = 'rgba(0, 113, 227, 0.15)';
+    bg = 'rgba(124, 58, 237, 0.15)';
     text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance — no fat change today`;
   } else {
     bg = 'rgba(255, 59, 48, 0.15)';
@@ -2168,8 +2248,8 @@ async function renderAnalysis() {
     const net = Math.round(e.eaten - e.burned);
     let bg, text;
     if (net < -800) { bg = 'rgba(255, 149, 0, 0.15)'; text = `<b>Net: ${net} cal</b> · big deficit. Eat more — especially protein.`; }
-    else if (net < -200) { bg = 'rgba(52, 199, 89, 0.18)'; text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`; }
-    else if (net < 200) { bg = 'rgba(0, 113, 227, 0.15)'; text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance`; }
+    else if (net < -200) { bg = 'rgba(16, 185, 129, 0.18)'; text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`; }
+    else if (net < 200) { bg = 'rgba(124, 58, 237, 0.15)'; text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance`; }
     else { bg = 'rgba(255, 59, 48, 0.15)'; text = `<b>Net: +${net} cal</b> · surplus`; }
     status.style.background = bg;
     status.innerHTML = text;
@@ -2337,7 +2417,7 @@ async function renderMeals() {
         </div>`
       : '';
     const reanalyzeBtn = getGeminiKey()
-      ? `<button class="ghost" id="reanalyzeCard-${m.id}" style="padding: 4px 10px; font-size: 12px; margin-top: 6px;" onclick="event.stopPropagation(); reanalyzeMealInPlace(${m.id})">🔄 Re-analyze</button>`
+      ? `<button class="ghost" id="reanalyzeCard-${m.id}" style="padding: 4px 10px; font-size: 12px; margin-top: 6px;" onclick="event.stopPropagation(); reanalyzeMealInPlace(${m.id})">Re-analyze</button>`
       : '';
     card.innerHTML = `
       <div class="row between" style="align-items: flex-start;">
@@ -2441,7 +2521,7 @@ async function reanalyzeMeal() {
   btn.textContent = '⟳ Analyzing…';
   const ok = await autoAnalyzeMeal(editingMealId, { force: true });
   btn.disabled = false;
-  btn.textContent = '🔄 Re-analyze (update calories + protein)';
+  btn.textContent = 'Re-analyze (calories + protein)';
   if (ok) {
     const m = await getMeal(editingMealId);
     if (m) toast(`Updated: ~${m.calories} kcal${m.protein ? ' · ' + m.protein + 'g protein' : ''}`);
@@ -2717,7 +2797,7 @@ function renderMealRefineChat() {
   html += '</div>';
   // Show estimate update preview only when Update Estimate button has been used and parsed JSON exists
   if (_pendingRefine && typeof _pendingRefine.total === 'number') {
-    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(52, 199, 89, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
+    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(16, 185, 129, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
       <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Proposed estimate</div>
       <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${_pendingRefine.total} kcal${_pendingRefine.totalProtein != null ? ` · <span style="color: var(--accent2)">${_pendingRefine.totalProtein}g protein</span>` : ''}</div>
       ${_pendingRefine.changeNote ? `<div class="small" style="font-style: italic; margin-bottom: 6px;">${escapeHtml(_pendingRefine.changeNote)}</div>` : ''}
@@ -2932,7 +3012,7 @@ function renderSessionRefineChat() {
   }
   html += '</div>';
   if (_pendingSessionRefine && typeof _pendingSessionRefine.total === 'number') {
-    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(52, 199, 89, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
+    html += `<div style="margin-top: 12px; padding: 12px; background: rgba(16, 185, 129, 0.12); border-left: 3px solid var(--accent2); border-radius: 8px;">
       <div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px;">Proposed burn estimate</div>
       <div style="font-size: 22px; font-weight: 700; margin: 4px 0;">${_pendingSessionRefine.total} kcal</div>
       ${_pendingSessionRefine.changeNote ? `<div class="small" style="font-style: italic; margin-bottom: 6px;">${escapeHtml(_pendingSessionRefine.changeNote)}</div>` : ''}
@@ -3122,7 +3202,7 @@ async function smartUpdateSummaries() {
     await runDailyAnalysis({ date, silent: true, fingerprint: fp });
   }
 
-  if (btn) btn.textContent = '🤖 Generate Daily Analysis';
+  if (btn) btn.textContent = 'Generate Daily Analysis';
   const total = totalItems + daysNeedingUpdate.length;
   toast(`Updated ${total} item${total !== 1 ? 's' : ''} ✓`);
   renderMeals();
