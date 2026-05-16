@@ -1457,72 +1457,59 @@ function renderHistory() {
   }
   const dates = Object.keys(byDate).sort().reverse().slice(0, 14);
 
+  const formatDayLabel = iso => {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    return dt.toLocaleDateString(undefined, { weekday: 'long' }) + ' — ' + dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
   const renderSession = s => {
     const cardio = s.cardioNote ? escapeHtml(s.cardioNote) : '';
     const notes = s.notes ? escapeHtml(s.notes) : '';
     const burnQs = s.burnQuestions || [];
-    const burnHtml = (typeof s.caloriesBurned === 'number')
-      ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
-          <div class="row between"><div class="muted small">Burn</div><b>${s.caloriesBurned} kcal</b></div>
-          ${s.burnBreakdown && s.burnBreakdown.length ? `<details style="margin-top: 6px;"><summary class="small muted">Breakdown</summary>
-            ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
-            ${s.burnNotes ? `<div class="small muted" style="margin-top: 4px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
-          </details>` : ''}
-          ${burnQs.length ? `<div class="small" style="margin-top: 6px; color: var(--warn);">❓ ${burnQs.length} question${burnQs.length > 1 ? 's' : ''}: ${burnQs.map(escapeHtml).join(' · ')}</div>` : ''}
-        </div>`
-      : '';
-    const summaryPreview = s.cardioNote
-      ? ' · <span class="muted small">' + escapeHtml(s.cardioNote.length > 40 ? s.cardioNote.slice(0, 40) + '…' : s.cardioNote) + '</span>'
+    const headerBits = [];
+    if (s.time) headerBits.push(s.time);
+    if (typeof s.caloriesBurned === 'number') headerBits.push(`~${s.caloriesBurned} kcal`);
+    const headerMeta = headerBits.length
+      ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ${headerBits.join(' · ')}</span>`
       : '';
     return `
-      <details data-saved-at="${s.savedAt}" style="background: var(--bg); margin-bottom: 6px; padding: 10px 12px;">
-        <summary>${s.time ? s.time + ' · ' : ''}${PLAN[s.day]?.label || s.day}${summaryPreview}</summary>
-        ${cardio ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--panel); border-radius: 8px;"><div class="muted small">Cardio</div><div>${cardio}</div></div>` : ''}
+      <div data-saved-at="${s.savedAt}" style="padding: 10px 0; border-top: 1px solid var(--line);">
+        <div style="font-weight: 600;">${PLAN[s.day]?.label || s.day}${headerMeta}</div>
+        ${cardio ? `<div class="small" style="margin-top: 4px; color: var(--muted);">${cardio}</div>` : ''}
         ${s.entries.filter(e => e.sets.length).map(e => `
-          <div class="small" style="margin-top:6px;"><b>${e.name}</b>: ${e.sets.map(x=>x.reps).join(' · ')}</div>
+          <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}</div>
         `).join('')}
-        ${burnHtml}
-        ${notes ? `<div style="margin-top: 10px; padding: 8px 10px; background: var(--panel); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
-        <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
-          <button class="ghost" style="padding: 6px 12px; font-size: 14px;" onclick="editSession(${s.savedAt})">Edit</button>
-          <button class="ghost" style="padding: 6px 12px; font-size: 14px;" onclick="openSessionRefine(${s.savedAt})">Refine</button>
-          <button class="ghost danger" style="padding: 6px 12px; font-size: 14px;" onclick="deleteSession(${s.savedAt})">Delete</button>
+        ${s.burnBreakdown && s.burnBreakdown.length ? `<details style="margin-top: 6px; padding: 6px 10px; background: var(--bg); border-radius: 8px;"><summary class="small muted">Burn breakdown</summary>
+          ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
+          ${s.burnNotes ? `<div class="small muted" style="margin-top: 4px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
+        </details>` : ''}
+        ${burnQs.length ? `<div class="small" style="margin-top: 6px; color: var(--warn);">❓ ${burnQs.length} question${burnQs.length > 1 ? 's' : ''}: ${burnQs.map(escapeHtml).join(' · ')}</div>` : ''}
+        ${notes ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
+        <div class="row" style="margin-top: 8px; gap: 6px; flex-wrap: wrap;">
+          <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="editSession(${s.savedAt})">Edit</button>
+          <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="openSessionRefine(${s.savedAt})">Refine</button>
+          <button class="ghost danger" style="padding: 4px 10px; font-size: 13px;" onclick="deleteSession(${s.savedAt})">Delete</button>
         </div>
-      </details>
+      </div>
     `;
   };
 
   list.innerHTML = dates.map(date => {
-    const sessions = byDate[date];
-    const dateHeader = formatDate(date);
-    if (sessions.length === 1) {
-      return `<div style="margin-bottom: 12px;">
-        <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">${dateHeader}</div>
-        ${renderSession(sessions[0])}
-      </div>`;
-    }
-    // Multiple sessions same day — dedupe by type so the label stays short
-    const typeCounts = {};
-    for (const s of sessions) {
-      const label = PLAN[s.day]?.label || s.day;
-      typeCounts[label] = (typeCounts[label] || 0) + 1;
-    }
-    const labels = Object.entries(typeCounts)
-      .map(([label, count]) => count > 1 ? `${label} ×${count}` : label)
-      .join(' · ');
-    const firstPreview = sessions.find(s => s.cardioNote)?.cardioNote || '';
-    const previewHtml = firstPreview
-      ? ' · <span class="muted small">' + escapeHtml(firstPreview.length > 40 ? firstPreview.slice(0, 40) + '…' : firstPreview) + '</span>'
+    const sessions = byDate[date].slice().sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    const dayLabel = formatDayLabel(date);
+    const totalBurn = sessions.reduce((sum, s) => sum + (s.caloriesBurned || 0), 0);
+    const summaryRight = totalBurn > 0
+      ? ` <span class="muted small" style="font-weight: 500;">· ${totalBurn} kcal</span>`
       : '';
-    return `<div style="margin-bottom: 12px;">
-      <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">${dateHeader}</div>
-      <details style="background: var(--panel); padding: 12px 14px;">
-        <summary>${labels}${previewHtml}</summary>
-        <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+    return `
+      <details style="background: var(--panel); padding: 14px 16px; margin-bottom: 8px;">
+        <summary style="font-weight: 600;">${dayLabel}${summaryRight}</summary>
+        <div style="margin-top: 6px;">
           ${sessions.map(renderSession).join('')}
         </div>
       </details>
-    </div>`;
+    `;
   }).join('');
 }
 
