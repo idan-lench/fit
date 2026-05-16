@@ -16,7 +16,7 @@
     --line: #e5e5e7;
     --text: #1d1d1f;
     --muted: #86868b;
-    --accent: #7c3aed;
+    --accent: #3b82f6;
     --accent2: #10b981;
     --warn: #ff9500;
     --danger: #ff3b30;
@@ -290,7 +290,7 @@
     </div>
 
     <!-- Plan banner: shown only when viewing a day with a planned workout and no session loaded -->
-    <div id="workoutPlanBanner" class="card" style="display: none; background: rgba(124, 58, 237, 0.08);">
+    <div id="workoutPlanBanner" class="card" style="display: none; background: rgba(59, 130, 246, 0.08);">
       <div class="muted small">Today's plan</div>
       <div id="workoutPlanLabel" style="font-weight: 600; font-size: 17px; margin-top: 2px;"></div>
       <div class="row" style="gap: 8px; margin-top: 10px;">
@@ -442,6 +442,15 @@
         <div id="analysisProtein" style="margin-top: 10px;"></div>
       </div>
 
+      <h2>Detailed breakdown</h2>
+      <div class="card" id="analysisBreakdown"></div>
+
+      <h2>7-day trend</h2>
+      <div class="card">
+        <div id="analysisChart"></div>
+        <div class="muted small" style="margin-top: 8px; text-align: center;">Net = eaten − burned. Bars below 0 = deficit ✓</div>
+      </div>
+
       <h2>Steps</h2>
       <div class="card">
         <div class="row" style="gap: 10px;">
@@ -456,37 +465,16 @@
             <div class="small muted" style="margin-top: 2px;">last 7 entries</div>
           </div>
         </div>
-        <div class="row" style="gap: 10px; align-items: flex-end; margin-top: 14px;">
-          <div class="grow">
-            <label>Steps</label>
-            <input type="number" id="stepsInput" inputmode="numeric" placeholder="e.g. 8500">
-          </div>
-          <div style="width: 150px;">
-            <label>Date</label>
-            <input type="date" id="stepsDate">
-          </div>
-        </div>
-        <button class="primary" style="width: 100%; margin-top: 12px;" onclick="addSteps()">Save</button>
+        <div class="muted small" style="margin-top: 12px;">Log steps in the Workout tab.</div>
       </div>
-
-      <h2>Steps trend</h2>
       <div class="card">
         <div id="stepsChart"></div>
         <div id="stepsList" style="margin-top: 8px;"></div>
       </div>
 
-      <h2>Detailed breakdown</h2>
-      <div class="card" id="analysisBreakdown"></div>
-
       <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 10px; border-left: 3px solid var(--warn); background: rgba(255, 149, 0,0.12);"></div>
       <div class="row" style="gap: 8px; margin: 8px 0;">
         <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">Generate Daily Analysis</button>
-      </div>
-
-      <h2>7-day trend</h2>
-      <div class="card">
-        <div id="analysisChart"></div>
-        <div class="muted small" style="margin-top: 8px; text-align: center;">Net = eaten − burned. Bars below 0 = deficit ✓</div>
       </div>
 
       <h2>AI notes</h2>
@@ -1506,7 +1494,6 @@ function renderHistory() {
 
   list.innerHTML = dates.map(date => {
     const sessions = byDate[date];
-    const labels = sessions.map(s => PLAN[s.day]?.label || s.day).join(' · ');
     const dateHeader = formatDate(date);
     if (sessions.length === 1) {
       return `<div style="margin-bottom: 12px;">
@@ -1514,11 +1501,20 @@ function renderHistory() {
         ${renderSession(sessions[0])}
       </div>`;
     }
+    // Multiple sessions same day — collapse into ONE details element with combined label
+    const labels = sessions.map(s => PLAN[s.day]?.label || s.day).join(' · ');
+    const firstPreview = sessions.find(s => s.cardioNote)?.cardioNote || '';
+    const previewHtml = firstPreview
+      ? ' · <span class="muted small">' + escapeHtml(firstPreview.length > 40 ? firstPreview.slice(0, 40) + '…' : firstPreview) + '</span>'
+      : '';
     return `<div style="margin-bottom: 12px;">
       <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">${dateHeader} · ${sessions.length} sessions</div>
-      <div style="padding: 10px 12px; background: var(--panel); border-radius: 12px;">
-        ${sessions.map(renderSession).join('')}
-      </div>
+      <details style="background: var(--panel); padding: 12px 14px;">
+        <summary>${labels}${previewHtml}</summary>
+        <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+          ${sessions.map(renderSession).join('')}
+        </div>
+      </details>
     </div>`;
   }).join('');
 }
@@ -1656,6 +1652,7 @@ function renderSteps() {
   const todayEntry = ss.find(s => s.date === today);
   const todayEl = document.getElementById('stepsTodayValue');
   const progEl = document.getElementById('stepsTodayProgress');
+  if (!todayEl || !progEl) return;
   if (todayEntry) {
     todayEl.textContent = todayEntry.count.toLocaleString();
     const pct = Math.round((todayEntry.count / STEPS_GOAL) * 100);
@@ -2064,7 +2061,7 @@ async function renderEnergy() {
     bg = 'rgba(16, 185, 129, 0.18)';
     text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`;
   } else if (net < 200) {
-    bg = 'rgba(124, 58, 237, 0.15)';
+    bg = 'rgba(59, 130, 246, 0.15)';
     text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance — no fat change today`;
   } else {
     bg = 'rgba(255, 59, 48, 0.15)';
@@ -2249,7 +2246,7 @@ async function renderAnalysis() {
     let bg, text;
     if (net < -800) { bg = 'rgba(255, 149, 0, 0.15)'; text = `<b>Net: ${net} cal</b> · big deficit. Eat more — especially protein.`; }
     else if (net < -200) { bg = 'rgba(16, 185, 129, 0.18)'; text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`; }
-    else if (net < 200) { bg = 'rgba(124, 58, 237, 0.15)'; text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance`; }
+    else if (net < 200) { bg = 'rgba(59, 130, 246, 0.15)'; text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance`; }
     else { bg = 'rgba(255, 59, 48, 0.15)'; text = `<b>Net: +${net} cal</b> · surplus`; }
     status.style.background = bg;
     status.innerHTML = text;
@@ -2375,23 +2372,25 @@ async function renderMeals() {
     const estimated = dayMeals.filter(m => typeof m.calories === 'number' && m.calories > 0).length;
     const isToday = date === today;
 
-    const dayGroup = document.createElement('details');
-    dayGroup.style.cssText = 'margin-top: 10px;';
-    if (isToday) dayGroup.open = true;
-    const summary = document.createElement('summary');
-    summary.style.cssText = 'list-style: none; cursor: pointer; padding: 8px 4px; display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--line);';
-    summary.innerHTML = `
-      <span class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">${isToday ? 'Today' : formatDate(date)}</span>
-      <span class="small" style="color: ${totalCal > 0 ? 'var(--accent)' : 'var(--muted)'}; font-weight: 600;">${totalCal > 0 ? `${totalCal.toLocaleString()} kcal` : '—'} · ${dayMeals.length} meal${dayMeals.length > 1 ? 's' : ''}${estimated < dayMeals.length ? ` (${estimated}/${dayMeals.length})` : ''}</span>
+    const dayGroup = document.createElement('div');
+    dayGroup.style.cssText = 'margin-top: 18px;';
+    const header = document.createElement('div');
+    header.className = 'muted small';
+    header.style.cssText = 'margin-bottom: 8px; font-weight: 500; display: flex; justify-content: space-between; align-items: baseline;';
+    header.innerHTML = `
+      <span>${isToday ? 'Today' : formatDate(date)}</span>
+      <span style="color: ${totalCal > 0 ? 'var(--accent)' : 'var(--muted)'}; font-weight: 600;">${totalCal > 0 ? `${totalCal.toLocaleString()} kcal` : '—'} · ${dayMeals.length} meal${dayMeals.length > 1 ? 's' : ''}${estimated < dayMeals.length ? ` (${estimated}/${dayMeals.length})` : ''}</span>
     `;
-    dayGroup.appendChild(summary);
+    dayGroup.appendChild(header);
     list.appendChild(dayGroup);
 
     for (const m of dayMeals) {
     const blobs = mealBlobs(m);
     const card = document.createElement('div');
     card.className = 'card';
-    card.style.cssText = 'padding: 10px; cursor: pointer;';
+    card.style.padding = '12px 14px';
+    card.style.cursor = 'pointer';
+    card.style.marginBottom = '8px';
     const thumbs = blobs.length
       ? `<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; margin-top: 8px;">
           ${blobs.map(b => `<img src="${URL.createObjectURL(b)}" style="width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px;">`).join('')}
