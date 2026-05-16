@@ -555,7 +555,7 @@
     <span class="ic">🍽</span>Meals
   </button>
   <button data-tab="analysis" onclick="switchTab('analysis')">
-    <span class="ic">📊</span>Analysis
+    <span class="ic">💡</span>Insights
   </button>
   <button data-tab="body" onclick="switchTab('body')">
     <span class="ic">📏</span>Body
@@ -1023,7 +1023,7 @@ function switchTab(name) {
   document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-  const titles = { workout: 'Workout', meals: 'Meals', analysis: 'Analysis', body: 'Body', ai: 'Chat' };
+  const titles = { workout: 'Workout', meals: 'Meals', analysis: 'Insights', body: 'Body', ai: 'Chat' };
   const titleEl = document.getElementById('pageTitle');
   if (titleEl && titles[name]) titleEl.textContent = titles[name];
   if (name === 'workout') renderWorkout();
@@ -1501,14 +1501,21 @@ function renderHistory() {
         ${renderSession(sessions[0])}
       </div>`;
     }
-    // Multiple sessions same day — collapse into ONE details element with combined label
-    const labels = sessions.map(s => PLAN[s.day]?.label || s.day).join(' · ');
+    // Multiple sessions same day — dedupe by type so the label stays short
+    const typeCounts = {};
+    for (const s of sessions) {
+      const label = PLAN[s.day]?.label || s.day;
+      typeCounts[label] = (typeCounts[label] || 0) + 1;
+    }
+    const labels = Object.entries(typeCounts)
+      .map(([label, count]) => count > 1 ? `${label} ×${count}` : label)
+      .join(' · ');
     const firstPreview = sessions.find(s => s.cardioNote)?.cardioNote || '';
     const previewHtml = firstPreview
       ? ' · <span class="muted small">' + escapeHtml(firstPreview.length > 40 ? firstPreview.slice(0, 40) + '…' : firstPreview) + '</span>'
       : '';
     return `<div style="margin-bottom: 12px;">
-      <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">${dateHeader} · ${sessions.length} sessions</div>
+      <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">${dateHeader}</div>
       <details style="background: var(--panel); padding: 12px 14px;">
         <summary>${labels}${previewHtml}</summary>
         <div style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
