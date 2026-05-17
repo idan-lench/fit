@@ -96,6 +96,46 @@
   }
   textarea { line-height: 1.4; }
   input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .chat-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: var(--panel);
+    border-radius: 22px;
+    padding: 4px 4px 4px 14px;
+  }
+  .chat-input-row input[type=text] {
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 8px 0;
+    border-radius: 0;
+    width: auto;
+    flex: 1;
+    font-size: 16px;
+  }
+  .chat-input-row input[type=text]:focus { outline: none; }
+  .chat-icon-btn {
+    background: none;
+    border: none;
+    padding: 8px;
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .chat-send-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 18px;
+    padding: 8px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
   label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 6px; }
   .nav {
     position: fixed;
@@ -565,11 +605,11 @@
       <div id="aiMessages" style="margin-bottom: 100px;"></div>
       <div style="position: fixed; bottom: calc(72px + env(safe-area-inset-bottom)); left: 0; right: 0; max-width: 720px; margin: 0 auto; padding: 8px 14px; background: var(--bg); border-top: 1px solid var(--line); z-index: 5;">
         <div id="aiAttachPreview" style="display:none; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;"></div>
-        <div style="display: flex; gap: 6px; align-items: center;">
-          <button onclick="document.getElementById('aiFileInput').click()" style="padding: 12px 13px; flex-shrink: 0; border: none; border-radius: 12px; background: var(--panel); font-size: 18px; line-height: 1; cursor: pointer;" title="Attach image">📎</button>
+        <div class="chat-input-row">
+          <button class="chat-icon-btn" onclick="document.getElementById('aiFileInput').click()" title="Attach image">📎</button>
           <input type="file" id="aiFileInput" accept="image/*" multiple style="display:none" onchange="aiAttachFiles(this)">
-          <input type="text" id="aiInput" placeholder="Ask anything about your data…" style="flex: 1; width: auto;" onkeypress="if(event.key==='Enter') sendAIMessage()">
-          <button class="primary" onclick="sendAIMessage()" style="padding: 10px 16px; flex-shrink: 0;">Send</button>
+          <input type="text" id="aiInput" placeholder="Ask anything…" onkeypress="if(event.key==='Enter') sendAIMessage()">
+          <button class="chat-send-btn" onclick="sendAIMessage()">Send</button>
         </div>
       </div>
     </div>
@@ -676,9 +716,9 @@
     <div id="refineSection" style="display:none; margin-top: 12px; padding: 10px 12px; background: var(--panel2); border-radius: 10px;">
       <div class="muted small" style="margin-bottom: 6px;">💬 Chat with AI about this meal</div>
       <div id="refineResult" style="display:none; margin-bottom: 8px;"></div>
-      <div class="row" style="gap: 6px; align-items: flex-end;">
-        <input type="text" id="refineInput" placeholder="Ask anything or correct the estimate…" style="flex:1; width: auto;" onkeypress="if(event.key==='Enter') refineMealEstimate()">
-        <button class="primary" onclick="refineMealEstimate()" style="padding: 12px 14px; flex-shrink: 0;">Send</button>
+      <div class="chat-input-row">
+        <input type="text" id="refineInput" placeholder="Ask anything or correct the estimate…" onkeypress="if(event.key==='Enter') refineMealEstimate()">
+        <button class="chat-send-btn" onclick="refineMealEstimate()">Send</button>
       </div>
       <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
     </div>
@@ -753,9 +793,9 @@
     <div class="muted small" id="sessionRefineTitle" style="margin-bottom: 4px;"></div>
     <div class="small" id="sessionRefineCurrent" style="margin-bottom: 12px;"></div>
     <div id="sessionRefineResult" style="display:none; margin-bottom: 8px;"></div>
-    <div class="row" style="gap: 6px; align-items: flex-end;">
-      <input type="text" id="sessionRefineInput" placeholder="Ask anything or correct the burn estimate…" style="flex:1; width: auto;" onkeypress="if(event.key==='Enter') refineSessionEstimate()">
-      <button class="primary" onclick="refineSessionEstimate()" style="padding: 12px 14px; flex-shrink: 0;">Send</button>
+    <div class="chat-input-row">
+      <input type="text" id="sessionRefineInput" placeholder="Ask anything or correct the burn estimate…" onkeypress="if(event.key==='Enter') refineSessionEstimate()">
+      <button class="chat-send-btn" onclick="refineSessionEstimate()">Send</button>
     </div>
     <button class="ghost" id="updateSessionEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestSessionEstimateUpdate()">🔄 Update burn estimate from this chat</button>
     <hr class="div" style="margin-top: 14px;">
