@@ -104,7 +104,8 @@
     border-radius: 22px;
     padding: 4px 4px 4px 14px;
   }
-  .chat-input-row input[type=text] {
+  .chat-input-row input[type=text],
+  .chat-input-row textarea {
     background: transparent;
     border: none;
     outline: none;
@@ -113,8 +114,15 @@
     width: auto;
     flex: 1;
     font-size: 16px;
+    resize: none;
+    line-height: 1.4;
+    max-height: 140px;
+    overflow-y: auto;
+    font-family: inherit;
   }
-  .chat-input-row input[type=text]:focus { outline: none; }
+  .chat-input-row input[type=text]:focus,
+  .chat-input-row textarea:focus { outline: none; }
+  .chat-input-row { align-items: flex-end; }
   .chat-icon-btn {
     background: none;
     border: none;
@@ -613,7 +621,7 @@
         <div class="chat-input-row">
           <button class="chat-icon-btn" onclick="document.getElementById('aiFileInput').click()" title="Attach image">📎</button>
           <input type="file" id="aiFileInput" accept="image/*" multiple style="display:none" onchange="aiAttachFiles(this)">
-          <input type="text" id="aiInput" placeholder="Ask anything…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();sendAIMessage()}">
+          <textarea id="aiInput" placeholder="Ask anything…" rows="1" oninput="autoResizeTA(this)"></textarea>
           <button class="chat-send-btn" onclick="sendAIMessage()">↑</button>
         </div>
       </div>
@@ -722,7 +730,7 @@
       <div class="muted small" style="margin-bottom: 6px;">💬 Chat with AI about this meal</div>
       <div id="refineResult" style="display:none; margin-bottom: 8px;"></div>
       <div class="chat-input-row">
-        <input type="text" id="refineInput" placeholder="Message…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();refineMealEstimate()}">
+        <textarea id="refineInput" placeholder="Message…" rows="1" oninput="autoResizeTA(this)"></textarea>
         <button class="chat-send-btn" onclick="refineMealEstimate()">↑</button>
       </div>
       <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
@@ -799,7 +807,7 @@
     <div class="small" id="sessionRefineCurrent" style="margin-bottom: 12px;"></div>
     <div id="sessionRefineResult" style="display:none; margin-bottom: 8px;"></div>
     <div class="chat-input-row">
-      <input type="text" id="sessionRefineInput" placeholder="Message…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();refineSessionEstimate()}">
+      <textarea id="sessionRefineInput" placeholder="Message…" rows="1" oninput="autoResizeTA(this)"></textarea>
       <button class="chat-send-btn" onclick="refineSessionEstimate()">↑</button>
     </div>
     <button class="ghost" id="updateSessionEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestSessionEstimateUpdate()">🔄 Update burn estimate from this chat</button>
