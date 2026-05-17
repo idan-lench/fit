@@ -568,7 +568,7 @@
         <div style="display: flex; gap: 6px; align-items: center;">
           <button onclick="document.getElementById('aiFileInput').click()" style="padding: 12px 13px; flex-shrink: 0; border: none; border-radius: 12px; background: var(--panel); font-size: 18px; line-height: 1; cursor: pointer;" title="Attach image">📎</button>
           <input type="file" id="aiFileInput" accept="image/*" multiple style="display:none" onchange="aiAttachFiles(this)">
-          <input type="text" id="aiInput" placeholder="Ask anything about your data…" style="flex: 1;" onkeypress="if(event.key==='Enter') sendAIMessage()">
+          <input type="text" id="aiInput" placeholder="Ask anything about your data…" style="flex: 1; width: auto;" onkeypress="if(event.key==='Enter') sendAIMessage()">
           <button class="primary" onclick="sendAIMessage()" style="padding: 10px 16px; flex-shrink: 0;">Send</button>
         </div>
       </div>
@@ -677,7 +677,7 @@
       <div class="muted small" style="margin-bottom: 6px;">💬 Chat with AI about this meal</div>
       <div id="refineResult" style="display:none; margin-bottom: 8px;"></div>
       <div class="row" style="gap: 6px; align-items: flex-end;">
-        <input type="text" id="refineInput" placeholder="Ask anything or correct the estimate…" style="flex:1;" onkeypress="if(event.key==='Enter') refineMealEstimate()">
+        <input type="text" id="refineInput" placeholder="Ask anything or correct the estimate…" style="flex:1; width: auto;" onkeypress="if(event.key==='Enter') refineMealEstimate()">
         <button class="primary" onclick="refineMealEstimate()" style="padding: 12px 14px; flex-shrink: 0;">Send</button>
       </div>
       <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
@@ -754,7 +754,7 @@
     <div class="small" id="sessionRefineCurrent" style="margin-bottom: 12px;"></div>
     <div id="sessionRefineResult" style="display:none; margin-bottom: 8px;"></div>
     <div class="row" style="gap: 6px; align-items: flex-end;">
-      <input type="text" id="sessionRefineInput" placeholder="Ask anything or correct the burn estimate…" style="flex:1;" onkeypress="if(event.key==='Enter') refineSessionEstimate()">
+      <input type="text" id="sessionRefineInput" placeholder="Ask anything or correct the burn estimate…" style="flex:1; width: auto;" onkeypress="if(event.key==='Enter') refineSessionEstimate()">
       <button class="primary" onclick="refineSessionEstimate()" style="padding: 12px 14px; flex-shrink: 0;">Send</button>
     </div>
     <button class="ghost" id="updateSessionEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestSessionEstimateUpdate()">🔄 Update burn estimate from this chat</button>
@@ -3620,7 +3620,8 @@ function renderAIMessages() {
       <div style="max-width: 85%; padding: 10px 14px; border-radius: 16px; ${isUser ? 'background: var(--accent); color: white; border-bottom-right-radius: 4px;' : 'background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 4px;'} line-height: 1.45;">${imgs}${textHtml}</div>
     </div>`;
   }).join('');
-  list.scrollIntoView({ block: 'end' });
+  const last = list.lastElementChild;
+  if (last) setTimeout(() => last.scrollIntoView({ behavior: 'smooth', block: 'end' }), 50);
 }
 
 let _aiAttachedImages = []; // [{dataUrl, mimeType}]
@@ -3685,7 +3686,7 @@ async function sendAIMessage() {
   loading.style.cssText = 'display: flex; margin-bottom: 10px;';
   loading.innerHTML = '<div style="padding: 10px 14px; border-radius: 16px; background: var(--panel); border: 1px solid var(--line); color: var(--muted);">Thinking…</div>';
   list.appendChild(loading);
-  loading.scrollIntoView({ block: 'end' });
+  setTimeout(() => loading.scrollIntoView({ behavior: 'smooth', block: 'end' }), 50);
 
   try {
     const reply = await callGemini(history);
