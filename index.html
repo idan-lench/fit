@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Fit">
 <title>Fit Tracker</title>
+<script src="https://accounts.google.com/gsi/client" async></script>
 <style>
   :root {
     --bg: #ffffff;
@@ -286,7 +287,9 @@
       <div class="row" style="gap: 8px;">
         <input type="number" id="workoutStepsInput" inputmode="numeric" placeholder="Log steps for this day" style="flex: 1;">
         <button class="primary" onclick="saveWorkoutSteps()">Save</button>
+        <button class="ghost" id="fitSyncBtn" onclick="syncGoogleFit()" title="Sync from Google Fit" style="padding: 0 12px;">🏃 Sync</button>
       </div>
+      <div id="fitSyncStatus" class="small muted" style="margin-top: 6px; display: none;"></div>
     </div>
 
     <!-- Plan banner: shown only when viewing a day with a planned workout and no session loaded -->
@@ -4137,6 +4140,132 @@ function closePlanModal() {
 }
 document.getElementById('todayLabel').textContent = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 selectDay(state.current?.day || suggestedDay());
+
+// ─── Google Fit Integration ───────────────────────────────────────────────
+const GFIT_CLIENT_ID = '483696289779-b6t8l4imihr8n8q0kmfkulh2bj90sisu.apps.googleusercontent.com';
+const GFIT_SCOPES = [
+  'https://www.googleapis.com/auth/fitness.activity.read',
+  'https://www.googleapis.com/auth/fitness.location.read'
+].join(' ');
+
+let _gfitToken = null;
+let _gfitTokenExpiry = 0;
+
+function gfitGetToken() {
+  return new Promise((resolve, reject) => {
+    if (_gfitToken && Date.now() < _gfitTokenExpiry) return resolve(_gfitToken);
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GFIT_CLIENT_ID,
+      scope: GFIT_SCOPES,
+      callback: (resp) => {
+        if (resp.error) return reject(new Error(resp.error));
+        _gfitToken = resp.access_token;
+        _gfitTokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
+        resolve(_gfitToken);
+      }
+    });
+    client.requestAccessToken();
+  });
+}
+
+// Returns {startMs, endMs} for a given ISO date (local midnight to midnight)
+function gfitDateRange(isoDate) {
+  const start = new Date(isoDate + 'T00:00:00');
+  const end   = new Date(isoDate + 'T23:59:59');
+  return { startMs: start.getTime(), endMs: end.getTime() };
+}
+
+async function gfitAggregate(token, startMs, endMs, dataTypeName) {
+  const body = {
+    aggregateBy: [{ dataTypeName }],
+    bucketByTime: { durationMillis: endMs - startMs },
+    startTimeMillis: startMs,
+    endTimeMillis: endMs
+  };
+  const r = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(`Fit API ${r.status}`);
+  return r.json();
+}
+
+function gfitExtractInt(data) {
+  try {
+    return data.bucket[0].dataset[0].point.reduce((s, p) => s + p.value[0].intVal, 0);
+  } catch { return 0; }
+}
+
+function gfitExtractFloat(data) {
+  try {
+    return data.bucket[0].dataset[0].point.reduce((s, p) => s + p.value[0].fpVal, 0);
+  } catch { return 0; }
+}
+
+async function syncGoogleFit() {
+  const btn = document.getElementById('fitSyncBtn');
+  const status = document.getElementById('fitSyncStatus');
+  const date = workoutCurrentDate();
+
+  btn.disabled = true;
+  btn.textContent = '…';
+  status.style.display = 'block';
+  status.textContent = 'Connecting to Google Fit…';
+
+  try {
+    const token = await gfitGetToken();
+    const { startMs, endMs } = gfitDateRange(date);
+    status.textContent = 'Fetching data…';
+
+    const [stepsData, distData] = await Promise.all([
+      gfitAggregate(token, startMs, endMs, 'com.google.step_count.delta'),
+      gfitAggregate(token, startMs, endMs, 'com.google.distance.delta')
+    ]);
+
+    const steps = gfitExtractInt(stepsData);
+    const distM = gfitExtractFloat(distData);
+    const distKm = Math.round(distM / 100) / 10;
+
+    // Save steps
+    if (steps > 0) {
+      state.steps = state.steps || [];
+      state.steps = state.steps.filter(s => s.date !== date);
+      state.steps.push({ date, count: steps, source: 'gfit' });
+      save();
+    }
+
+    // Update UI
+    const stepsInput = document.getElementById('workoutStepsInput');
+    if (stepsInput && steps > 0) stepsInput.value = steps;
+    renderWorkout();
+    renderBody();
+
+    // Build status message
+    let msg = steps > 0 ? `${steps.toLocaleString()} steps` : 'No steps data';
+    if (distKm > 0) msg += ` · ${distKm} km walked/run`;
+    status.textContent = `✓ Synced: ${msg}`;
+
+    // If there's an active session and distance suggests cardio, offer to add to note
+    if (distKm >= 1 && state.current?.date === date) {
+      const cardioInput = document.getElementById('cardioNoteInput');
+      if (cardioInput && !cardioInput.value.trim()) {
+        cardioInput.value = `${distKm} km`;
+        status.textContent += ' — distance added to cardio note';
+      }
+    }
+
+    toast(`Google Fit synced: ${steps.toLocaleString()} steps${distKm > 0 ? ` · ${distKm} km` : ''}`);
+  } catch (e) {
+    console.error('Google Fit sync error:', e);
+    status.textContent = e.message.includes('popup') ? 'Popup blocked — allow popups for this site' : `Error: ${e.message}`;
+    toast('Google Fit sync failed', 3000);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🏃 Sync';
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Auto-pull from Drive on startup, then auto-generate missing summaries
 if (state.sync?.webhookUrl) {
