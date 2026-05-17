@@ -1340,7 +1340,8 @@ function renderWorkout() {
   // Active session exists for this date
   if (banner) banner.style.display = 'none';
   if (empty) empty.style.display = 'none';
-  if (metaRow) metaRow.style.display = 'flex';
+  const hasEntries = (state.current.entries || []).length > 0;
+  if (metaRow) metaRow.style.display = hasEntries ? 'flex' : 'none';
   if (headerRow) headerRow.style.display = 'flex';
   if (cancelBtn) cancelBtn.style.display = 'inline-flex';
 
