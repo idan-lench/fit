@@ -1698,11 +1698,13 @@ function renderHistory() {
     const dayLabel = formatDayLabel(date);
     const totalBurn = sessions.reduce((sum, s) => sum + (s.caloriesBurned || 0), 0);
     const summaryRight = totalBurn > 0
-      ? ` <span class="muted small" style="font-weight: 500;">· ${totalBurn} kcal</span>`
+      ? `<span style="color: var(--accent); font-weight: 600;">${totalBurn} kcal</span>`
       : '';
     return `
-      <details style="background: var(--panel); padding: 14px 16px; margin-bottom: 8px;">
-        <summary style="font-weight: 600;">${dayLabel}${summaryRight}</summary>
+      <details style="margin-top: 8px;">
+        <summary class="muted small" style="margin-bottom: 8px; font-weight: 500; display: flex; justify-content: space-between; align-items: baseline; cursor: pointer; list-style: none;">
+          <span>▸ ${dayLabel}</span>${summaryRight}
+        </summary>
         <div style="margin-top: 6px;">
           ${sessions.map(renderSession).join('')}
         </div>
@@ -2594,7 +2596,10 @@ async function renderMeals() {
       const summary = document.createElement('summary');
       summary.className = 'muted small';
       summary.style.cssText = 'margin-bottom: 8px; font-weight: 500; display: flex; justify-content: space-between; align-items: baseline; cursor: pointer; list-style: none;';
-      summary.innerHTML = `<span>▸ ${formatDate(date)}</span>${summaryRight}`;
+      const [yy, mm, dd] = date.split('-').map(Number);
+      const dt = new Date(yy, mm - 1, dd);
+      const dashLabel = dt.toLocaleDateString(undefined, { weekday: 'long' }) + ' — ' + dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      summary.innerHTML = `<span>▸ ${dashLabel}</span>${summaryRight}`;
       dayGroup.appendChild(summary);
       mealsHost = dayGroup;
     }
