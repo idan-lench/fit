@@ -129,12 +129,17 @@
     background: var(--accent);
     color: #fff;
     border: none;
-    border-radius: 18px;
-    padding: 8px 16px;
-    font-size: 15px;
-    font-weight: 600;
+    border-radius: 50%;
+    width: 34px;
+    height: 34px;
+    font-size: 16px;
+    font-weight: 700;
     cursor: pointer;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
   }
   label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 6px; }
   .nav {
@@ -608,8 +613,8 @@
         <div class="chat-input-row">
           <button class="chat-icon-btn" onclick="document.getElementById('aiFileInput').click()" title="Attach image">📎</button>
           <input type="file" id="aiFileInput" accept="image/*" multiple style="display:none" onchange="aiAttachFiles(this)">
-          <input type="text" id="aiInput" placeholder="Ask anything…" onkeypress="if(event.key==='Enter') sendAIMessage()">
-          <button class="chat-send-btn" onclick="sendAIMessage()">Send</button>
+          <input type="text" id="aiInput" placeholder="Ask anything…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();sendAIMessage()}">
+          <button class="chat-send-btn" onclick="sendAIMessage()">↑</button>
         </div>
       </div>
     </div>
@@ -717,8 +722,8 @@
       <div class="muted small" style="margin-bottom: 6px;">💬 Chat with AI about this meal</div>
       <div id="refineResult" style="display:none; margin-bottom: 8px;"></div>
       <div class="chat-input-row">
-        <input type="text" id="refineInput" placeholder="Ask anything or correct the estimate…" onkeypress="if(event.key==='Enter') refineMealEstimate()">
-        <button class="chat-send-btn" onclick="refineMealEstimate()">Send</button>
+        <input type="text" id="refineInput" placeholder="Message…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();refineMealEstimate()}">
+        <button class="chat-send-btn" onclick="refineMealEstimate()">↑</button>
       </div>
       <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
     </div>
@@ -794,8 +799,8 @@
     <div class="small" id="sessionRefineCurrent" style="margin-bottom: 12px;"></div>
     <div id="sessionRefineResult" style="display:none; margin-bottom: 8px;"></div>
     <div class="chat-input-row">
-      <input type="text" id="sessionRefineInput" placeholder="Ask anything or correct the burn estimate…" onkeypress="if(event.key==='Enter') refineSessionEstimate()">
-      <button class="chat-send-btn" onclick="refineSessionEstimate()">Send</button>
+      <input type="text" id="sessionRefineInput" placeholder="Message…" enterkeyhint="send" onkeydown="if(event.key==='Enter'){event.preventDefault();refineSessionEstimate()}">
+      <button class="chat-send-btn" onclick="refineSessionEstimate()">↑</button>
     </div>
     <button class="ghost" id="updateSessionEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestSessionEstimateUpdate()">🔄 Update burn estimate from this chat</button>
     <hr class="div" style="margin-top: 14px;">
