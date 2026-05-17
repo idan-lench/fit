@@ -622,7 +622,7 @@
           <button class="chat-icon-btn" onclick="document.getElementById('aiFileInput').click()" title="Attach image">📎</button>
           <input type="file" id="aiFileInput" accept="image/*" multiple style="display:none" onchange="aiAttachFiles(this)">
           <textarea id="aiInput" placeholder="Ask anything…" rows="1" oninput="autoResizeTA(this)"></textarea>
-          <button class="chat-send-btn" onclick="sendAIMessage()">↑</button>
+          <button class="chat-send-btn" onclick="sendAIMessage()" aria-label="Send"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="margin-left: 1px;"><path d="M3 11.5L21 3l-7 18-2.5-7.5L3 11.5z"/></svg></button>
         </div>
       </div>
     </div>
@@ -731,7 +731,7 @@
       <div id="refineResult" style="display:none; margin-bottom: 8px;"></div>
       <div class="chat-input-row">
         <textarea id="refineInput" placeholder="Message…" rows="1" oninput="autoResizeTA(this)"></textarea>
-        <button class="chat-send-btn" onclick="refineMealEstimate()">↑</button>
+        <button class="chat-send-btn" onclick="refineMealEstimate()" aria-label="Send"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="margin-left: 1px;"><path d="M3 11.5L21 3l-7 18-2.5-7.5L3 11.5z"/></svg></button>
       </div>
       <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
     </div>
@@ -808,7 +808,7 @@
     <div id="sessionRefineResult" style="display:none; margin-bottom: 8px;"></div>
     <div class="chat-input-row">
       <textarea id="sessionRefineInput" placeholder="Message…" rows="1" oninput="autoResizeTA(this)"></textarea>
-      <button class="chat-send-btn" onclick="refineSessionEstimate()">↑</button>
+      <button class="chat-send-btn" onclick="refineSessionEstimate()" aria-label="Send"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" style="margin-left: 1px;"><path d="M3 11.5L21 3l-7 18-2.5-7.5L3 11.5z"/></svg></button>
     </div>
     <button class="ghost" id="updateSessionEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestSessionEstimateUpdate()">🔄 Update burn estimate from this chat</button>
     <hr class="div" style="margin-top: 14px;">
