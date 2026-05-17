@@ -875,8 +875,8 @@ const PLAN = {
     cardio: '20–30 min intervals',
     exercises: ['Push-ups', 'Pull-ups', 'Plank (sec)']
   },
-  sat: {
-    label: 'Saturday — Legs',
+  sun: {
+    label: 'Sunday — Legs',
     cardio: null,
     exercises: ['Squats', 'Lunges (each leg)', 'Glute bridges', 'Plank (sec)']
   },
@@ -900,13 +900,13 @@ const PLAN = {
 };
 
 const WEEKLY_PLAN = [
-  { day: 'Sunday', plan: 'Rest day', rest: true, key: 'sun' },
+  { day: 'Sunday', plan: 'Legs (squats, lunges, glutes, abs)', rest: false, key: 'sun' },
   { day: 'Monday', plan: 'Rest day', rest: true, key: 'mon' },
   { day: 'Tuesday', plan: '8k run + upper (push-ups, pull-ups, abs)', rest: false, key: 'tue' },
   { day: 'Wednesday', plan: 'Movement training (1 hr)', rest: false, key: 'wed' },
   { day: 'Thursday', plan: 'Intervals + upper (push-ups, pull-ups, abs)', rest: false, key: 'thu' },
   { day: 'Friday', plan: 'Rest day', rest: true, key: 'fri' },
-  { day: 'Saturday', plan: 'Legs (squats, lunges, glutes, abs)', rest: false, key: 'sat' }
+  { day: 'Saturday', plan: 'Rest day', rest: true, key: 'sat' }
 ];
 
 const state = load() || { sessions: [], measurements: [], current: null, steps: [], dailyNotes: [] };
@@ -1371,7 +1371,14 @@ function renderWorkout() {
   }
 
   const editing = !!state.current?._editingId;
-  if (title) title.textContent = (editing ? 'Editing — ' : '') + PLAN[state.current.day].label;
+  if (title) {
+    if (state.current.day === 'custom' && !editing) {
+      title.style.display = 'none';
+    } else {
+      title.style.display = '';
+      title.textContent = (editing ? 'Editing — ' : '') + PLAN[state.current.day].label;
+    }
+  }
   const timeInput = document.getElementById('sessionTime');
   if (timeInput && state.current) timeInput.value = state.current.time || '';
   if (saveRow) saveRow.style.display = (editing || !isCurrentFresh()) ? 'flex' : 'none';
@@ -2471,8 +2478,8 @@ async function renderAnalysis() {
 
   // Detailed breakdown
   const meals = await getAllMeals();
-  const todayMeals = meals.filter(m => m.date === viewDate);
-  const todaySessions = (state.sessions || []).filter(s => s.date === viewDate);
+  const todayMeals = meals.filter(m => m.date === viewDate).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const todaySessions = (state.sessions || []).filter(s => s.date === viewDate).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
   const stepsToday = (state.steps || []).find(s => s.date === viewDate);
   const breakdown = document.getElementById('analysisBreakdown');
   let html = '<div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Eaten</div>';
