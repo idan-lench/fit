@@ -704,7 +704,7 @@
       <button class="grow" onclick="document.getElementById('mealGalleryInput').click()">🖼 From gallery</button>
     </div>
     <div class="muted small" style="margin-top: 4px;">Take photos one at a time, or pick several from gallery.</div>
-    <textarea id="mealDescInput" placeholder="Optional: lunch, chicken &amp; rice…" rows="1" style="margin-top: 12px; resize: none; overflow-y: auto; max-height: 160px;" oninput="autoResizeTA(this)"></textarea>
+    <textarea id="mealDescInput" placeholder="Optional: lunch, chicken &amp; rice…" rows="1" style="margin-top: 12px; resize: none; overflow-y: auto; max-height: 160px; min-height: 47px; line-height: 1.4;" oninput="autoResizeTA(this)"></textarea>
     <div class="row" style="gap: 8px; margin-top: 10px;">
       <div style="flex: 1;">
         <label>Date</label>
@@ -2576,17 +2576,28 @@ async function renderMeals() {
     const totalCal = dayMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
     const estimated = dayMeals.filter(m => typeof m.calories === 'number' && m.calories > 0).length;
     const isToday = date === today;
+    const summaryRight = `<span style="color: ${totalCal > 0 ? 'var(--accent)' : 'var(--muted)'}; font-weight: 600;">${totalCal > 0 ? `${totalCal.toLocaleString()} kcal` : '—'} · ${dayMeals.length} meal${dayMeals.length > 1 ? 's' : ''}${estimated < dayMeals.length ? ` (${estimated}/${dayMeals.length})` : ''}</span>`;
 
-    const dayGroup = document.createElement('div');
-    dayGroup.style.cssText = 'margin-top: 18px;';
-    const header = document.createElement('div');
-    header.className = 'muted small';
-    header.style.cssText = 'margin-bottom: 8px; font-weight: 500; display: flex; justify-content: space-between; align-items: baseline;';
-    header.innerHTML = `
-      <span>${isToday ? 'Today' : formatDate(date)}</span>
-      <span style="color: ${totalCal > 0 ? 'var(--accent)' : 'var(--muted)'}; font-weight: 600;">${totalCal > 0 ? `${totalCal.toLocaleString()} kcal` : '—'} · ${dayMeals.length} meal${dayMeals.length > 1 ? 's' : ''}${estimated < dayMeals.length ? ` (${estimated}/${dayMeals.length})` : ''}</span>
-    `;
-    dayGroup.appendChild(header);
+    let dayGroup, mealsHost;
+    if (isToday) {
+      dayGroup = document.createElement('div');
+      dayGroup.style.cssText = 'margin-top: 18px;';
+      const header = document.createElement('div');
+      header.className = 'muted small';
+      header.style.cssText = 'margin-bottom: 8px; font-weight: 500; display: flex; justify-content: space-between; align-items: baseline;';
+      header.innerHTML = `<span>Today</span>${summaryRight}`;
+      dayGroup.appendChild(header);
+      mealsHost = dayGroup;
+    } else {
+      dayGroup = document.createElement('details');
+      dayGroup.style.cssText = 'margin-top: 18px;';
+      const summary = document.createElement('summary');
+      summary.className = 'muted small';
+      summary.style.cssText = 'margin-bottom: 8px; font-weight: 500; display: flex; justify-content: space-between; align-items: baseline; cursor: pointer; list-style: none;';
+      summary.innerHTML = `<span>▸ ${formatDate(date)}</span>${summaryRight}`;
+      dayGroup.appendChild(summary);
+      mealsHost = dayGroup;
+    }
     list.appendChild(dayGroup);
 
     for (const m of dayMeals) {
