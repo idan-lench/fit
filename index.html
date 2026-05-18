@@ -1622,72 +1622,50 @@ function muscleColor(intensity, max) {
 function renderMuscleHeatmapSvg(session, opts = {}) {
   const intensities = computeMuscleHeatmap(session);
   const max = Math.max(0, ...Object.values(intensities));
-  const c = m => muscleColor(intensities[m], max);
-  const stroke = '#a8a8ad';
-  const sw = 1;
-  // Compact SVG: front + back side by side, ~280x440
+  // For overlay on body-chart.png: use red with alpha scaled to intensity
+  const overlay = (muscle) => {
+    const i = intensities[muscle] || 0;
+    if (!max || i < max * 0.05) return 'rgba(0,0,0,0)';
+    const t = Math.min(1, i / max);
+    return `rgba(255,50,50,${(0.30 + 0.55 * t).toFixed(2)})`;
+  };
   return `
-  <div style="display: flex; gap: 4px; justify-content: center; ${opts.style || ''}">
-    <svg viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg" style="max-width: 50%;">
-      <!-- Head -->
-      <ellipse cx="70" cy="18" rx="12" ry="14" fill="${stroke}" opacity="0.25"/>
-      <!-- Neck -->
-      <rect x="64" y="30" width="12" height="6" fill="${stroke}" opacity="0.25"/>
-      <!-- Trapezius (front upper neck/shoulder slope) -->
-      <path d="M50 36 Q70 30 90 36 L82 44 Q70 40 58 44 Z" fill="${c('traps')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Pectorals -->
-      <path d="M48 44 Q70 50 92 44 L88 70 Q70 76 52 70 Z" fill="${c('chest')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Front delts (shoulders) -->
-      <ellipse cx="44" cy="48" rx="9" ry="8" fill="${c('delts_front')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <ellipse cx="96" cy="48" rx="9" ry="8" fill="${c('delts_front')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Biceps -->
-      <ellipse cx="38" cy="68" rx="7" ry="14" fill="${c('biceps')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <ellipse cx="102" cy="68" rx="7" ry="14" fill="${c('biceps')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Forearms (front) -->
-      <ellipse cx="33" cy="92" rx="6" ry="14" fill="${c('forearms')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <ellipse cx="107" cy="92" rx="6" ry="14" fill="${c('forearms')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Abs -->
-      <path d="M58 72 L82 72 L80 110 L60 110 Z" fill="${c('abs')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Obliques -->
-      <path d="M50 72 L58 72 L60 110 L52 108 Z" fill="${c('obliques')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <path d="M82 72 L90 72 L88 108 L80 110 Z" fill="${c('obliques')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Quads -->
-      <path d="M52 114 L70 114 L67 168 L54 168 Z" fill="${c('quads')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <path d="M70 114 L88 114 L86 168 L73 168 Z" fill="${c('quads')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Calves (front shins) -->
-      <ellipse cx="60" cy="190" rx="7" ry="16" fill="${c('calves')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <ellipse cx="80" cy="190" rx="7" ry="16" fill="${c('calves')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <text x="70" y="215" font-size="9" fill="${stroke}" text-anchor="middle">Front</text>
-    </svg>
-    <svg viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg" style="max-width: 50%;">
-      <!-- Head -->
-      <ellipse cx="70" cy="18" rx="12" ry="14" fill="${stroke}" opacity="0.25"/>
-      <!-- Neck -->
-      <rect x="64" y="30" width="12" height="6" fill="${stroke}" opacity="0.25"/>
-      <!-- Traps (back upper) -->
-      <path d="M48 36 Q70 28 92 36 L84 56 Q70 50 56 56 Z" fill="${c('traps')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Rear delts -->
-      <ellipse cx="44" cy="48" rx="9" ry="8" fill="${c('delts_rear')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <ellipse cx="96" cy="48" rx="9" ry="8" fill="${c('delts_rear')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Lats -->
-      <path d="M50 56 L90 56 L86 88 Q70 92 54 88 Z" fill="${c('lats')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Triceps -->
-      <ellipse cx="38" cy="68" rx="7" ry="14" fill="${c('triceps')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <ellipse cx="102" cy="68" rx="7" ry="14" fill="${c('triceps')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Forearms back -->
-      <ellipse cx="33" cy="92" rx="6" ry="14" fill="${c('forearms')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <ellipse cx="107" cy="92" rx="6" ry="14" fill="${c('forearms')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Lower back -->
-      <path d="M58 88 L82 88 L80 110 L60 110 Z" fill="${c('lower_back')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Glutes -->
-      <path d="M52 112 L88 112 L88 134 Q70 138 52 134 Z" fill="${c('glutes')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Hamstrings -->
-      <path d="M52 138 L68 138 L66 168 L54 168 Z" fill="${c('hamstrings')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <path d="M72 138 L88 138 L86 168 L74 168 Z" fill="${c('hamstrings')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <!-- Calves back -->
-      <ellipse cx="60" cy="190" rx="7" ry="16" fill="${c('calves')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <ellipse cx="80" cy="190" rx="7" ry="16" fill="${c('calves')}" stroke="${stroke}" stroke-width="${sw}"/>
-      <text x="70" y="215" font-size="9" fill="${stroke}" text-anchor="middle">Back</text>
+  <div style="position: relative; width: 100%; max-width: 560px; margin: 8px auto;">
+    <img src="body-chart.png" alt="Body chart" style="width: 100%; display: block;">
+    <svg viewBox="0 0 864 690" preserveAspectRatio="none" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;" xmlns="http://www.w3.org/2000/svg">
+      <!-- FRONT VIEW (left figure, body center ~x=170) -->
+      <ellipse cx="155" cy="185" rx="65" ry="35" fill="${overlay('chest')}"/>
+      <ellipse cx="95"  cy="175" rx="22" ry="24" fill="${overlay('delts_front')}"/>
+      <ellipse cx="215" cy="175" rx="22" ry="24" fill="${overlay('delts_front')}"/>
+      <ellipse cx="80"  cy="240" rx="18" ry="35" fill="${overlay('biceps')}"/>
+      <ellipse cx="230" cy="240" rx="18" ry="35" fill="${overlay('biceps')}"/>
+      <ellipse cx="70"  cy="320" rx="16" ry="32" fill="${overlay('forearms')}"/>
+      <ellipse cx="240" cy="320" rx="16" ry="32" fill="${overlay('forearms')}"/>
+      <rect    x="135" y="225" width="50" height="105" rx="8" fill="${overlay('abs')}"/>
+      <path d="M115,235 Q108,278 122,322 L135,322 L135,235 Z" fill="${overlay('obliques')}"/>
+      <path d="M205,235 Q212,278 198,322 L185,322 L185,235 Z" fill="${overlay('obliques')}"/>
+      <ellipse cx="140" cy="425" rx="30" ry="65" fill="${overlay('quads')}"/>
+      <ellipse cx="200" cy="425" rx="30" ry="65" fill="${overlay('quads')}"/>
+      <ellipse cx="140" cy="570" rx="22" ry="45" fill="${overlay('calves')}"/>
+      <ellipse cx="200" cy="570" rx="22" ry="45" fill="${overlay('calves')}"/>
+
+      <!-- BACK VIEW (right figure, body center ~x=490) -->
+      <path d="M450,135 Q490,125 530,135 L555,185 Q490,168 425,185 Z" fill="${overlay('traps')}"/>
+      <ellipse cx="415" cy="175" rx="22" ry="24" fill="${overlay('delts_rear')}"/>
+      <ellipse cx="565" cy="175" rx="22" ry="24" fill="${overlay('delts_rear')}"/>
+      <path d="M428,195 Q408,255 442,305 L490,305 L490,195 Z" fill="${overlay('lats')}"/>
+      <path d="M552,195 Q572,255 538,305 L490,305 L490,195 Z" fill="${overlay('lats')}"/>
+      <ellipse cx="400" cy="240" rx="18" ry="35" fill="${overlay('triceps')}"/>
+      <ellipse cx="580" cy="240" rx="18" ry="35" fill="${overlay('triceps')}"/>
+      <ellipse cx="390" cy="320" rx="16" ry="32" fill="${overlay('forearms')}"/>
+      <ellipse cx="590" cy="320" rx="16" ry="32" fill="${overlay('forearms')}"/>
+      <rect    x="460" y="295" width="60" height="55" rx="10" fill="${overlay('lower_back')}"/>
+      <ellipse cx="465" cy="385" rx="30" ry="30" fill="${overlay('glutes')}"/>
+      <ellipse cx="515" cy="385" rx="30" ry="30" fill="${overlay('glutes')}"/>
+      <ellipse cx="460" cy="470" rx="28" ry="60" fill="${overlay('hamstrings')}"/>
+      <ellipse cx="520" cy="470" rx="28" ry="60" fill="${overlay('hamstrings')}"/>
+      <ellipse cx="460" cy="580" rx="22" ry="45" fill="${overlay('calves')}"/>
+      <ellipse cx="520" cy="580" rx="22" ry="45" fill="${overlay('calves')}"/>
     </svg>
   </div>`;
 }
