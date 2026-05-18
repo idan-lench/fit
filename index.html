@@ -4553,7 +4553,7 @@ async function syncGoogleFit() {
       });
       return lines.join('\n');
     };
-    alert(dbgSummarize(stepsData, 'STEPS') + '\n\n' + dbgSummarize(distData, 'DISTANCE'));
+    prompt('Copy this debug output:', dbgSummarize(stepsData, 'STEPS') + ' || ' + dbgSummarize(distData, 'DISTANCE'));
 
     const steps = gfitExtractInt(stepsData);
     const distM = gfitExtractFloat(distData);
