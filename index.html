@@ -3339,6 +3339,8 @@ async function runDailyAnalysis(opts = {}) {
   if (!getGeminiKey()) return null;
   const targetDate = opts.date || todayISO();
   const isToday = targetDate === todayISO();
+  // Refresh steps from Google Fit before computing energy/summary (silent, no popup)
+  await silentSyncGoogleFit(targetDate);
   const e = await computeDailyEnergy(targetDate);
   const meals = await getAllMeals();
   const dayMeals = meals.filter(m => m.date === targetDate).map(m => ({
@@ -4386,21 +4388,75 @@ const GFIT_SCOPES = [
 let _gfitToken = null;
 let _gfitTokenExpiry = 0;
 
-function gfitGetToken() {
+function _loadCachedGfitToken() {
+  try {
+    const raw = localStorage.getItem('fit.gfitToken');
+    if (!raw) return;
+    const { token, expiry } = JSON.parse(raw);
+    if (token && expiry && Date.now() < expiry) {
+      _gfitToken = token;
+      _gfitTokenExpiry = expiry;
+    }
+  } catch {}
+}
+_loadCachedGfitToken();
+
+function _saveCachedGfitToken(token, expiry) {
+  try { localStorage.setItem('fit.gfitToken', JSON.stringify({ token, expiry })); } catch {}
+}
+
+// silent: if true, never show OAuth popup — resolves null if no cached token
+function gfitGetToken(opts = {}) {
+  const silent = !!opts.silent;
   return new Promise((resolve, reject) => {
     if (_gfitToken && Date.now() < _gfitTokenExpiry) return resolve(_gfitToken);
+    if (silent) return resolve(null);
+    if (typeof google === 'undefined' || !google.accounts?.oauth2) return reject(new Error('Google Identity not loaded'));
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GFIT_CLIENT_ID,
       scope: GFIT_SCOPES,
+      prompt: '',
       callback: (resp) => {
         if (resp.error) return reject(new Error(resp.error));
         _gfitToken = resp.access_token;
         _gfitTokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
+        _saveCachedGfitToken(_gfitToken, _gfitTokenExpiry);
         resolve(_gfitToken);
       }
     });
     client.requestAccessToken();
   });
+}
+
+// Silently fetch Fit steps + distance for given date (default: today).
+// Returns true if updated, false otherwise. Never throws or shows popups.
+async function silentSyncGoogleFit(date) {
+  const targetDate = date || todayISO();
+  try {
+    const token = await gfitGetToken({ silent: true });
+    if (!token) return false;
+    const { startMs, endMs } = gfitDateRange(targetDate);
+    const [stepsData, distData] = await Promise.all([
+      gfitAggregate(token, startMs, endMs, 'com.google.step_count.delta'),
+      gfitAggregate(token, startMs, endMs, 'com.google.distance.delta')
+    ]);
+    const steps = gfitExtractInt(stepsData);
+    if (steps > 0) {
+      state.steps = state.steps || [];
+      state.steps = state.steps.filter(s => s.date !== targetDate);
+      state.steps.push({ date: targetDate, count: steps, source: 'gfit' });
+      save();
+    }
+    return steps > 0;
+  } catch (e) {
+    // Token likely expired/revoked — clear cache so user can re-auth on next manual tap
+    if (String(e.message || '').match(/401|invalid|expired/i)) {
+      _gfitToken = null;
+      _gfitTokenExpiry = 0;
+      try { localStorage.removeItem('fit.gfitToken'); } catch {}
+    }
+    return false;
+  }
 }
 
 // Returns {startMs, endMs} for a given ISO date (local midnight to midnight)
@@ -4502,15 +4558,40 @@ async function syncGoogleFit() {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Auto-pull from Drive on startup, then auto-generate missing summaries
+// Silent Google Fit sync — today + missing days in last 7 (no popup; quiet if no token)
+async function autoSilentFitSync() {
+  const updated = [];
+  const today = todayISO();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    const existing = (state.steps || []).find(s => s.date === iso);
+    // Always refresh today; for past days only fill in if missing
+    if (iso === today || !existing) {
+      const ok = await silentSyncGoogleFit(iso);
+      if (ok) updated.push(iso);
+    }
+  }
+  if (updated.length) {
+    renderWorkout?.();
+    renderBody?.();
+    renderAnalysis?.();
+  }
+}
+
+// Auto-pull from Drive on startup, then silent Fit sync, then auto-gen summaries
 if (state.sync?.webhookUrl) {
   setTimeout(async () => {
     const r = await pullFromDrive({ silent: true });
     if (r.applied) toast('Auto-synced from Drive ✓');
+    await autoSilentFitSync();
     autoGenerateMissingSummaries();
   }, 1500);
 } else {
-  setTimeout(() => autoGenerateMissingSummaries(), 1500);
+  setTimeout(async () => {
+    await autoSilentFitSync();
+    autoGenerateMissingSummaries();
+  }, 1500);
 }
 
 // Schedule daily 23:55 generation
@@ -4520,12 +4601,13 @@ scheduleMidnightGen();
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     if (state.sync?.webhookUrl) {
-      pullFromDrive({ silent: true }).then(r => {
+      pullFromDrive({ silent: true }).then(async r => {
         if (r.applied) toast('Auto-synced ✓');
+        await autoSilentFitSync();
         autoGenerateMissingSummaries();
       });
     } else {
-      autoGenerateMissingSummaries();
+      autoSilentFitSync().then(() => autoGenerateMissingSummaries());
     }
   }
 });
