@@ -802,6 +802,7 @@
           <b>Setting up a 2nd device?</b> Paste the secret from your 1st device here.
         </div>
         <button class="ghost" style="width:100%; margin-top: 6px;" onclick="copySecret()">📋 Copy secret to share with another device</button>
+        <button class="ghost" style="width:100%; margin-top: 6px;" onclick="showSyncQR()">📱 Show QR for new device</button>
       </div>
     </div>
     <hr class="div" style="margin: 8px 0 0;">
@@ -856,6 +857,17 @@
       <button class="grow primary" onclick="confirmSet()">Add set</button>
       <button class="ghost" onclick="closeSet()">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- SYNC QR MODAL -->
+<div class="modal" id="syncQrModal" onclick="if(event.target===this)closeSyncQR()">
+  <div class="body" style="max-width: 360px; text-align: center;">
+    <h2 style="margin-top:0">📱 Scan from new device</h2>
+    <div class="muted small" style="margin-bottom: 12px;">Open your other device's camera, point it at the QR. Tap the link that appears, then tap Confirm.</div>
+    <canvas id="syncQrCanvas" style="max-width: 100%; height: auto; background: #fff; padding: 12px; border-radius: 12px;"></canvas>
+    <div class="muted small" style="margin-top: 10px; word-break: break-all; font-family: ui-monospace, monospace; font-size: 10px;" id="syncQrUrl"></div>
+    <button class="primary" style="width:100%; margin-top: 12px;" onclick="closeSyncQR()">Close</button>
   </div>
 </div>
 
@@ -4339,6 +4351,68 @@ function copySecret() {
     () => toast('Copy failed — select and copy manually')
   );
 }
+
+function _loadQrLib() {
+  if (window.QRCode) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load QR library'));
+    document.head.appendChild(s);
+  });
+}
+
+async function showSyncQR() {
+  const url = document.getElementById('webhookUrlInput').value.trim();
+  const secret = document.getElementById('secretInput').value.trim();
+  const folderId = document.getElementById('folderIdInput').value.trim();
+  if (!url || !secret) return toast('Fill in URL and secret first');
+  try {
+    await _loadQrLib();
+    const cfg = btoa(JSON.stringify({ folderId, webhookUrl: url, secret }));
+    const targetUrl = location.origin + location.pathname + '#sync=' + cfg;
+    const canvas = document.getElementById('syncQrCanvas');
+    await QRCode.toCanvas(canvas, targetUrl, { width: 280, margin: 1 });
+    document.getElementById('syncQrUrl').textContent = targetUrl.length > 80 ? targetUrl.slice(0, 80) + '…' : targetUrl;
+    document.getElementById('syncQrModal').classList.add('show');
+  } catch (e) {
+    toast('Could not generate QR: ' + e.message);
+  }
+}
+
+function closeSyncQR() {
+  document.getElementById('syncQrModal').classList.remove('show');
+}
+
+// Auto-import sync config from URL hash (#sync=…)
+function checkSyncImportFromUrl() {
+  const m = location.hash.match(/#sync=([^&]+)/);
+  if (!m) return;
+  try {
+    const cfg = JSON.parse(atob(m[1]));
+    if (!cfg.webhookUrl || !cfg.secret) return;
+    const ok = confirm('Import sync settings from QR code?\n\nWebhook: ' + cfg.webhookUrl.slice(0, 60) + '…\n\nThis will replace any sync config on this device.');
+    // Clear the hash either way so a refresh doesn't re-prompt
+    history.replaceState({}, '', location.pathname + location.search);
+    if (!ok) return;
+    state.sync = state.sync || {};
+    state.sync.webhookUrl = cfg.webhookUrl;
+    state.sync.secret = cfg.secret;
+    if (cfg.folderId) state.sync.folderId = cfg.folderId;
+    save();
+    toast('Sync settings imported ✓ — testing connection…');
+    setTimeout(async () => {
+      const r = await pingSync();
+      if (r.ok && r.pong) toast('Connected ✓ — tap Pull to load your data');
+      else toast('Imported but test failed: ' + (r.error || 'unknown'));
+    }, 600);
+  } catch (e) {
+    console.error('Sync import failed:', e);
+  }
+}
+// Run immediately so it fires before render
+setTimeout(checkSyncImportFromUrl, 100);
 function closeSyncSetup() {
   document.getElementById('syncModal').classList.remove('show');
   document.getElementById('settingsModal').classList.add('show');
