@@ -1438,6 +1438,7 @@ function renderWorkout() {
       <div class="sets">
         ${e.sets.length === 0 ? '<span class="set-pill empty">No sets yet</span>' : e.sets.map((s, si) => `<span class="set-pill" onclick="removeSet(${idx},${si})">${s.reps}</span>`).join('')}
       </div>
+      <input type="text" placeholder="Notes (weight, form, RPE…)" value="${escapeHtml(e.note || '')}" oninput="updateExerciseNote(${idx}, this.value)" style="margin-top: 8px; background: var(--panel2); font-size: 13px; padding: 8px 10px;">
     `;
     list.appendChild(ex);
   });
@@ -1496,6 +1497,12 @@ function removeExercise(idx) {
   renderWorkout();
 }
 
+function updateExerciseNote(idx, value) {
+  if (!state.current || !state.current.entries[idx]) return;
+  state.current.entries[idx].note = value;
+  save();
+}
+
 function removeCardio() {
   if (!state.current) return;
   if (state.current.cardioNote && !confirm('Remove cardio from this session? Your note will be lost.')) return;
@@ -1507,9 +1514,9 @@ function removeCardio() {
 
 const EXERCISE_LIBRARY = {
   Upper: [
-    'Push-ups', 'Decline push-ups', 'Diamond push-ups', 'Archer push-ups',
+    'Push-ups', 'Ring push-ups', 'Decline push-ups', 'Diamond push-ups', 'Archer push-ups',
     'Pull-ups', 'Chin-ups', 'Inverted rows', 'Dips', 'Pike push-ups',
-    'Bench press', 'Incline bench press', 'Overhead press', 'Barbell rows'
+    'Front raises', 'Bench press', 'Incline bench press', 'Overhead press', 'Barbell rows'
   ],
   Lower: [
     'Squats', 'Lunges (each leg)', 'Bulgarian split squats', 'Glute bridges',
@@ -1683,7 +1690,7 @@ function renderHistory() {
         <div style="font-weight: 600;">${PLAN[s.day]?.label || s.day}${timeHtml}${durationHtml}${burnHtml}</div>
         ${cardio ? `<div class="small" style="margin-top: 4px; color: var(--muted);">${cardio}</div>` : ''}
         ${s.entries.filter(e => e.sets.length).map(e => `
-          <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}</div>
+          <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
         `).join('')}
         ${s.burnBreakdown && s.burnBreakdown.length ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
           <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">Burn breakdown</div>
