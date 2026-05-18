@@ -4419,7 +4419,6 @@ function gfitGetToken(opts = {}) {
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GFIT_CLIENT_ID,
       scope: GFIT_SCOPES,
-      prompt: '',
       callback: (resp) => {
         if (resp.error) return reject(new Error(resp.error));
         _gfitToken = resp.access_token;
