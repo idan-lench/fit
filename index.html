@@ -1622,50 +1622,70 @@ function muscleColor(intensity, max) {
 function renderMuscleHeatmapSvg(session, opts = {}) {
   const intensities = computeMuscleHeatmap(session);
   const max = Math.max(0, ...Object.values(intensities));
-  // For overlay on body-chart.png: use red with alpha scaled to intensity
   const overlay = (muscle) => {
     const i = intensities[muscle] || 0;
     if (!max || i < max * 0.05) return 'rgba(0,0,0,0)';
     const t = Math.min(1, i / max);
     return `rgba(255,50,50,${(0.30 + 0.55 * t).toFixed(2)})`;
   };
+  // Body chart coords (calibrated from body-chart.png 864x690):
+  //   Front body: x=141..292 (center 216)
+  //   Back body:  x=547..702 (center 625)
   return `
   <div style="position: relative; width: 100%; max-width: 560px; margin: 8px auto;">
     <img src="body-chart.png" alt="Body chart" style="width: 100%; display: block;">
     <svg viewBox="0 0 864 690" preserveAspectRatio="none" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;" xmlns="http://www.w3.org/2000/svg">
-      <!-- FRONT VIEW (left figure, body center ~x=170) -->
-      <ellipse cx="155" cy="185" rx="65" ry="35" fill="${overlay('chest')}"/>
-      <ellipse cx="95"  cy="175" rx="22" ry="24" fill="${overlay('delts_front')}"/>
-      <ellipse cx="215" cy="175" rx="22" ry="24" fill="${overlay('delts_front')}"/>
-      <ellipse cx="80"  cy="240" rx="18" ry="35" fill="${overlay('biceps')}"/>
-      <ellipse cx="230" cy="240" rx="18" ry="35" fill="${overlay('biceps')}"/>
-      <ellipse cx="70"  cy="320" rx="16" ry="32" fill="${overlay('forearms')}"/>
-      <ellipse cx="240" cy="320" rx="16" ry="32" fill="${overlay('forearms')}"/>
-      <rect    x="135" y="225" width="50" height="105" rx="8" fill="${overlay('abs')}"/>
-      <path d="M115,235 Q108,278 122,322 L135,322 L135,235 Z" fill="${overlay('obliques')}"/>
-      <path d="M205,235 Q212,278 198,322 L185,322 L185,235 Z" fill="${overlay('obliques')}"/>
-      <ellipse cx="140" cy="425" rx="30" ry="65" fill="${overlay('quads')}"/>
-      <ellipse cx="200" cy="425" rx="30" ry="65" fill="${overlay('quads')}"/>
-      <ellipse cx="140" cy="570" rx="22" ry="45" fill="${overlay('calves')}"/>
-      <ellipse cx="200" cy="570" rx="22" ry="45" fill="${overlay('calves')}"/>
+      <!-- ─── FRONT (center x=216) ─── -->
+      <!-- Pectorals: span torso ±25 from center -->
+      <ellipse cx="200" cy="190" rx="22" ry="30" fill="${overlay('chest')}"/>
+      <ellipse cx="232" cy="190" rx="22" ry="30" fill="${overlay('chest')}"/>
+      <!-- Front delts: outer shoulder caps -->
+      <ellipse cx="175" cy="175" rx="15" ry="20" fill="${overlay('delts_front')}"/>
+      <ellipse cx="257" cy="175" rx="15" ry="20" fill="${overlay('delts_front')}"/>
+      <!-- Biceps: upper outer arm -->
+      <ellipse cx="158" cy="225" rx="15" ry="30" fill="${overlay('biceps')}"/>
+      <ellipse cx="274" cy="225" rx="15" ry="30" fill="${overlay('biceps')}"/>
+      <!-- Forearms (front) -->
+      <ellipse cx="150" cy="295" rx="13" ry="32" fill="${overlay('forearms')}"/>
+      <ellipse cx="282" cy="295" rx="13" ry="32" fill="${overlay('forearms')}"/>
+      <!-- Abs: center torso column -->
+      <rect    x="200" y="240" width="32" height="100" rx="8" fill="${overlay('abs')}"/>
+      <!-- Obliques: side panels of torso -->
+      <path d="M180,240 Q175,285 188,335 L200,335 L200,240 Z" fill="${overlay('obliques')}"/>
+      <path d="M252,240 Q257,285 244,335 L232,335 L232,240 Z" fill="${overlay('obliques')}"/>
+      <!-- Quads: each leg -->
+      <ellipse cx="195" cy="450" rx="22" ry="55" fill="${overlay('quads')}"/>
+      <ellipse cx="237" cy="450" rx="22" ry="55" fill="${overlay('quads')}"/>
+      <!-- Calves front (shins) -->
+      <ellipse cx="195" cy="585" rx="18" ry="42" fill="${overlay('calves')}"/>
+      <ellipse cx="237" cy="585" rx="18" ry="42" fill="${overlay('calves')}"/>
 
-      <!-- BACK VIEW (right figure, body center ~x=490) -->
-      <path d="M450,135 Q490,125 530,135 L555,185 Q490,168 425,185 Z" fill="${overlay('traps')}"/>
-      <ellipse cx="415" cy="175" rx="22" ry="24" fill="${overlay('delts_rear')}"/>
-      <ellipse cx="565" cy="175" rx="22" ry="24" fill="${overlay('delts_rear')}"/>
-      <path d="M428,195 Q408,255 442,305 L490,305 L490,195 Z" fill="${overlay('lats')}"/>
-      <path d="M552,195 Q572,255 538,305 L490,305 L490,195 Z" fill="${overlay('lats')}"/>
-      <ellipse cx="400" cy="240" rx="18" ry="35" fill="${overlay('triceps')}"/>
-      <ellipse cx="580" cy="240" rx="18" ry="35" fill="${overlay('triceps')}"/>
-      <ellipse cx="390" cy="320" rx="16" ry="32" fill="${overlay('forearms')}"/>
-      <ellipse cx="590" cy="320" rx="16" ry="32" fill="${overlay('forearms')}"/>
-      <rect    x="460" y="295" width="60" height="55" rx="10" fill="${overlay('lower_back')}"/>
-      <ellipse cx="465" cy="385" rx="30" ry="30" fill="${overlay('glutes')}"/>
-      <ellipse cx="515" cy="385" rx="30" ry="30" fill="${overlay('glutes')}"/>
-      <ellipse cx="460" cy="470" rx="28" ry="60" fill="${overlay('hamstrings')}"/>
-      <ellipse cx="520" cy="470" rx="28" ry="60" fill="${overlay('hamstrings')}"/>
-      <ellipse cx="460" cy="580" rx="22" ry="45" fill="${overlay('calves')}"/>
-      <ellipse cx="520" cy="580" rx="22" ry="45" fill="${overlay('calves')}"/>
+      <!-- ─── BACK (center x=625) ─── -->
+      <!-- Trapezius (back upper) -->
+      <path d="M600,150 Q625,142 650,150 L662,205 Q625,193 588,205 Z" fill="${overlay('traps')}"/>
+      <!-- Rear delts -->
+      <ellipse cx="584" cy="175" rx="15" ry="20" fill="${overlay('delts_rear')}"/>
+      <ellipse cx="666" cy="175" rx="15" ry="20" fill="${overlay('delts_rear')}"/>
+      <!-- Lats (wings) -->
+      <path d="M598,210 Q578,265 612,310 L625,310 L625,210 Z" fill="${overlay('lats')}"/>
+      <path d="M652,210 Q672,265 638,310 L625,310 L625,210 Z" fill="${overlay('lats')}"/>
+      <!-- Triceps -->
+      <ellipse cx="567" cy="225" rx="15" ry="30" fill="${overlay('triceps')}"/>
+      <ellipse cx="683" cy="225" rx="15" ry="30" fill="${overlay('triceps')}"/>
+      <!-- Forearms back -->
+      <ellipse cx="559" cy="295" rx="13" ry="32" fill="${overlay('forearms')}"/>
+      <ellipse cx="691" cy="295" rx="13" ry="32" fill="${overlay('forearms')}"/>
+      <!-- Lower back / erectors -->
+      <rect    x="605" y="310" width="40" height="50" rx="8" fill="${overlay('lower_back')}"/>
+      <!-- Glutes -->
+      <ellipse cx="608" cy="395" rx="22" ry="28" fill="${overlay('glutes')}"/>
+      <ellipse cx="642" cy="395" rx="22" ry="28" fill="${overlay('glutes')}"/>
+      <!-- Hamstrings -->
+      <ellipse cx="604" cy="475" rx="22" ry="50" fill="${overlay('hamstrings')}"/>
+      <ellipse cx="646" cy="475" rx="22" ry="50" fill="${overlay('hamstrings')}"/>
+      <!-- Calves back -->
+      <ellipse cx="604" cy="585" rx="18" ry="42" fill="${overlay('calves')}"/>
+      <ellipse cx="646" cy="585" rx="18" ry="42" fill="${overlay('calves')}"/>
     </svg>
   </div>`;
 }
