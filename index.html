@@ -4527,6 +4527,9 @@ async function syncGoogleFit() {
       gfitAggregate(token, startMs, endMs, 'com.google.distance.delta')
     ]);
 
+    console.log('[Fit] steps API response:', JSON.stringify(stepsData));
+    console.log('[Fit] distance API response:', JSON.stringify(distData));
+
     const steps = gfitExtractInt(stepsData);
     const distM = gfitExtractFloat(distData);
     const distKm = Math.round(distM / 100) / 10;
