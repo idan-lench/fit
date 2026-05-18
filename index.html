@@ -859,6 +859,16 @@
   </div>
 </div>
 
+<!-- MUSCLE HEATMAP MODAL (post-save celebration) -->
+<div class="modal" id="heatmapModal" onclick="if(event.target===this)closeHeatmap()">
+  <div class="body" style="max-width: 420px; text-align: center;">
+    <h2 style="margin-top:0">💪 Nice work!</h2>
+    <div class="muted small" id="heatmapSubtitle" style="margin-bottom: 10px;"></div>
+    <div id="heatmapBody"></div>
+    <button class="primary" style="width:100%; margin-top: 12px;" onclick="closeHeatmap()">Close</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="prompts.js"></script>
@@ -1503,6 +1513,18 @@ function updateExerciseNote(idx, value) {
   save();
 }
 
+function openHeatmap(session) {
+  const body = document.getElementById('heatmapBody');
+  const sub = document.getElementById('heatmapSubtitle');
+  if (!body) return;
+  const totalSets = (session.entries || []).reduce((n, e) => n + (e.sets?.length || 0), 0);
+  const totalReps = (session.entries || []).reduce((n, e) => n + (e.sets?.reduce((r, s) => r + (s.reps || 0), 0) || 0), 0);
+  sub.textContent = `${totalSets} sets · ${totalReps} reps · Muscles worked today:`;
+  body.innerHTML = renderMuscleHeatmapSvg(session);
+  document.getElementById('heatmapModal').classList.add('show');
+}
+function closeHeatmap() { document.getElementById('heatmapModal').classList.remove('show'); }
+
 function removeCardio() {
   if (!state.current) return;
   if (state.current.cardioNote && !confirm('Remove cardio from this session? Your note will be lost.')) return;
@@ -1511,6 +1533,152 @@ function removeCardio() {
   save();
   renderWorkout();
 }
+
+// ─── Muscle Heatmap ──────────────────────────────────────────────────────────
+// Map exercise name → muscles it works, with weights (1.0 = primary, 0.3 = light)
+const MUSCLE_MAP = {
+  // Upper push
+  'push-ups':            { chest: 1.0, triceps: 0.6, delts_front: 0.4, abs: 0.2 },
+  'ring push-ups':       { chest: 1.0, triceps: 0.7, delts_front: 0.5, abs: 0.4 },
+  'decline push-ups':    { chest: 1.0, delts_front: 0.6, triceps: 0.5 },
+  'diamond push-ups':    { triceps: 1.0, chest: 0.6, delts_front: 0.3 },
+  'archer push-ups':     { chest: 1.0, triceps: 0.7, delts_front: 0.4, abs: 0.4 },
+  'pike push-ups':       { delts_front: 1.0, triceps: 0.7, chest: 0.3 },
+  'bench press':         { chest: 1.0, triceps: 0.6, delts_front: 0.5 },
+  'incline bench press': { chest: 0.9, delts_front: 0.7, triceps: 0.5 },
+  'overhead press':      { delts_front: 1.0, triceps: 0.6, traps: 0.4 },
+  'front raises':        { delts_front: 1.0 },
+  'dips':                { triceps: 1.0, chest: 0.7, delts_front: 0.4 },
+  'parallel bars':       { triceps: 1.0, chest: 0.7, delts_front: 0.5 },
+  // Upper pull
+  'pull-ups':            { lats: 1.0, biceps: 0.7, traps: 0.4, forearms: 0.4 },
+  'chin-ups':            { biceps: 1.0, lats: 0.8, forearms: 0.4 },
+  'inverted rows':       { lats: 0.8, traps: 0.7, biceps: 0.6, delts_rear: 0.5 },
+  'trx low row':         { lats: 0.7, traps: 0.7, biceps: 0.6, delts_rear: 0.5 },
+  'barbell rows':        { lats: 0.9, traps: 0.7, biceps: 0.5, delts_rear: 0.5 },
+  // Lower
+  'squats':              { quads: 1.0, glutes: 0.7, hamstrings: 0.4, calves: 0.3 },
+  'lunges (each leg)':   { quads: 1.0, glutes: 0.7, hamstrings: 0.4 },
+  'bulgarian split squats': { quads: 1.0, glutes: 0.8, hamstrings: 0.4 },
+  'glute bridges':       { glutes: 1.0, hamstrings: 0.6 },
+  'single-leg glute bridges': { glutes: 1.0, hamstrings: 0.7 },
+  'calf raises':         { calves: 1.0 },
+  'wall sit (sec)':      { quads: 1.0, glutes: 0.4 },
+  'step-ups':            { quads: 1.0, glutes: 0.7, hamstrings: 0.4 },
+  'leg press':           { quads: 1.0, glutes: 0.6, hamstrings: 0.4 },
+  // Core
+  'plank (sec)':         { abs: 1.0, delts_front: 0.3 },
+  'side plank (sec)':    { obliques: 1.0, abs: 0.5 },
+  'hanging leg raises':  { abs: 1.0, forearms: 0.4 },
+  'hanging knee tucks':  { abs: 0.9, forearms: 0.4 },
+  'hollow hold (sec)':   { abs: 1.0 },
+  'crunches':            { abs: 1.0 },
+  'bicycle crunches':    { abs: 1.0, obliques: 0.7 },
+  'russian twists':      { obliques: 1.0, abs: 0.6 },
+  'dead bug':            { abs: 1.0 },
+  'mountain climbers':   { abs: 0.8, delts_front: 0.4 },
+  'bird dog':            { abs: 0.6, glutes: 0.4, lower_back: 0.5 }
+};
+
+function computeMuscleHeatmap(session) {
+  const totals = {};
+  for (const e of session.entries || []) {
+    if (!e.sets || e.sets.length === 0) continue;
+    const key = (e.name || '').toLowerCase().trim();
+    const map = MUSCLE_MAP[key];
+    if (!map) continue;
+    const volume = e.sets.reduce((sum, s) => sum + (s.reps || 0), 0);
+    for (const [muscle, weight] of Object.entries(map)) {
+      totals[muscle] = (totals[muscle] || 0) + volume * weight;
+    }
+  }
+  return totals;
+}
+
+function muscleColor(intensity, max) {
+  if (!intensity || !max) return '#d8d8dc';
+  const t = Math.min(1, intensity / max);
+  // Light pink (low) → strong red (high)
+  if (t < 0.05) return '#d8d8dc';
+  const r = Math.round(255);
+  const g = Math.round(220 - 180 * t);
+  const b = Math.round(220 - 180 * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+function renderMuscleHeatmapSvg(session, opts = {}) {
+  const intensities = computeMuscleHeatmap(session);
+  const max = Math.max(0, ...Object.values(intensities));
+  const c = m => muscleColor(intensities[m], max);
+  const stroke = '#a8a8ad';
+  const sw = 1;
+  // Compact SVG: front + back side by side, ~280x440
+  return `
+  <div style="display: flex; gap: 4px; justify-content: center; ${opts.style || ''}">
+    <svg viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg" style="max-width: 50%;">
+      <!-- Head -->
+      <ellipse cx="70" cy="18" rx="12" ry="14" fill="${stroke}" opacity="0.25"/>
+      <!-- Neck -->
+      <rect x="64" y="30" width="12" height="6" fill="${stroke}" opacity="0.25"/>
+      <!-- Trapezius (front upper neck/shoulder slope) -->
+      <path d="M50 36 Q70 30 90 36 L82 44 Q70 40 58 44 Z" fill="${c('traps')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Pectorals -->
+      <path d="M48 44 Q70 50 92 44 L88 70 Q70 76 52 70 Z" fill="${c('chest')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Front delts (shoulders) -->
+      <ellipse cx="44" cy="48" rx="9" ry="8" fill="${c('delts_front')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <ellipse cx="96" cy="48" rx="9" ry="8" fill="${c('delts_front')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Biceps -->
+      <ellipse cx="38" cy="68" rx="7" ry="14" fill="${c('biceps')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <ellipse cx="102" cy="68" rx="7" ry="14" fill="${c('biceps')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Forearms (front) -->
+      <ellipse cx="33" cy="92" rx="6" ry="14" fill="${c('forearms')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <ellipse cx="107" cy="92" rx="6" ry="14" fill="${c('forearms')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Abs -->
+      <path d="M58 72 L82 72 L80 110 L60 110 Z" fill="${c('abs')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Obliques -->
+      <path d="M50 72 L58 72 L60 110 L52 108 Z" fill="${c('obliques')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <path d="M82 72 L90 72 L88 108 L80 110 Z" fill="${c('obliques')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Quads -->
+      <path d="M52 114 L70 114 L67 168 L54 168 Z" fill="${c('quads')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <path d="M70 114 L88 114 L86 168 L73 168 Z" fill="${c('quads')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Calves (front shins) -->
+      <ellipse cx="60" cy="190" rx="7" ry="16" fill="${c('calves')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <ellipse cx="80" cy="190" rx="7" ry="16" fill="${c('calves')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <text x="70" y="215" font-size="9" fill="${stroke}" text-anchor="middle">Front</text>
+    </svg>
+    <svg viewBox="0 0 140 220" width="140" height="220" xmlns="http://www.w3.org/2000/svg" style="max-width: 50%;">
+      <!-- Head -->
+      <ellipse cx="70" cy="18" rx="12" ry="14" fill="${stroke}" opacity="0.25"/>
+      <!-- Neck -->
+      <rect x="64" y="30" width="12" height="6" fill="${stroke}" opacity="0.25"/>
+      <!-- Traps (back upper) -->
+      <path d="M48 36 Q70 28 92 36 L84 56 Q70 50 56 56 Z" fill="${c('traps')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Rear delts -->
+      <ellipse cx="44" cy="48" rx="9" ry="8" fill="${c('delts_rear')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <ellipse cx="96" cy="48" rx="9" ry="8" fill="${c('delts_rear')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Lats -->
+      <path d="M50 56 L90 56 L86 88 Q70 92 54 88 Z" fill="${c('lats')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Triceps -->
+      <ellipse cx="38" cy="68" rx="7" ry="14" fill="${c('triceps')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <ellipse cx="102" cy="68" rx="7" ry="14" fill="${c('triceps')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Forearms back -->
+      <ellipse cx="33" cy="92" rx="6" ry="14" fill="${c('forearms')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <ellipse cx="107" cy="92" rx="6" ry="14" fill="${c('forearms')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Lower back -->
+      <path d="M58 88 L82 88 L80 110 L60 110 Z" fill="${c('lower_back')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Glutes -->
+      <path d="M52 112 L88 112 L88 134 Q70 138 52 134 Z" fill="${c('glutes')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Hamstrings -->
+      <path d="M52 138 L68 138 L66 168 L54 168 Z" fill="${c('hamstrings')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <path d="M72 138 L88 138 L86 168 L74 168 Z" fill="${c('hamstrings')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <!-- Calves back -->
+      <ellipse cx="60" cy="190" rx="7" ry="16" fill="${c('calves')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <ellipse cx="80" cy="190" rx="7" ry="16" fill="${c('calves')}" stroke="${stroke}" stroke-width="${sw}"/>
+      <text x="70" y="215" font-size="9" fill="${stroke}" text-anchor="middle">Back</text>
+    </svg>
+  </div>`;
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 const EXERCISE_LIBRARY = {
   Upper: [
@@ -1626,11 +1794,16 @@ function finishSession() {
     toast('Updated ✓');
   } else {
     savedAt = Date.now();
-    state.sessions.push({ ...state.current, savedAt });
+    const savedSession = { ...state.current, savedAt };
+    state.sessions.push(savedSession);
     state.current = null;
     save();
     selectDay(currentDay);
     toast('Saved ✓');
+    // Show muscle heatmap if there's at least one logged set
+    if ((savedSession.entries || []).some(e => e.sets && e.sets.length > 0)) {
+      setTimeout(() => openHeatmap(savedSession), 500);
+    }
   }
   // Only auto-analyze if no estimate exists yet
   if (getGeminiKey() && savedAt) {
@@ -1692,6 +1865,7 @@ function renderHistory() {
         ${s.entries.filter(e => e.sets.length).map(e => `
           <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
         `).join('')}
+        ${s.entries.some(e => e.sets.length) ? `<details style="margin-top: 10px;"><summary class="muted small" style="cursor: pointer;">▸ Muscle heatmap</summary>${renderMuscleHeatmapSvg(s)}</details>` : ''}
         ${s.burnBreakdown && s.burnBreakdown.length ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
           <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">Burn breakdown</div>
           ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
