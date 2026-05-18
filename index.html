@@ -4470,9 +4470,18 @@ function gfitDateRange(isoDate) {
   return { startMs: start.getTime(), endMs: end.getTime() };
 }
 
+// Derived data sources that match what the Google Fit app shows on screen.
+// "estimated_steps" merges all input sources (phone, watch, Samsung Health, etc.).
+const GFIT_DERIVED_SOURCES = {
+  'com.google.step_count.delta': 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps',
+  'com.google.distance.delta':   'derived:com.google.distance.delta:com.google.android.gms:merge_distance_delta'
+};
+
 async function gfitAggregate(token, startMs, endMs, dataTypeName) {
+  const aggBy = { dataTypeName };
+  if (GFIT_DERIVED_SOURCES[dataTypeName]) aggBy.dataSourceId = GFIT_DERIVED_SOURCES[dataTypeName];
   const body = {
-    aggregateBy: [{ dataTypeName }],
+    aggregateBy: [aggBy],
     bucketByTime: { durationMillis: endMs - startMs },
     startTimeMillis: startMs,
     endTimeMillis: endMs
