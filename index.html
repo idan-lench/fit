@@ -865,7 +865,8 @@
   <div class="body" style="max-width: 360px; text-align: center;">
     <h2 style="margin-top:0">📱 Scan from new device</h2>
     <div class="muted small" style="margin-bottom: 12px;">Open your other device's camera, point it at the QR. Tap the link that appears, then tap Confirm.</div>
-    <canvas id="syncQrCanvas" style="max-width: 100%; height: auto; background: #fff; padding: 12px; border-radius: 12px;"></canvas>
+    <img id="syncQrImg" style="max-width: 100%; height: auto; background: #fff; padding: 12px; border-radius: 12px;" alt="QR code">
+    <canvas id="syncQrCanvas" style="display: none;"></canvas>
     <div class="muted small" style="margin-top: 10px; word-break: break-all; font-family: ui-monospace, monospace; font-size: 10px;" id="syncQrUrl"></div>
     <button class="primary" style="width:100%; margin-top: 12px;" onclick="closeSyncQR()">Close</button>
   </div>
@@ -4352,33 +4353,19 @@ function copySecret() {
   );
 }
 
-function _loadQrLib() {
-  if (window.QRCode) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js';
-    s.onload = resolve;
-    s.onerror = () => reject(new Error('Failed to load QR library'));
-    document.head.appendChild(s);
-  });
-}
-
-async function showSyncQR() {
+function showSyncQR() {
   const url = document.getElementById('webhookUrlInput').value.trim();
   const secret = document.getElementById('secretInput').value.trim();
   const folderId = document.getElementById('folderIdInput').value.trim();
   if (!url || !secret) return toast('Fill in URL and secret first');
-  try {
-    await _loadQrLib();
-    const cfg = btoa(JSON.stringify({ folderId, webhookUrl: url, secret }));
-    const targetUrl = location.origin + location.pathname + '#sync=' + cfg;
-    const canvas = document.getElementById('syncQrCanvas');
-    await QRCode.toCanvas(canvas, targetUrl, { width: 280, margin: 1 });
-    document.getElementById('syncQrUrl').textContent = targetUrl.length > 80 ? targetUrl.slice(0, 80) + '…' : targetUrl;
-    document.getElementById('syncQrModal').classList.add('show');
-  } catch (e) {
-    toast('Could not generate QR: ' + e.message);
-  }
+  const cfg = btoa(JSON.stringify({ folderId, webhookUrl: url, secret }));
+  const targetUrl = location.origin + location.pathname + '#sync=' + cfg;
+  // Use api.qrserver.com — no JS library needed, just an <img>
+  const qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&margin=10&data=' + encodeURIComponent(targetUrl);
+  const img = document.getElementById('syncQrImg');
+  img.src = qrSrc;
+  document.getElementById('syncQrUrl').textContent = targetUrl.length > 80 ? targetUrl.slice(0, 80) + '…' : targetUrl;
+  document.getElementById('syncQrModal').classList.add('show');
 }
 
 function closeSyncQR() {
