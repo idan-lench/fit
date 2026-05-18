@@ -4469,16 +4469,14 @@ function gfitDateRange(isoDate) {
   return { startMs: start.getTime(), endMs: end.getTime() };
 }
 
-// Derived data sources that match what the Google Fit app shows on screen.
-// "estimated_steps" merges all input sources (phone, watch, Samsung Health, etc.).
+// Derived data sources that match what the Google Fit app UI shows.
+// First we try the merged/estimated source; if empty we fall back to the raw data type.
 const GFIT_DERIVED_SOURCES = {
   'com.google.step_count.delta': 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps',
   'com.google.distance.delta':   'derived:com.google.distance.delta:com.google.android.gms:merge_distance_delta'
 };
 
-async function gfitAggregate(token, startMs, endMs, dataTypeName) {
-  const aggBy = { dataTypeName };
-  if (GFIT_DERIVED_SOURCES[dataTypeName]) aggBy.dataSourceId = GFIT_DERIVED_SOURCES[dataTypeName];
+async function gfitAggregateOnce(token, startMs, endMs, aggBy) {
   const body = {
     aggregateBy: [aggBy],
     bucketByTime: { durationMillis: endMs - startMs },
@@ -4492,6 +4490,16 @@ async function gfitAggregate(token, startMs, endMs, dataTypeName) {
   });
   if (!r.ok) throw new Error(`Fit API ${r.status}`);
   return r.json();
+}
+
+async function gfitAggregate(token, startMs, endMs, dataTypeName) {
+  const derived = GFIT_DERIVED_SOURCES[dataTypeName];
+  if (derived) {
+    const r1 = await gfitAggregateOnce(token, startMs, endMs, { dataTypeName, dataSourceId: derived });
+    const hasData = r1?.bucket?.[0]?.dataset?.[0]?.point?.length > 0;
+    if (hasData) return r1;
+  }
+  return gfitAggregateOnce(token, startMs, endMs, { dataTypeName });
 }
 
 function gfitExtractInt(data) {
