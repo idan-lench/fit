@@ -4534,27 +4534,6 @@ async function syncGoogleFit() {
       gfitAggregate(token, startMs, endMs, 'com.google.distance.delta')
     ]);
 
-    console.log('[Fit] steps API response:', JSON.stringify(stepsData));
-    console.log('[Fit] distance API response:', JSON.stringify(distData));
-
-    // Parse summary so user can see what's actually in the response
-    const dbgSummarize = (data, label) => {
-      const buckets = data?.bucket || [];
-      const ds = buckets[0]?.dataset || [];
-      const lines = [`== ${label} ==`, `buckets: ${buckets.length}`];
-      ds.forEach((d, i) => {
-        const pts = d.point || [];
-        lines.push(`dataset[${i}].dataSourceId: ${d.dataSourceId || '(none)'}`);
-        lines.push(`dataset[${i}].points: ${pts.length}`);
-        pts.forEach((p, j) => {
-          const v = p.value?.[0];
-          lines.push(`  point[${j}] value: ${v?.intVal ?? v?.fpVal ?? '?'} (start=${new Date(+p.startTimeNanos / 1e6).toISOString()})`);
-        });
-      });
-      return lines.join('\n');
-    };
-    prompt('Copy this debug output:', dbgSummarize(stepsData, 'STEPS') + ' || ' + dbgSummarize(distData, 'DISTANCE'));
-
     const steps = gfitExtractInt(stepsData);
     const distM = gfitExtractFloat(distData);
     const distKm = Math.round(distM / 100) / 10;
