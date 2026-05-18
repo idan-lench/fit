@@ -4537,13 +4537,8 @@ async function syncGoogleFit() {
     console.log('[Fit] steps API response:', JSON.stringify(stepsData));
     console.log('[Fit] distance API response:', JSON.stringify(distData));
 
-    // Visible debug: surface the raw response right in the sync status
-    const stepsJson = JSON.stringify(stepsData);
-    status.textContent = 'DBG steps: ' + stepsJson.slice(0, 400);
-    status.style.fontFamily = 'monospace';
-    status.style.fontSize = '10px';
-    status.style.whiteSpace = 'pre-wrap';
-    status.style.wordBreak = 'break-all';
+    // Debug alert — shows raw response so we can see what Google is sending
+    alert('STEPS API:\n' + JSON.stringify(stepsData, null, 2).slice(0, 1500) + '\n\nDISTANCE API:\n' + JSON.stringify(distData, null, 2).slice(0, 800));
 
     const steps = gfitExtractInt(stepsData);
     const distM = gfitExtractFloat(distData);
