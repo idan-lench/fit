@@ -475,7 +475,10 @@
   <section id="tab-meals">
     <h2>Log a meal</h2>
     <div class="card">
-      <button class="primary" style="width:100%;" onclick="openMealModal()">+ Add meal</button>
+      <div class="row" style="gap: 8px;">
+        <button class="primary grow" onclick="openMealModal()">+ Add meal</button>
+        <button class="ghost" onclick="openTemplatePicker()" style="flex-shrink: 0;">📋 Templates</button>
+      </div>
       <div class="muted small" style="margin-top: 8px;">Optional. Photo + short note. Logs locally — Claude only sees them when you do "Full backup (with photos)" in Settings.</div>
     </div>
     <div id="proteinBar" style="display:none; margin-bottom: 12px; padding: 14px 16px; background: var(--panel); border-radius: var(--radius);">
@@ -2205,13 +2208,16 @@ function renderSteps() {
   // Build a continuous range of `days` ending today (gaps for missing entries)
   const days = stepsMode === 'month' ? 30 : 7;
   const todayDt = new Date();
-  const rangeSS = [];
+  let rangeSS = [];
   const byDate = new Map(ss.map(s => [s.date, s]));
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(todayDt); d.setDate(todayDt.getDate() - i);
     const iso = _isoDate(d);
     rangeSS.push(byDate.get(iso) || { date: iso, count: null });
   }
+  // Trim leading days without data so the chart starts at first entry
+  const firstIdx = rangeSS.findIndex(s => typeof s.count === 'number');
+  if (firstIdx > 0) rangeSS = rangeSS.slice(firstIdx);
   drawStepsChart(rangeSS);
 
   const list = document.getElementById('stepsList');
@@ -2910,7 +2916,7 @@ async function drawDayTrend(el, caption) {
 // Week/Month: original Net bar chart style, restored
 async function drawRangeTrend(el, caption, days) {
   const today = new Date();
-  const data = [];
+  let data = [];
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(today); d.setDate(today.getDate() - i);
     const iso = _isoDate(d);
@@ -2922,6 +2928,14 @@ async function drawRangeTrend(el, caption, days) {
         : d.getDate() + '/' + (d.getMonth() + 1),
       net: e.eaten ? Math.round(e.eaten - e.burned) : null
     });
+  }
+  // Trim leading empty days (no data) so the chart starts at first day with data
+  const firstIdx = data.findIndex(d => d.net !== null);
+  if (firstIdx > 0) data = data.slice(firstIdx);
+  if (data.length === 0) {
+    el.innerHTML = '<div class="empty">No data yet for this range.</div>';
+    if (caption) caption.textContent = '';
+    return;
   }
   // Match steps chart axis settings: pad, rotate labels when >10 points
   const rotate = data.length > 10;
