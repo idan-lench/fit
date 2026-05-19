@@ -2118,19 +2118,22 @@ function renderSteps() {
 }
 
 function drawStepsChart(ss) {
-  const w = 600, h = 200, pad = 44;
   const el = document.getElementById('stepsChart');
+  if (!el) return;
   if (ss.length === 0) {
     el.innerHTML = `<div class="empty">Add entries to see the trend.</div>`;
     return;
   }
+  const rotate = ss.length > 10;
+  const w = 600, h = 240, pad = 36, padBottom = rotate ? 50 : 30;
+  const chartH = h - padBottom;
   const xs = ss.map(s => +new Date(s.date));
   const ys = ss.map(s => s.count);
   const xMin = Math.min(...xs), xMax = Math.max(...xs);
   const yMax = Math.max(STEPS_GOAL * 1.15, ...ys);
   const yMin = 0;
   const xScale = x => pad + ((x - xMin) / Math.max(1, xMax - xMin)) * (w - pad*2);
-  const yScale = y => h - pad/2 - ((y - yMin) / Math.max(0.01, yMax - yMin)) * (h - pad);
+  const yScale = y => chartH - 6 - ((y - yMin) / Math.max(0.01, yMax - yMin)) * (chartH - pad);
   const pts = ss.map(s => `${xScale(+new Date(s.date)).toFixed(1)},${yScale(s.count).toFixed(1)}`).join(' ');
   const dots = ss.map(s => `<circle cx="${xScale(+new Date(s.date))}" cy="${yScale(s.count)}" r="4" fill="${s.count >= STEPS_GOAL ? 'var(--accent2)' : 'var(--accent)'}"/>`).join('');
   const goalY = yScale(STEPS_GOAL);
@@ -2144,18 +2147,17 @@ function drawStepsChart(ss) {
 
   // X-axis labels: every date (rotated -45° if many)
   const fmt = ts => { const d = new Date(ts); return (d.getMonth()+1) + '/' + d.getDate(); };
-  const rotate = ss.length > 10;
   const fontSize = rotate ? 9 : 11;
   const xLabels = ss.map(s => {
     const x = xScale(+new Date(s.date));
-    const y = h - pad/2 + (rotate ? 12 : 18);
+    const y = chartH + (rotate ? 14 : 18);
     return rotate
       ? `<text x="${x}" y="${y}" fill="var(--muted)" font-size="${fontSize}" text-anchor="end" transform="rotate(-45 ${x} ${y})">${fmt(+new Date(s.date))}</text>`
       : `<text x="${x}" y="${y}" fill="var(--muted)" font-size="${fontSize}" text-anchor="middle">${fmt(+new Date(s.date))}</text>`;
   }).join('');
 
   el.innerHTML = `
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="height:220px; width: 100%;">
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="height:240px; width: 100%;">
       ${yTicks}
       <line x1="${pad}" y1="${goalY}" x2="${w-pad}" y2="${goalY}" stroke="var(--accent2)" stroke-dasharray="4,4" opacity="0.6"/>
       <text x="${w-pad}" y="${goalY-4}" fill="var(--accent2)" font-size="11" text-anchor="end">${(STEPS_GOAL/1000)}k goal</text>
@@ -2636,36 +2638,44 @@ async function drawRangeTrend(el, caption, days) {
       net: e.eaten ? Math.round(e.eaten - e.burned) : null
     });
   }
-  const w = 600, h = 220, pad = 30;
+  // Match steps chart axis settings: pad, rotate labels when >10 points
+  const rotate = data.length > 10;
+  const w = 600, h = 240, pad = 36, padBottom = rotate ? 50 : 30;
+  const chartH = h - padBottom;
   const validNet = data.filter(d => d.net !== null).map(d => d.net);
   const maxAbs = Math.max(800, ...validNet.map(Math.abs));
-  const yScale = y => h/2 - (y / maxAbs) * (h/2 - pad);
+  const midY = padBottom/2 + (chartH)/2;
+  const yScale = y => midY - (y / maxAbs) * (chartH/2 - pad/2);
   const slotW = (w - pad*2) / data.length;
   const barW = slotW * 0.7;
   const gap  = slotW * 0.3;
+  const labelFontSize = rotate ? 9 : 10;
+  const valueFontSize = rotate ? 9 : 10;
 
   const bars = data.map((d, i) => {
     const x = pad + i * slotW + gap/2;
+    const cx = x + barW/2;
+    const labelY = chartH + (rotate ? 14 : 18);
+    const labelHTML = rotate
+      ? `<text x="${cx}" y="${labelY}" fill="var(--muted)" font-size="${labelFontSize}" text-anchor="end" transform="rotate(-45 ${cx} ${labelY})">${d.label}</text>`
+      : `<text x="${cx}" y="${labelY}" fill="var(--muted)" font-size="${labelFontSize}" text-anchor="middle">${d.label}</text>`;
     if (d.net === null) {
-      return `<text x="${x + barW/2}" y="${h/2 + 4}" fill="var(--muted)" font-size="11" text-anchor="middle">—</text>
-              <text x="${x + barW/2}" y="${h - 8}" fill="var(--muted)" font-size="9" text-anchor="middle">${d.label}</text>`;
+      return `<text x="${cx}" y="${midY + 4}" fill="var(--muted)" font-size="11" text-anchor="middle">—</text>${labelHTML}`;
     }
     const yTop = d.net >= 0 ? yScale(d.net) : yScale(0);
     const barH = Math.abs(yScale(d.net) - yScale(0));
     const color = d.net < 0 ? 'var(--accent2)' : 'var(--danger)';
-    const labelFont = days > 14 ? 8 : 10;
-    const valueFont = days > 14 ? 8 : 10;
     return `
       <rect x="${x}" y="${yTop}" width="${barW}" height="${barH}" fill="${color}" rx="2"/>
-      <text x="${x + barW/2}" y="${d.net >= 0 ? yTop - 3 : yTop + barH + 10}" fill="var(--text)" font-size="${valueFont}" text-anchor="middle" font-weight="600">${d.net > 0 ? '+' : ''}${d.net}</text>
-      <text x="${x + barW/2}" y="${h - 8}" fill="var(--muted)" font-size="${labelFont}" text-anchor="middle">${d.label}</text>
+      <text x="${cx}" y="${d.net >= 0 ? yTop - 3 : yTop + barH + 10}" fill="var(--text)" font-size="${valueFontSize}" text-anchor="middle" font-weight="600">${d.net > 0 ? '+' : ''}${d.net}</text>
+      ${labelHTML}
     `;
   }).join('');
 
   el.innerHTML = `
-    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="height: 220px; width: 100%;">
-      <line x1="${pad}" y1="${h/2}" x2="${w-pad}" y2="${h/2}" stroke="var(--line)"/>
-      <text x="${pad-4}" y="${h/2+3}" fill="var(--muted)" font-size="10" text-anchor="end">0</text>
+    <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="height: 240px; width: 100%;">
+      <line x1="${pad}" y1="${midY}" x2="${w-pad}" y2="${midY}" stroke="var(--line)"/>
+      <text x="${pad-4}" y="${midY+3}" fill="var(--muted)" font-size="10" text-anchor="end">0</text>
       <line x1="${pad}" y1="${yScale(-300)}" x2="${w-pad}" y2="${yScale(-300)}" stroke="var(--accent2)" stroke-dasharray="3,3" opacity="0.4"/>
       <text x="${w-pad}" y="${yScale(-300)-3}" fill="var(--accent2)" font-size="9" text-anchor="end">−300 fat-loss target</text>
       ${bars}
