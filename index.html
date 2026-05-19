@@ -1375,25 +1375,23 @@ function renderWorkout() {
     // or empty state — just history. User can tap "+ Add another workout" to add more.
     const alreadyLogged = (state.sessions || []).some(s => s.date === viewDate);
     const planKey = getPlanKeyForDate(viewDate);
+    let addAnotherBtn = document.getElementById('addAnotherWorkoutBtn');
     if (alreadyLogged) {
-      // Show a small "add another" button instead
-      let addBtn = document.getElementById('addAnotherWorkoutBtn');
-      if (!addBtn) {
-        addBtn = document.createElement('button');
-        addBtn.id = 'addAnotherWorkoutBtn';
-        addBtn.className = 'ghost';
-        addBtn.style.cssText = 'width: 100%; margin-top: 8px; border-style: dashed; padding: 10px;';
-        addBtn.textContent = '+ Add another workout';
-        addBtn.onclick = () => {
-          if (planKey) loadWorkoutPlan();
-          else openWorkoutTypePicker();
-        };
-        list.parentNode.insertBefore(addBtn, list);
+      if (!addAnotherBtn) {
+        addAnotherBtn = document.createElement('button');
+        addAnotherBtn.id = 'addAnotherWorkoutBtn';
+        addAnotherBtn.className = 'ghost';
+        addAnotherBtn.style.cssText = 'width: 100%; margin-top: 8px; border-style: dashed; padding: 10px;';
+        addAnotherBtn.textContent = '+ Add another workout';
+        list.parentNode.insertBefore(addAnotherBtn, list);
       }
-      addBtn.style.display = 'block';
+      addAnotherBtn.onclick = () => {
+        if (planKey) loadWorkoutPlan();
+        else openWorkoutTypePicker();
+      };
+      addAnotherBtn.style.display = 'block';
     } else {
-      const addBtn = document.getElementById('addAnotherWorkoutBtn');
-      if (addBtn) addBtn.style.display = 'none';
+      if (addAnotherBtn) addAnotherBtn.style.display = 'none';
       if (planKey && banner) {
         document.getElementById('workoutPlanLabel').textContent = PLAN[planKey].label;
         banner.style.display = 'block';
@@ -1405,8 +1403,8 @@ function renderWorkout() {
     return;
   }
   // Active session — hide the "add another" button
-  const addBtn = document.getElementById('addAnotherWorkoutBtn');
-  if (addBtn) addBtn.style.display = 'none';
+  const addAnotherBtnActive = document.getElementById('addAnotherWorkoutBtn');
+  if (addAnotherBtnActive) addAnotherBtnActive.style.display = 'none';
 
   // Active session exists for this date
   if (banner) banner.style.display = 'none';
