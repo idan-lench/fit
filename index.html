@@ -2434,8 +2434,26 @@ async function openMealModal(mealId = null, triggerReanalyze = false) {
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
   document.getElementById('reanalyzeMealBtn').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
-  // Save-as-template button visible whenever editing a saved meal that has an estimate
-  document.getElementById('saveAsTemplateBtn').style.display = editingMealId ? 'block' : 'none';
+  // Save-as-template button visible whenever editing a saved meal
+  const tplBtn = document.getElementById('saveAsTemplateBtn');
+  if (tplBtn) {
+    if (editingMealId) {
+      tplBtn.style.display = 'block';
+      getMeal(editingMealId).then(m => {
+        if (m && m.templateId) {
+          tplBtn.textContent = '✓ Already saved as template';
+          tplBtn.disabled = true;
+          tplBtn.style.opacity = '0.6';
+        } else {
+          tplBtn.textContent = '💾 Save as template';
+          tplBtn.disabled = false;
+          tplBtn.style.opacity = '';
+        }
+      });
+    } else {
+      tplBtn.style.display = 'none';
+    }
+  }
   // Reset chat if opening a different meal, then restore from persisted history
   if (_mealChatId !== editingMealId) {
     resetMealChat();
@@ -2473,10 +2491,20 @@ function closeMealModal() {
 }
 
 // ── Meal templates: save / pick / apply ───────────────────────────────────
+async function quickSaveMealAsTemplate(mealId) {
+  const meal = await getMeal(mealId);
+  if (!meal) return toast('Meal not found');
+  return _doSaveAsTemplate(meal);
+}
+
 async function saveCurrentMealAsTemplate() {
   if (!editingMealId) return toast('Save the meal first');
   const meal = await getMeal(editingMealId);
   if (!meal) return toast('Meal not found');
+  return _doSaveAsTemplate(meal);
+}
+
+async function _doSaveAsTemplate(meal) {
   const defaultName = (meal.description || '').slice(0, 60) || 'My meal';
   const name = prompt('Template name:', defaultName);
   if (!name || !name.trim()) return;
@@ -2495,7 +2523,11 @@ async function saveCurrentMealAsTemplate() {
     created: Date.now(),
     lastUsed: Date.now()
   };
-  await putTemplate(tpl);
+  const tplId = await putTemplate(tpl);
+  // Stamp the meal so the card knows it's templated
+  meal.templateId = tplId;
+  await putMeal(meal);
+  renderMeals?.();
   toast('Template saved ✓');
 }
 
@@ -3181,7 +3213,15 @@ async function renderMeals() {
         </div>`
       : '';
     const reanalyzeBtn = getGeminiKey()
-      ? `<button class="ghost" id="reanalyzeCard-${m.id}" style="padding: 4px 10px; font-size: 12px; margin-top: 6px;" onclick="event.stopPropagation(); reanalyzeMealInPlace(${m.id})">Re-analyze</button>`
+      ? `<button class="ghost" id="reanalyzeCard-${m.id}" style="padding: 4px 10px; font-size: 12px;" onclick="event.stopPropagation(); reanalyzeMealInPlace(${m.id})">Re-analyze</button>`
+      : '';
+    const isTemplated = !!m.templateId;
+    const tplBtn = `<button class="ghost" style="padding: 4px 10px; font-size: 12px; ${isTemplated ? 'color: var(--accent2);' : ''}" onclick="event.stopPropagation(); ${isTemplated ? 'openTemplatePicker()' : `quickSaveMealAsTemplate(${m.id})`}" title="${isTemplated ? 'Saved as template' : 'Save as template'}">${isTemplated ? '✓ Templated' : '💾 Save template'}</button>`;
+    const chatBtn = getGeminiKey()
+      ? `<button class="ghost" style="padding: 4px 10px; font-size: 12px;" onclick="event.stopPropagation(); openMealModal(${m.id}); setTimeout(() => document.getElementById('refineInput')?.focus(), 300);" title="Chat about this meal">💬 Chat</button>`
+      : '';
+    const cardActions = (chatBtn || reanalyzeBtn || tplBtn)
+      ? `<div class="row" style="gap: 6px; flex-wrap: wrap; margin-top: 8px;">${chatBtn}${reanalyzeBtn}${tplBtn}</div>`
       : '';
     card.innerHTML = `
       <div class="row between" style="align-items: flex-start;">
@@ -3193,7 +3233,7 @@ async function renderMeals() {
       ${thumbs}
       ${questionsHtml}
       ${breakdownHtml}
-      ${reanalyzeBtn}
+      ${cardActions}
     `;
     card.addEventListener('click', () => openMealModal(m.id));
     dayGroup.appendChild(card);
