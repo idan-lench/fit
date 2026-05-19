@@ -1467,7 +1467,8 @@ function renderWorkout() {
         <button class="icon ghost" onclick="removeCardio()" aria-label="Remove cardio">✕</button>
       </div>
       <div class="row" style="margin-top: 10px; gap: 6px;">
-        <input type="text" id="cardioNote" placeholder="${escapeHtml(PLAN[currentDay].cardioPlaceholder || 'Distance / time / notes')}" value="${escapeHtml(state.current?.cardioNote || '')}" />
+        <input type="text" id="cardioNote" placeholder="${escapeHtml(PLAN[currentDay].cardioPlaceholder || 'Distance / time / notes')}" value="${escapeHtml(state.current?.cardioNote || '')}" style="flex: 1;" />
+        <button class="ghost" onclick="syncGoogleFit()" title="Auto-fill distance from Google Fit" style="padding: 0 10px; flex-shrink: 0;">🏃</button>
       </div>
     `;
     list.appendChild(c);
@@ -3084,7 +3085,7 @@ async function buildAIContext() {
       date: s.date, type: s.day,
       cardio: s.cardioNote || null,
       caloriesBurned: s.caloriesBurned || null,
-      exercises: (s.entries || []).filter(e => e.sets?.length).map(e => `${e.name}: ${e.sets.map(x=>x.reps).join(',')}`),
+      exercises: (s.entries || []).filter(e => e.sets?.length).map(e => `${e.name}: ${e.sets.map(x=>x.reps).join(',')}${e.note ? ' — note: ' + e.note : ''}`),
       notes: s.notes || null
     })),
     meals: mealSummary,
@@ -3201,7 +3202,7 @@ async function autoAnalyzeSession(savedAt, opts = {}) {
   if (!session) return false;
   if (!opts.silent) toast('Analyzing workout…', { persistent: true });
   try {
-    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n') || '  (none)';
+    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
     const duration = session.durationMin ? `${session.durationMin} min` : '(NOT LOGGED — must ask user)';
     const prompt = PROMPTS.sessionAnalysis
       .replace('{type}', PLAN[session.day]?.label || session.day)
@@ -3526,7 +3527,7 @@ function closeSessionRefine() {
 }
 
 function buildSessionSystemInstruction(session) {
-  const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n') || '  (none)';
+  const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
   return PROMPTS.sessionChatSystem
     .replace('{type}', PLAN[session.day]?.label || session.day)
     .replace('{date}', session.date)
@@ -3609,7 +3610,7 @@ async function requestSessionEstimateUpdate() {
   toast('Updating estimate…', { persistent: true });
   try {
     const systemInstruction = buildSessionSystemInstruction(session);
-    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}`).join('\n') || '  (none)';
+    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
     const updatePrompt = PROMPTS.sessionEstimateUpdate
       .replace('{type}', PLAN[session.day]?.label || session.day)
       .replace('{date}', session.date)
