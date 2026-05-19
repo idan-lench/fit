@@ -725,6 +725,7 @@
       <button class="primary grow" onclick="document.getElementById('mealCameraInput').click()">📷 Take photo</button>
       <button class="grow" onclick="document.getElementById('mealGalleryInput').click()">🖼 From gallery</button>
     </div>
+    <button class="ghost" style="width: 100%; margin-top: 6px;" onclick="openTemplatePicker()">📋 From template</button>
     <div class="muted small" style="margin-top: 4px;">Take photos one at a time, or pick several from gallery.</div>
     <textarea id="mealDescInput" placeholder="Optional: lunch, chicken &amp; rice…" rows="1" style="margin-top: 12px; resize: none; overflow-y: auto; max-height: 160px; min-height: 47px; line-height: 1.4;" oninput="autoResizeTA(this)"></textarea>
     <div class="row" style="gap: 8px; margin-top: 10px;">
@@ -762,6 +763,7 @@
     </div>
 
     <button id="reanalyzeMealBtn" style="display:none; width:100%; margin-top: 12px;" onclick="reanalyzeMeal()">Re-analyze this meal</button>
+    <button id="saveAsTemplateBtn" style="display:none; width:100%; margin-top: 8px;" onclick="saveCurrentMealAsTemplate()">💾 Save as template</button>
     <div class="row" style="margin-top: 10px; gap: 10px;">
       <button class="grow primary" onclick="saveMeal()">Save</button>
       <button class="ghost" onclick="closeMealModal()">Cancel</button>
@@ -871,6 +873,16 @@
       <button class="grow primary" onclick="confirmSet()">Add set</button>
       <button class="ghost" onclick="closeSet()">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- MEAL TEMPLATE PICKER MODAL -->
+<div class="modal" id="templatePickerModal" onclick="if(event.target===this)closeTemplatePicker()">
+  <div class="body" style="max-width: 480px; max-height: 85vh; display: flex; flex-direction: column;">
+    <h2 style="margin-top:0">📋 Meal templates</h2>
+    <div class="muted small" style="margin-bottom: 10px;">Tap a template to use it for this meal. Changes can be added after.</div>
+    <div id="templatePickerList" style="overflow-y: auto; flex: 1;"></div>
+    <button class="ghost" style="width:100%; margin-top: 10px;" onclick="closeTemplatePicker()">Close</button>
   </div>
 </div>
 
@@ -1069,11 +1081,12 @@ function load() { try { return JSON.parse(localStorage.getItem(STORE_KEY)); } ca
 // ---------- INDEXED DB ----------
 function openPhotoDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(PHOTO_DB, 2);
+    const req = indexedDB.open(PHOTO_DB, 3);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
       if (!db.objectStoreNames.contains('meals')) db.createObjectStore('meals', { keyPath: 'id', autoIncrement: true });
+      if (!db.objectStoreNames.contains('templates')) db.createObjectStore('templates', { keyPath: 'id', autoIncrement: true });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -1149,6 +1162,41 @@ async function clearMeals() {
   const db = await openPhotoDB();
   return new Promise((resolve, reject) => {
     const req = db.transaction('meals', 'readwrite').objectStore('meals').clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// ── Meal templates ─────────────────────────────────────────────────────────
+async function putTemplate(record) {
+  const db = await openPhotoDB();
+  return new Promise((resolve, reject) => {
+    const value = record.id ? record : { ...record, created: record.created || Date.now() };
+    const req = db.transaction('templates', 'readwrite').objectStore('templates').put(value);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getAllTemplates() {
+  const db = await openPhotoDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('templates').objectStore('templates').getAll();
+    req.onsuccess = () => resolve((req.result || []).sort((a, b) => (b.lastUsed || b.created || 0) - (a.lastUsed || a.created || 0)));
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getTemplate(id) {
+  const db = await openPhotoDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('templates').objectStore('templates').get(id);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function deleteTemplate(id) {
+  const db = await openPhotoDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction('templates', 'readwrite').objectStore('templates').delete(id);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
@@ -2386,6 +2434,8 @@ async function openMealModal(mealId = null, triggerReanalyze = false) {
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
   document.getElementById('reanalyzeMealBtn').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
+  // Save-as-template button visible whenever editing a saved meal that has an estimate
+  document.getElementById('saveAsTemplateBtn').style.display = editingMealId ? 'block' : 'none';
   // Reset chat if opening a different meal, then restore from persisted history
   if (_mealChatId !== editingMealId) {
     resetMealChat();
@@ -2419,7 +2469,97 @@ function closeMealModal() {
   document.getElementById('mealModal').classList.remove('show');
   pendingMealBlobs = [];
   editingMealId = null;
+  _pendingTemplate = null;
 }
+
+// ── Meal templates: save / pick / apply ───────────────────────────────────
+async function saveCurrentMealAsTemplate() {
+  if (!editingMealId) return toast('Save the meal first');
+  const meal = await getMeal(editingMealId);
+  if (!meal) return toast('Meal not found');
+  const defaultName = (meal.description || '').slice(0, 60) || 'My meal';
+  const name = prompt('Template name:', defaultName);
+  if (!name || !name.trim()) return;
+  // Convert blobs to data URLs for portable storage
+  const blobs = mealBlobs(meal);
+  const dataUrls = await Promise.all(blobs.map(blobToDataUrl));
+  const tpl = {
+    name: name.trim(),
+    description: meal.description || '',
+    calories: meal.calories || null,
+    protein: typeof meal.protein === 'number' ? meal.protein : null,
+    breakdown: meal.breakdown || [],
+    confidence: meal.confidence || null,
+    aiSaw: meal.aiSaw || null,
+    dataUrls,
+    created: Date.now(),
+    lastUsed: Date.now()
+  };
+  await putTemplate(tpl);
+  toast('Template saved ✓');
+}
+
+async function openTemplatePicker() {
+  const list = document.getElementById('templatePickerList');
+  const templates = await getAllTemplates();
+  if (templates.length === 0) {
+    list.innerHTML = '<div class="empty">No saved templates yet. Save one from any meal first.</div>';
+  } else {
+    list.innerHTML = templates.map(t => {
+      const thumb = (t.dataUrls && t.dataUrls[0]) ? `<img src="${t.dataUrls[0]}" style="width: 60px; height: 60px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">` : '<div style="width:60px; height:60px; background: var(--panel2); border-radius: 8px; flex-shrink: 0;"></div>';
+      const calBadge = t.calories ? `<span style="color: var(--accent); font-weight: 600;">${t.calories} kcal</span>` : '';
+      const protBadge = (typeof t.protein === 'number' && t.protein > 0) ? ` · <span style="color: var(--accent2);">${t.protein}g P</span>` : '';
+      return `
+        <div class="card" style="padding: 10px; margin-bottom: 8px; display: flex; gap: 10px; align-items: center;">
+          ${thumb}
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: 600;">${escapeHtml(t.name)}</div>
+            <div class="small" style="margin-top: 2px;">${calBadge}${protBadge}</div>
+            ${t.description ? `<div class="small muted" style="margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(t.description)}</div>` : ''}
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <button class="primary" style="padding: 6px 10px; font-size: 13px;" onclick="useTemplate(${t.id})">Use</button>
+            <button class="ghost" style="padding: 4px 10px; font-size: 12px; color: var(--danger);" onclick="confirmDeleteTemplate(${t.id})">Delete</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+  document.getElementById('templatePickerModal').classList.add('show');
+}
+
+function closeTemplatePicker() {
+  document.getElementById('templatePickerModal').classList.remove('show');
+}
+
+async function confirmDeleteTemplate(id) {
+  if (!confirm('Delete this template?')) return;
+  await deleteTemplate(id);
+  openTemplatePicker();
+}
+
+async function useTemplate(id) {
+  const tpl = await getTemplate(id);
+  if (!tpl) return toast('Template not found');
+  // Fill the meal modal fields from the template
+  document.getElementById('mealDescInput').value = tpl.description || '';
+  autoResizeTA(document.getElementById('mealDescInput'));
+  document.getElementById('mealCalInput').value = tpl.calories || '';
+  document.getElementById('mealProteinInput').value = (typeof tpl.protein === 'number') ? tpl.protein : '';
+  // Restore photos as pending blobs
+  if (Array.isArray(tpl.dataUrls) && tpl.dataUrls.length) {
+    pendingMealBlobs = await Promise.all(tpl.dataUrls.map(async u => (await fetch(u)).blob()));
+    renderMealPreview();
+  }
+  // Stash the template breakdown/aiSaw so saveMeal can carry it forward
+  _pendingTemplate = { breakdown: tpl.breakdown || [], confidence: tpl.confidence, aiSaw: tpl.aiSaw };
+  // Update lastUsed for sort order
+  tpl.lastUsed = Date.now();
+  await putTemplate(tpl);
+  closeTemplatePicker();
+  toast(`Template "${tpl.name}" loaded — adjust and Save`);
+}
+
+let _pendingTemplate = null;
 
 function renderMealPreview() {
   const preview = document.getElementById('mealPreview');
@@ -2475,19 +2615,30 @@ async function saveMeal() {
       savedId = existing.id;
     }
   } else {
-    savedId = await putMeal({
+    const record = {
       date: mealDate,
       time: mealTime,
       blobs: [...pendingMealBlobs],
       description: desc
-    });
+    };
+    // If user loaded a template, carry over its estimate so AI doesn't re-analyze
+    if (_pendingTemplate) {
+      record.calories = manualCal || (_pendingTemplate.breakdown.reduce((s, b) => s + (b.calories || 0), 0) || null);
+      record.protein  = (manualProtein !== null) ? manualProtein : (_pendingTemplate.breakdown.reduce((s, b) => s + (b.protein || 0), 0) || null);
+      record.breakdown = _pendingTemplate.breakdown;
+      record.confidence = _pendingTemplate.confidence;
+      record.aiSaw = _pendingTemplate.aiSaw;
+    }
+    savedId = await putMeal(record);
   }
+  const usedTemplate = !!_pendingTemplate;
+  _pendingTemplate = null;
   const wasEditing = !!editingMealId;
   closeMealModal();
-  toast(wasEditing ? 'Meal updated ✓' : 'Meal saved ✓');
+  toast(wasEditing ? 'Meal updated ✓' : (usedTemplate ? 'From template ✓' : 'Meal saved ✓'));
   renderMeals();
-  // Only auto-analyze if there's no estimate yet (preserves chat-refined values)
-  if (getGeminiKey() && savedId) {
+  // Only auto-analyze if there's no estimate yet AND not from a template
+  if (getGeminiKey() && savedId && !usedTemplate) {
     const meal = await getMeal(savedId);
     if (meal && !meal.calories) setTimeout(() => autoAnalyzeMeal(savedId), 800);
   }
