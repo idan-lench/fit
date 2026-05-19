@@ -1371,16 +1371,42 @@ function renderWorkout() {
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     if (list) list.innerHTML = '';
 
+    // If a session was already saved for this date, don't show the plan banner
+    // or empty state — just history. User can tap "+ Add another workout" to add more.
+    const alreadyLogged = (state.sessions || []).some(s => s.date === viewDate);
     const planKey = getPlanKeyForDate(viewDate);
-    if (planKey && banner) {
-      document.getElementById('workoutPlanLabel').textContent = PLAN[planKey].label;
-      banner.style.display = 'block';
-    } else if (empty) {
-      empty.style.display = 'block';
+    if (alreadyLogged) {
+      // Show a small "add another" button instead
+      let addBtn = document.getElementById('addAnotherWorkoutBtn');
+      if (!addBtn) {
+        addBtn = document.createElement('button');
+        addBtn.id = 'addAnotherWorkoutBtn';
+        addBtn.className = 'ghost';
+        addBtn.style.cssText = 'width: 100%; margin-top: 8px; border-style: dashed; padding: 10px;';
+        addBtn.textContent = '+ Add another workout';
+        addBtn.onclick = () => {
+          if (planKey) loadWorkoutPlan();
+          else openWorkoutTypePicker();
+        };
+        list.parentNode.insertBefore(addBtn, list);
+      }
+      addBtn.style.display = 'block';
+    } else {
+      const addBtn = document.getElementById('addAnotherWorkoutBtn');
+      if (addBtn) addBtn.style.display = 'none';
+      if (planKey && banner) {
+        document.getElementById('workoutPlanLabel').textContent = PLAN[planKey].label;
+        banner.style.display = 'block';
+      } else if (empty) {
+        empty.style.display = 'block';
+      }
     }
     renderHistory();
     return;
   }
+  // Active session — hide the "add another" button
+  const addBtn = document.getElementById('addAnotherWorkoutBtn');
+  if (addBtn) addBtn.style.display = 'none';
 
   // Active session exists for this date
   if (banner) banner.style.display = 'none';
