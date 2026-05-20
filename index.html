@@ -2684,6 +2684,12 @@ async function saveTemplateEdit() {
 async function useTemplate(id) {
   const tpl = await getTemplate(id);
   if (!tpl) return toast('Template not found');
+  closeTemplatePicker();
+  // Ensure the meal modal is open (it may not be if the picker was opened from Meals tab)
+  const mealModal = document.getElementById('mealModal');
+  if (!mealModal.classList.contains('show')) {
+    await openMealModal();
+  }
   // Fill the meal modal fields from the template
   document.getElementById('mealDescInput').value = tpl.description || '';
   autoResizeTA(document.getElementById('mealDescInput'));
@@ -2699,7 +2705,6 @@ async function useTemplate(id) {
   // Update lastUsed for sort order
   tpl.lastUsed = Date.now();
   await putTemplate(tpl);
-  closeTemplatePicker();
   toast(`Template "${tpl.name}" loaded — adjust and Save`);
 }
 
