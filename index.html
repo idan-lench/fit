@@ -315,7 +315,7 @@
 
 <header>
   <div>
-    <h1 id="pageTitle">Workout</h1>
+    <h1 id="pageTitle">Insights</h1>
     <div class="sub" id="todayLabel">—</div>
   </div>
   <button class="icon ghost" onclick="openSettings()" aria-label="Settings">⚙︎</button>
@@ -324,7 +324,7 @@
 <main>
 
   <!-- WORKOUT TAB -->
-  <section id="tab-workout" class="active">
+  <section id="tab-workout">
     <div class="row between" style="align-items: center; padding: 4px 4px 0;">
       <button class="icon ghost" onclick="shiftWorkoutDate(-1)" aria-label="Previous">‹</button>
       <span id="workoutDateLabel" style="font-weight: 600; font-size: 16px;"></span>
@@ -497,7 +497,7 @@
   </section>
 
   <!-- ANALYSIS TAB -->
-  <section id="tab-analysis">
+  <section id="tab-analysis" class="active">
     <div class="row" style="justify-content: center; padding: 4px 4px 8px;">
       <div class="segmented">
         <button id="analysisModeDay" class="on" onclick="setAnalysisMode('day')">Day</button>
@@ -658,13 +658,13 @@
 
 <!-- BOTTOM NAV -->
 <nav class="nav">
-  <button class="active" data-tab="workout" onclick="switchTab('workout')">
+  <button data-tab="workout" onclick="switchTab('workout')">
     <span class="ic">🏋︎</span>Workout
   </button>
   <button data-tab="meals" onclick="switchTab('meals')">
     <span class="ic">🍽</span>Meals
   </button>
-  <button data-tab="analysis" onclick="switchTab('analysis')">
+  <button class="active" data-tab="analysis" onclick="switchTab('analysis')">
     <span class="ic">💡</span>Insights
   </button>
   <button data-tab="body" onclick="switchTab('body')">
@@ -750,6 +750,12 @@
         <label>Protein (g)</label>
         <input type="number" id="mealProteinInput" placeholder="e.g. 30" min="0" max="300">
       </div>
+    </div>
+
+    <div id="templateDeltaSection" style="display:none; margin-top: 10px; padding: 10px 12px; background: rgba(59, 130, 246, 0.08); border-radius: 10px; border-left: 3px solid var(--accent);">
+      <div class="muted small" style="margin-bottom: 6px;">📋 Using template — any changes?</div>
+      <input type="text" id="templateDeltaInput" placeholder="e.g. added an egg, no rice, half portion…" style="width: 100%;">
+      <div class="muted small" style="margin-top: 4px;">Leave blank to save exactly as the template. Otherwise AI will adjust only what you mention.</div>
     </div>
 
     <div id="refineSection" style="display:none; margin-top: 12px; padding: 10px 12px; background: var(--panel2); border-radius: 10px;">
@@ -2565,6 +2571,8 @@ function closeMealModal() {
   pendingMealBlobs = [];
   editingMealId = null;
   _pendingTemplate = null;
+  const delta = document.getElementById('templateDeltaSection');
+  if (delta) delta.style.display = 'none';
 }
 
 // ── Meal templates: save / pick / apply ───────────────────────────────────
@@ -2712,10 +2720,35 @@ async function useTemplate(id) {
   // Update lastUsed for sort order
   tpl.lastUsed = Date.now();
   await putTemplate(tpl);
-  toast(`Template "${tpl.name}" loaded — adjust and Save`);
+  // Show the "any changes?" delta input
+  document.getElementById('templateDeltaSection').style.display = 'block';
+  document.getElementById('templateDeltaInput').value = '';
+  toast(`Template "${tpl.name}" loaded — describe changes (if any) then Save`);
 }
 
 let _pendingTemplate = null;
+
+async function applyTemplateDelta(template, userChange) {
+  const breakdownLines = (template.breakdown || []).map(b =>
+    `  - ${b.name} (${b.portion || ''}): ${b.calories} kcal${b.protein != null ? `, ${b.protein}g protein` : ''}`
+  ).join('\n') || '  (no items)';
+  const prompt = PROMPTS.mealTemplateDelta
+    .replace('{originalDescription}', template.description || template.name || '')
+    .replace('{originalBreakdown}', breakdownLines)
+    .replace('{originalTotalCal}', String(template.calories || 0))
+    .replace('{originalTotalProtein}', String(template.protein || 0))
+    .replace('{userChange}', userChange);
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+  });
+  if (!res.ok) throw new Error('Gemini ' + res.status);
+  const data = await res.json();
+  let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  text = text.replace(/^```(json)?/i, '').replace(/```$/i, '').trim();
+  try { return JSON.parse(text); } catch { return null; }
+}
 
 function renderMealPreview() {
   const preview = document.getElementById('mealPreview');
@@ -2777,14 +2810,35 @@ async function saveMeal() {
       blobs: [...pendingMealBlobs],
       description: desc
     };
-    // If user loaded a template, carry over its estimate EXACTLY so AI doesn't re-analyze
+    // If user loaded a template, carry over its estimate
     if (_pendingTemplate) {
-      record.calories = manualCal !== null ? manualCal : _pendingTemplate.calories;
-      record.protein  = manualProtein !== null ? manualProtein : _pendingTemplate.protein;
-      record.breakdown = _pendingTemplate.breakdown;
+      const deltaText = (document.getElementById('templateDeltaInput')?.value || '').trim();
+      let useBreakdown = _pendingTemplate.breakdown;
+      let useCalories = _pendingTemplate.calories;
+      let useProtein  = _pendingTemplate.protein;
+      let useAiSaw   = _pendingTemplate.aiSaw;
+      if (deltaText && getGeminiKey()) {
+        toast('Applying changes…', { persistent: true });
+        try {
+          const adjusted = await applyTemplateDelta(_pendingTemplate, deltaText);
+          if (adjusted) {
+            useBreakdown = adjusted.items || useBreakdown;
+            useCalories = (typeof adjusted.total === 'number') ? adjusted.total : useCalories;
+            useProtein  = (typeof adjusted.totalProtein === 'number') ? adjusted.totalProtein : useProtein;
+            useAiSaw   = adjusted.changeNote ? `${useAiSaw || ''}\nChange: ${adjusted.changeNote}`.trim() : useAiSaw;
+          }
+          hideToast();
+        } catch (e) {
+          hideToast();
+          toast('Delta failed — saving template as-is');
+        }
+      }
+      record.calories = manualCal !== null ? manualCal : useCalories;
+      record.protein  = manualProtein !== null ? manualProtein : useProtein;
+      record.breakdown = useBreakdown;
       record.confidence = _pendingTemplate.confidence;
-      record.aiSaw = _pendingTemplate.aiSaw;
-      record.fromTemplate = true; // skip auto-re-analysis
+      record.aiSaw = useAiSaw;
+      record.fromTemplate = true;
       record.sourceTemplateId = _pendingTemplate.sourceTemplateId;
     }
     savedId = await putMeal(record);
