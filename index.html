@@ -753,9 +753,9 @@
     </div>
 
     <div id="templateDeltaSection" style="display:none; margin-top: 10px; padding: 10px 12px; background: rgba(59, 130, 246, 0.08); border-radius: 10px; border-left: 3px solid var(--accent);">
-      <div class="muted small" style="margin-bottom: 6px;">📋 Using template — any changes?</div>
-      <input type="text" id="templateDeltaInput" placeholder="e.g. added an egg, no rice, half portion…" style="width: 100%;">
-      <div class="muted small" style="margin-top: 4px;">Leave blank to save exactly as the template. Otherwise AI will adjust only what you mention.</div>
+      <label style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">✏️ Tweak this meal (optional)</label>
+      <input type="text" id="templateDeltaInput" value="" placeholder="empty — type a change, or leave blank" style="width: 100%; font-style: italic;">
+      <div class="muted small" style="margin-top: 6px;">Examples: <i>added an egg</i> · <i>no rice today</i> · <i>half portion</i>. AI will only adjust what you mention.</div>
     </div>
 
     <div id="refineSection" style="display:none; margin-top: 12px; padding: 10px 12px; background: var(--panel2); border-radius: 10px;">
@@ -2517,6 +2517,21 @@ async function openMealModal(mealId = null, triggerReanalyze = false) {
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
   document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
   document.getElementById('reanalyzeMealBtn').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
+  // Show delta input for ANY edit on a meal that already has a breakdown (tweak existing)
+  const deltaSec = document.getElementById('templateDeltaSection');
+  if (deltaSec) {
+    const deltaInput = document.getElementById('templateDeltaInput');
+    if (deltaInput) deltaInput.value = '';
+    if (editingMealId && getGeminiKey()) {
+      getMeal(editingMealId).then(m => {
+        const hasBreakdown = m && Array.isArray(m.breakdown) && m.breakdown.length > 0;
+        deltaSec.style.display = hasBreakdown ? 'block' : 'none';
+      });
+    } else {
+      // Hide by default; useTemplate() will reveal it for new-meal-from-template flow
+      deltaSec.style.display = 'none';
+    }
+  }
   // Save-as-template button visible whenever editing a saved meal
   const tplBtn = document.getElementById('saveAsTemplateBtn');
   if (tplBtn) {
@@ -2792,15 +2807,39 @@ async function saveMeal() {
   if (editingMealId) {
     const existing = await getMeal(editingMealId);
     if (existing) {
-      await putMeal({
+      // Check for delta input — if present, apply via AI to the existing breakdown
+      const deltaText = (document.getElementById('templateDeltaInput')?.value || '').trim();
+      const updates = {
         ...existing,
         blobs: [...pendingMealBlobs],
         description: desc,
         date: mealDate,
         time: mealTime,
-        ...(manualCal !== null && { calories: manualCal }),
-        ...(manualProtein !== null && { protein: manualProtein })
-      });
+      };
+      if (manualCal !== null) updates.calories = manualCal;
+      if (manualProtein !== null) updates.protein = manualProtein;
+      if (deltaText && getGeminiKey() && Array.isArray(existing.breakdown) && existing.breakdown.length) {
+        toast('Applying changes…', { persistent: true });
+        try {
+          const adjusted = await applyTemplateDelta({
+            description: existing.description,
+            calories: existing.calories,
+            protein: existing.protein,
+            breakdown: existing.breakdown
+          }, deltaText);
+          if (adjusted) {
+            updates.breakdown = adjusted.items || existing.breakdown;
+            if (typeof adjusted.total === 'number') updates.calories = adjusted.total;
+            if (typeof adjusted.totalProtein === 'number') updates.protein = adjusted.totalProtein;
+            updates.aiSaw = adjusted.changeNote ? `${existing.aiSaw || ''}\nChange: ${adjusted.changeNote}`.trim() : existing.aiSaw;
+          }
+          hideToast();
+        } catch (e) {
+          hideToast();
+          toast('Delta failed — saving without AI adjustment');
+        }
+      }
+      await putMeal(updates);
       savedId = existing.id;
     }
   } else {
