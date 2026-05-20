@@ -2700,8 +2700,15 @@ async function useTemplate(id) {
     pendingMealBlobs = await Promise.all(tpl.dataUrls.map(async u => (await fetch(u)).blob()));
     renderMealPreview();
   }
-  // Stash the template breakdown/aiSaw so saveMeal can carry it forward
-  _pendingTemplate = { breakdown: tpl.breakdown || [], confidence: tpl.confidence, aiSaw: tpl.aiSaw };
+  // Stash the template's full estimate so saveMeal can carry it forward
+  _pendingTemplate = {
+    calories: tpl.calories,
+    protein: tpl.protein,
+    breakdown: tpl.breakdown || [],
+    confidence: tpl.confidence,
+    aiSaw: tpl.aiSaw,
+    sourceTemplateId: id
+  };
   // Update lastUsed for sort order
   tpl.lastUsed = Date.now();
   await putTemplate(tpl);
@@ -2770,13 +2777,15 @@ async function saveMeal() {
       blobs: [...pendingMealBlobs],
       description: desc
     };
-    // If user loaded a template, carry over its estimate so AI doesn't re-analyze
+    // If user loaded a template, carry over its estimate EXACTLY so AI doesn't re-analyze
     if (_pendingTemplate) {
-      record.calories = manualCal || (_pendingTemplate.breakdown.reduce((s, b) => s + (b.calories || 0), 0) || null);
-      record.protein  = (manualProtein !== null) ? manualProtein : (_pendingTemplate.breakdown.reduce((s, b) => s + (b.protein || 0), 0) || null);
+      record.calories = manualCal !== null ? manualCal : _pendingTemplate.calories;
+      record.protein  = manualProtein !== null ? manualProtein : _pendingTemplate.protein;
       record.breakdown = _pendingTemplate.breakdown;
       record.confidence = _pendingTemplate.confidence;
       record.aiSaw = _pendingTemplate.aiSaw;
+      record.fromTemplate = true; // skip auto-re-analysis
+      record.sourceTemplateId = _pendingTemplate.sourceTemplateId;
     }
     savedId = await putMeal(record);
   }
@@ -4128,9 +4137,9 @@ async function smartUpdateSummaries() {
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
   const btn = document.getElementById('smartUpdateBtn');
 
-  // Step 1: analyze meals/sessions missing estimates
+  // Step 1: analyze meals/sessions missing estimates (skip template-derived meals)
   const meals = await getAllMeals();
-  const mealsToAnalyze = meals.filter(m => !m.calories || !(typeof m.protein === 'number' && m.protein > 0));
+  const mealsToAnalyze = meals.filter(m => !m.fromTemplate && (!m.calories || !(typeof m.protein === 'number' && m.protein > 0)));
   const missingSessions = (state.sessions || []).filter(s => !s.caloriesBurned);
   const totalItems = mealsToAnalyze.length + missingSessions.length;
   let done = 0;
