@@ -1777,6 +1777,21 @@ function _buildBodyState(intensities) {
 let _heatmapCounter = 0;
 const _pendingHeatmaps = [];
 
+function _applyRedScale(containerEl, state) {
+  // Override the library's yellow→orange→red gradient with light red → dark red
+  for (const [id, s] of Object.entries(state)) {
+    if (!s || !s.intensity) continue;
+    const el = containerEl.querySelector('#' + CSS.escape(id));
+    if (!el) continue;
+    const t = Math.min(1, s.intensity / 10);
+    // Interpolate from light pink (#ffcccc) → dark red (#8b0000)
+    const r = Math.round(255 - t * (255 - 139));
+    const g = Math.round(204 - t * 204);
+    const b = Math.round(204 - t * 204);
+    el.setAttribute('fill', `rgb(${r},${g},${b})`);
+  }
+}
+
 function _tryMountHeatmaps() {
   if (typeof BodyMuscles === 'undefined' || !BodyMuscles.BodyChart) {
     setTimeout(_tryMountHeatmaps, 200);
@@ -1785,15 +1800,17 @@ function _tryMountHeatmaps() {
   for (let i = _pendingHeatmaps.length - 1; i >= 0; i--) {
     const item = _pendingHeatmaps[i];
     const container = document.getElementById(item.id);
-    if (!container) continue; // still waiting for DOM
+    if (!container) continue;
     const frontEl = container.querySelector('[data-view="FRONT"]');
     const backEl = container.querySelector('[data-view="BACK"]');
     if (frontEl && !frontEl.dataset.mounted) {
-      new BodyMuscles.BodyChart(frontEl, { view: BodyMuscles.ViewSide.FRONT, bodyState: item.state });
+      new BodyMuscles.BodyChart(frontEl, { view: BodyMuscles.ViewSide.FRONT, bodyState: item.state, enableTransitions: false });
+      _applyRedScale(frontEl, item.state);
       frontEl.dataset.mounted = '1';
     }
     if (backEl && !backEl.dataset.mounted) {
-      new BodyMuscles.BodyChart(backEl, { view: BodyMuscles.ViewSide.BACK, bodyState: item.state });
+      new BodyMuscles.BodyChart(backEl, { view: BodyMuscles.ViewSide.BACK, bodyState: item.state, enableTransitions: false });
+      _applyRedScale(backEl, item.state);
       backEl.dataset.mounted = '1';
     }
     _pendingHeatmaps.splice(i, 1);
