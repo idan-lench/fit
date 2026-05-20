@@ -1780,41 +1780,40 @@ function _buildBodyState(intensities) {
 let _heatmapCounter = 0;
 const _pendingHeatmaps = [];
 
-function _applyRedScale(containerEl, state) {
-  // Override the library's yellow→orange→red gradient with light pink → dark red.
-  // Also set fill on any nested path elements (some muscles are groups).
-  for (const [id, s] of Object.entries(state)) {
-    if (!s || !s.intensity) continue;
-    const el = containerEl.querySelector('#' + CSS.escape(id));
-    if (!el) continue;
-    const t = Math.min(1, s.intensity / 10);
-    const r = Math.round(255 - t * (255 - 139));
-    const g = Math.round(204 - t * 204);
-    const b = Math.round(204 - t * 204);
-    const color = `rgb(${r},${g},${b})`;
-    el.setAttribute('fill', color);
-    el.style.fill = color;
-    el.querySelectorAll('path, polygon, ellipse').forEach(child => {
-      child.setAttribute('fill', color);
-      child.style.fill = color;
-    });
-  }
+// Library colors → our red-scale (intensity 1=lightest, 10=darkest).
+// Library uses aria-label (not id) for muscles, so we can't query by muscle.
+// Instead: walk all <path> elements and remap any of the library's intensity
+// colors to our equivalent in the pink→red scale.
+const _libToRed = {
+  '#fde047': '#ffcccc', // 1
+  '#facc15': '#ffb3b3', // 2
+  '#eab308': '#ff9999', // 3
+  '#fb923c': '#ff8080', // 4
+  '#f97316': '#f06060', // 5
+  '#ea580c': '#e04040', // 6
+  '#ef4444': '#d02828', // 7
+  '#dc2626': '#b01818', // 8
+  '#b91c1c': '#990a0a', // 9
+  '#7f1d1d': '#8b0000', // 10
+};
+
+function _applyRedScale(containerEl) {
+  containerEl.querySelectorAll('path').forEach(p => {
+    const fill = (p.getAttribute('fill') || '').toLowerCase();
+    if (_libToRed[fill]) {
+      p.setAttribute('fill', _libToRed[fill]);
+      p.style.fill = _libToRed[fill];
+    }
+  });
 }
 
-function _scheduleRedScale(containerEl, state) {
-  // Retry a few times to handle the library's async mount
+function _scheduleRedScale(containerEl) {
+  // Run a few times — once when library mounts, again to catch any post-mount colorization
   let tries = 0;
   const apply = () => {
-    const firstId = Object.keys(state).find(k => state[k]?.intensity);
-    const found = firstId && containerEl.querySelector('#' + CSS.escape(firstId));
-    if (found || tries > 10) {
-      _applyRedScale(containerEl, state);
-      // One more in 300ms in case library applies its own colors after mount
-      setTimeout(() => _applyRedScale(containerEl, state), 300);
-      return;
-    }
+    _applyRedScale(containerEl);
     tries++;
-    setTimeout(apply, 80);
+    if (tries < 8) setTimeout(apply, 80);
   };
   apply();
 }
@@ -1832,12 +1831,12 @@ function _tryMountHeatmaps() {
     const backEl = container.querySelector('[data-view="BACK"]');
     if (frontEl && !frontEl.dataset.mounted) {
       new BodyMuscles.BodyChart(frontEl, { view: BodyMuscles.ViewSide.FRONT, bodyState: item.state, enableTransitions: false });
-      _scheduleRedScale(frontEl, item.state);
+      _scheduleRedScale(frontEl);
       frontEl.dataset.mounted = '1';
     }
     if (backEl && !backEl.dataset.mounted) {
       new BodyMuscles.BodyChart(backEl, { view: BodyMuscles.ViewSide.BACK, bodyState: item.state, enableTransitions: false });
-      _scheduleRedScale(backEl, item.state);
+      _scheduleRedScale(backEl);
       backEl.dataset.mounted = '1';
     }
     _pendingHeatmaps.splice(i, 1);
