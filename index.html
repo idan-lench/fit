@@ -482,7 +482,7 @@
       <div id="compareAnalysisResult" style="margin-top: 12px; display: none; padding: 12px 14px; background: var(--panel2); border-radius: 10px; line-height: 1.5; white-space: pre-wrap;"></div>
     </div>
 
-    <div id="photoGrid" class="photoGrid"></div>
+    <div id="photoGrid" class="photoGrid" style="display: none;"></div>
     <div class="empty" id="photoEmpty">No photos yet.</div>
   </section>
 
@@ -2709,7 +2709,12 @@ async function renderCompareByDate() {
   const block = (label, list) => `
     <div style="margin-top: 8px;">
       <div class="muted small" style="margin-bottom: 4px;">${label} · ${list.length} photo${list.length !== 1 ? 's' : ''}</div>
-      <div class="photoGrid">${list.map(p => `<div class="photoCell"><img src="${URL.createObjectURL(p.blob)}"></div>`).join('') || '<div class="muted small">(no photos)</div>'}</div>
+      <div class="photoGrid">${list.map(p => `
+        <div class="photoCell">
+          <img src="${URL.createObjectURL(p.blob)}">
+          <span class="x" onclick="event.stopPropagation(); removePhoto(${p.id});">✕</span>
+        </div>
+      `).join('') || '<div class="muted small">(no photos)</div>'}</div>
     </div>`;
   grid.innerHTML = block(formatDate(dateA), a) + block(formatDate(dateB), b);
   if (btn) btn.style.display = (a.length && b.length && getGeminiKey()) ? 'block' : 'none';
