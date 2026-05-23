@@ -892,6 +892,16 @@
   </div>
 </div>
 
+<!-- TIMER ATTACH-TO PICKER MODAL -->
+<div class="modal" id="timerAttachModal" onclick="if(event.target===this)closeTimerAttach()">
+  <div class="body" style="max-width: 440px;">
+    <h2 style="margin-top:0">⏱ Attach <span id="timerAttachDurLabel"></span> to:</h2>
+    <div class="muted small" style="margin-bottom: 10px;">Pick the activity this time covers. The duration is also kept on the whole session for AI burn estimation.</div>
+    <div id="timerAttachList"></div>
+    <button class="ghost" style="width:100%; margin-top: 10px;" onclick="closeTimerAttach()">Skip — keep on whole session</button>
+  </div>
+</div>
+
 <!-- CARDIO ACTIVITY PICKER MODAL -->
 <div class="modal" id="cardioPickerModal" onclick="if(event.target===this)closeCardioPicker()">
   <div class="body" style="max-width: 460px;">
@@ -1339,6 +1349,47 @@ function finishWorkoutTimer() {
   state.current.durationMin = Math.max(1, Math.round(ms / 60000));
   save();
   renderWorkout();
+  // Open attach-to picker so user can apply the duration to a specific item
+  openTimerAttachPicker(state.current.durationMin);
+}
+
+function openTimerAttachPicker(minutes) {
+  if (!state.current) return;
+  const cardios = state.current.cardioActivities || [];
+  const entries = state.current.entries || [];
+  if (cardios.length === 0 && entries.length === 0) return; // nothing to attach to
+  document.getElementById('timerAttachDurLabel').textContent = minutes + ' min';
+  const items = [];
+  cardios.forEach((a, i) => {
+    const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
+    const existing = a.duration ? ` <span class="muted small">(already: ${escapeHtml(a.duration)})</span>` : '';
+    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; background: var(--panel); border: none; text-align: left; cursor: pointer;" onclick="attachTimerTo('cardio', ${i}, ${minutes})">${def.icon} ${def.label}${existing}</button>`);
+  });
+  entries.forEach((e, i) => {
+    if (!e.sets || e.sets.length === 0) return; // skip empty exercises
+    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; background: var(--panel); border: none; text-align: left; cursor: pointer;" onclick="attachTimerTo('exercise', ${i}, ${minutes})">💪 ${escapeHtml(e.name)} <span class="muted small">(${e.sets.length} set${e.sets.length>1?'s':''})</span></button>`);
+  });
+  document.getElementById('timerAttachList').innerHTML = items.join('') || '<div class="empty">No activities to attach to.</div>';
+  document.getElementById('timerAttachModal').classList.add('show');
+}
+
+function closeTimerAttach() {
+  document.getElementById('timerAttachModal').classList.remove('show');
+}
+
+function attachTimerTo(kind, idx, minutes) {
+  if (!state.current) return;
+  if (kind === 'cardio') {
+    const a = state.current.cardioActivities?.[idx];
+    if (a) a.duration = minutes + ' min';
+  } else if (kind === 'exercise') {
+    const e = state.current.entries?.[idx];
+    if (e) e.durationMin = minutes;
+  }
+  save();
+  closeTimerAttach();
+  renderWorkout();
+  toast('Duration attached ✓');
 }
 
 function resetWorkoutTimer() {
@@ -2197,7 +2248,7 @@ function renderHistory() {
         ${cardio ? `<div class="small" style="margin-top: 4px; color: var(--muted);">${cardio}</div>` : ''}
         ${cardioActivitiesHtml}
         ${s.entries.filter(e => e.sets.length).map(e => `
-          <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
+          <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.durationMin ? ` <span class="muted">· ${e.durationMin} min</span>` : ''}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
         `).join('')}
         ${s.entries.some(e => e.sets.length) ? `<details style="margin-top: 10px;"><summary class="muted small" style="cursor: pointer;">▸ Muscle heatmap</summary>${renderMuscleHeatmapSvg(s)}</details>` : ''}
         ${s.burnBreakdown && s.burnBreakdown.length ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
@@ -3656,7 +3707,7 @@ async function buildAIContext() {
       date: s.date, type: s.day,
       cardio: s.cardioNote || null,
       caloriesBurned: s.caloriesBurned || null,
-      exercises: (s.entries || []).filter(e => e.sets?.length).map(e => `${e.name}: ${e.sets.map(x=>x.reps).join(',')}${e.note ? ' — note: ' + e.note : ''}`),
+      exercises: (s.entries || []).filter(e => e.sets?.length).map(e => `${e.name}: ${e.sets.map(x=>x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`),
       notes: s.notes || null
     })),
     meals: mealSummary,
@@ -3773,7 +3824,7 @@ async function autoAnalyzeSession(savedAt, opts = {}) {
   if (!session) return false;
   if (!opts.silent) toast('Analyzing workout…', { persistent: true });
   try {
-    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
+    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
     const duration = session.durationMin ? `${session.durationMin} min` : '(NOT LOGGED — must ask user)';
     const prompt = PROMPTS.sessionAnalysis
       .replace('{type}', PLAN[session.day]?.label || session.day)
@@ -4098,7 +4149,7 @@ function closeSessionRefine() {
 }
 
 function buildSessionSystemInstruction(session) {
-  const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
+  const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
   return PROMPTS.sessionChatSystem
     .replace('{type}', PLAN[session.day]?.label || session.day)
     .replace('{date}', session.date)
@@ -4181,7 +4232,7 @@ async function requestSessionEstimateUpdate() {
   toast('Updating estimate…', { persistent: true });
   try {
     const systemInstruction = buildSessionSystemInstruction(session);
-    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
+    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
     const updatePrompt = PROMPTS.sessionEstimateUpdate
       .replace('{type}', PLAN[session.day]?.label || session.day)
       .replace('{date}', session.date)
