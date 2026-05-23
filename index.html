@@ -1644,7 +1644,7 @@ function renderWorkout() {
         <button class="icon ghost" onclick="removeCardio()" aria-label="Remove cardio">✕</button>
       </div>
       <div class="row" style="margin-top: 10px; gap: 6px; align-items: stretch;">
-        <input type="text" id="cardioNote" placeholder="${escapeHtml(PLAN[currentDay].cardioPlaceholder || 'Distance / time / notes')}" value="${escapeHtml(state.current?.cardioNote || '')}" style="flex: 1;" />
+        <textarea id="cardioNote" placeholder="${escapeHtml(PLAN[currentDay].cardioPlaceholder || 'Distance / time / notes')}" rows="1" enterkeyhint="enter" oninput="autoResizeTA(this)" style="flex: 1; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(state.current?.cardioNote || '')}</textarea>
         <button class="ghost" onclick="syncGoogleFit()" title="Auto-fill distance from Google Fit" style="padding: 6px 10px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; min-width: 56px;">
           <span style="font-size: 16px;">🏃</span>
           <span style="font-size: 10px; color: var(--accent); font-weight: 600;">Sync Fit</span>
@@ -1694,7 +1694,7 @@ function renderWorkout() {
       <div class="sets">
         ${e.sets.length === 0 ? '<span class="set-pill empty">No sets yet</span>' : e.sets.map((s, si) => `<span class="set-pill" onclick="removeSet(${idx},${si})">${s.reps}</span>`).join('')}
       </div>
-      <textarea placeholder="Notes (weight, form, RPE…)" rows="1" oninput="updateExerciseNote(${idx}, this.value); autoResizeTA(this)" style="margin-top: 8px; background: var(--panel2); font-size: 13px; padding: 8px 10px; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(e.note || '')}</textarea>
+      <textarea placeholder="Notes (weight, form, RPE…)" rows="1" enterkeyhint="enter" oninput="updateExerciseNote(${idx}, this.value); autoResizeTA(this)" style="margin-top: 8px; background: var(--panel2); font-size: 13px; padding: 8px 10px; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(e.note || '')}</textarea>
     `;
     list.appendChild(ex);
   });
@@ -2058,7 +2058,7 @@ function renderCardioActivities() {
         </div>
         <div style="margin-top: 8px;">
           <label class="muted small">Notes</label>
-          <textarea placeholder="pace, RPE, terrain…" rows="1" oninput="updateCardioField(${i}, 'notes', this.value); autoResizeTA(this)" style="resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(a.notes || '')}</textarea>
+          <textarea placeholder="pace, RPE, terrain…" rows="1" enterkeyhint="enter" oninput="updateCardioField(${i}, 'notes', this.value); autoResizeTA(this)" style="resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(a.notes || '')}</textarea>
         </div>
       </div>
     `;
