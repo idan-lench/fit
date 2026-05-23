@@ -47,7 +47,7 @@ Set "questions" to [] if confident.`,
 
   // ---------------- SESSION ANALYSIS ----------------
   // Used when a workout session is saved.
-  // Placeholders: {type}, {date}, {cardioNote}, {exercises}, {duration}
+  // Placeholders: {type}, {date}, {cardioNote}, {cardioActivities}, {exercises}, {duration}
   // Returns JSON: { total, breakdown, notes, questions }
   sessionAnalysis: `You are estimating calories burned for a workout session by a 58kg, 44yo adult male.
 
@@ -55,7 +55,9 @@ SESSION:
 - Type: {type}
 - Date: {date}
 - Logged duration: {duration}
-- Cardio/activity: {cardioNote}
+- Cardio activities (multiple allowed):
+{cardioActivities}
+- Legacy cardio note (older format, may be empty): {cardioNote}
 - Exercises and reps:
 {exercises}
 

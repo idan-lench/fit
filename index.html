@@ -402,6 +402,10 @@
       <input type="time" id="sessionTime" style="flex: 1; max-width: 120px;" onchange="updateSessionTime(this.value)">
       <button class="ghost" style="padding: 8px 12px; font-size: 14px;" onclick="openPlanModal()">View plan</button>
     </div>
+    <!-- Cardio activities (multiple allowed) -->
+    <div id="cardioList" style="margin-top: 8px;"></div>
+    <button class="ghost" id="addCardioBtn" style="width: 100%; margin-top: 6px; border-style: dashed; display: none;" onclick="openCardioPicker()">+ Add cardio activity</button>
+
     <div id="exerciseList"></div>
 
     <div class="row" id="saveRow" style="margin-top: 8px; display: none;">
@@ -752,10 +756,10 @@
       </div>
     </div>
 
-    <div id="templateDeltaSection" style="display:none; margin-top: 10px; padding: 10px 12px; background: rgba(59, 130, 246, 0.08); border-radius: 10px; border-left: 3px solid var(--accent);">
-      <label style="color: var(--accent); font-weight: 600; margin-bottom: 6px;">✏️ Tweak this meal (optional)</label>
-      <input type="text" id="templateDeltaInput" value="" placeholder="empty — type a change, or leave blank" style="width: 100%; font-style: italic;">
-      <div class="muted small" style="margin-top: 6px;">Examples: <i>added an egg</i> · <i>no rice today</i> · <i>half portion</i>. AI will only adjust what you mention.</div>
+    <div id="templateDeltaSection" style="display:none; margin-top: 10px; padding: 10px 12px; background: rgba(59, 130, 246, 0.06); border-radius: 10px;">
+      <div class="muted small" style="margin-bottom: 6px;">Tweak this meal (optional)</div>
+      <input type="text" id="templateDeltaInput" value="" placeholder="e.g. added an egg, no rice, half portion…" style="width: 100%;">
+      <div class="muted small" style="margin-top: 4px; font-size: 11px;">Leave blank to keep numbers exactly. Otherwise AI adjusts only what you mention.</div>
     </div>
 
     <div id="refineSection" style="display:none; margin-top: 12px; padding: 10px 12px; background: var(--panel2); border-radius: 10px;">
@@ -885,6 +889,17 @@
       <button class="grow primary" onclick="confirmSet()">Add set</button>
       <button class="ghost" onclick="closeSet()">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- CARDIO ACTIVITY PICKER MODAL -->
+<div class="modal" id="cardioPickerModal" onclick="if(event.target===this)closeCardioPicker()">
+  <div class="body" style="max-width: 460px;">
+    <h2 style="margin-top:0">Add cardio activity</h2>
+    <div class="muted small" style="margin-bottom: 10px;">Pick a type. You can fill optional distance, duration and notes after.</div>
+    <div id="cardioPickerList"></div>
+    <hr class="div" style="margin: 12px 0;">
+    <button class="ghost" style="width:100%;" onclick="closeCardioPicker()">Cancel</button>
   </div>
 </div>
 
@@ -1386,6 +1401,7 @@ function isCurrentFresh() {
   if (!state.current) return true;
   if (state.current.entries.some(e => e.sets.length)) return false;
   if (state.current.cardioNote && state.current.cardioNote.trim()) return false;
+  if ((state.current.cardioActivities || []).length > 0) return false;
   // Also: if user added/removed exercises beyond template defaults
   const defaults = PLAN[state.current.day]?.exercises || [];
   if (state.current.entries.length !== defaults.length) return false;
@@ -1457,6 +1473,11 @@ function renderWorkout() {
     if (timerCard) timerCard.style.display = 'none';
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     if (list) list.innerHTML = '';
+    // Hide cardio section when no session
+    const cardioList = document.getElementById('cardioList');
+    const addCardioBtn = document.getElementById('addCardioBtn');
+    if (cardioList) cardioList.innerHTML = '';
+    if (addCardioBtn) addCardioBtn.style.display = 'none';
 
     // If a session was already saved for this date, don't show the plan banner
     // or empty state — just history. User can tap "+ Add another workout" to add more.
@@ -1602,6 +1623,7 @@ function renderWorkout() {
   addBtn.onclick = addCustomExercise;
   list.appendChild(addBtn);
 
+  renderCardioActivities();
   renderHistory();
 }
 
@@ -1864,6 +1886,102 @@ function renderMuscleHeatmapSvg(session, opts = {}) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Cardio activity types ─────────────────────────────────────────────────
+const CARDIO_TYPES = [
+  { key: 'long-run',  icon: '🏃',  label: 'Long run',          showDist: true,  showDur: true },
+  { key: 'interval',  icon: '⚡',  label: 'Speed / interval',   showDist: true,  showDur: true },
+  { key: 'movement',  icon: '🤸',  label: 'Movement class',    showDist: false, showDur: true },
+  { key: 'hike',      icon: '🥾',  label: 'Hike / trek',       showDist: true,  showDur: true },
+  { key: 'bike',      icon: '🚴',  label: 'Bike ride',         showDist: true,  showDur: true },
+  { key: 'swim',      icon: '🏊',  label: 'Swim',              showDist: true,  showDur: true },
+  { key: 'custom',    icon: '➕',  label: 'Custom cardio',     showDist: true,  showDur: true }
+];
+
+function openCardioPicker() {
+  const list = document.getElementById('cardioPickerList');
+  list.innerHTML = CARDIO_TYPES.map(c => `
+    <button class="card" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; margin-bottom: 6px; border: none; background: var(--panel); cursor: pointer; text-align: left;" onclick="addCardioActivity('${c.key}')">
+      <span style="font-size: 22px;">${c.icon}</span>
+      <span style="font-weight: 600;">${c.label}</span>
+    </button>
+  `).join('');
+  document.getElementById('cardioPickerModal').classList.add('show');
+}
+
+function closeCardioPicker() {
+  document.getElementById('cardioPickerModal').classList.remove('show');
+}
+
+function addCardioActivity(typeKey) {
+  if (!state.current) {
+    // No active session — create one (custom workout)
+    startWorkout('custom');
+  }
+  state.current.cardioActivities = state.current.cardioActivities || [];
+  state.current.cardioActivities.push({ type: typeKey, distance: '', duration: '', notes: '' });
+  save();
+  closeCardioPicker();
+  renderWorkout();
+}
+
+function removeCardioActivity(idx) {
+  if (!state.current) return;
+  if (!confirm('Remove this cardio activity?')) return;
+  state.current.cardioActivities.splice(idx, 1);
+  save();
+  renderWorkout();
+}
+
+function updateCardioField(idx, field, value) {
+  if (!state.current || !state.current.cardioActivities?.[idx]) return;
+  state.current.cardioActivities[idx][field] = value;
+  save();
+}
+
+function formatCardioActivitiesForAI(activities) {
+  if (!activities || !activities.length) return '  (none)';
+  return activities.map(a => {
+    const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
+    const parts = [def.label];
+    if (a.distance) parts.push('dist: ' + a.distance);
+    if (a.duration) parts.push('time: ' + a.duration);
+    if (a.notes) parts.push('notes: ' + a.notes);
+    return '  - ' + parts.join(' · ');
+  }).join('\n');
+}
+
+function renderCardioActivities() {
+  const list = document.getElementById('cardioList');
+  const btn = document.getElementById('addCardioBtn');
+  if (!list) return;
+  if (!state.current) {
+    list.innerHTML = '';
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+  if (btn) btn.style.display = 'block';
+  const activities = state.current.cardioActivities || [];
+  list.innerHTML = activities.map((a, i) => {
+    const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
+    return `
+      <div class="ex" style="position: relative; padding: 12px 14px;">
+        <div class="row between">
+          <div class="grow"><b>${def.icon} ${def.label}</b></div>
+          <button class="icon ghost" onclick="removeCardioActivity(${i})" aria-label="Remove">✕</button>
+        </div>
+        <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
+          ${def.showDist ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Distance</label><input type="text" placeholder="e.g. 8 km" value="${escapeHtml(a.distance || '')}" oninput="updateCardioField(${i}, 'distance', this.value)"></div>` : ''}
+          ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label><input type="text" placeholder="e.g. 45 min" value="${escapeHtml(a.duration || '')}" oninput="updateCardioField(${i}, 'duration', this.value)"></div>` : ''}
+        </div>
+        <div style="margin-top: 8px;">
+          <label class="muted small">Notes</label>
+          <input type="text" placeholder="pace, RPE, terrain…" value="${escapeHtml(a.notes || '')}" oninput="updateCardioField(${i}, 'notes', this.value)">
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 const EXERCISE_LIBRARY = {
   Upper: [
     'Push-ups', 'Ring push-ups', 'Decline push-ups', 'Diamond push-ups', 'Archer push-ups',
@@ -1954,7 +2072,7 @@ function addCustomExerciseText() {
 
 function finishSession() {
   if (!state.current) return toast('Nothing to save');
-  const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote;
+  const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote || (state.current.cardioActivities || []).length > 0;
   if (!hasAny) return toast('Log at least one set');
   let savedAt;
   if (state.current._editingId) {
@@ -2031,6 +2149,14 @@ function renderHistory() {
 
   const renderSession = s => {
     const cardio = s.cardioNote ? escapeHtml(s.cardioNote) : '';
+    const cardioActivitiesHtml = (s.cardioActivities || []).map(a => {
+      const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
+      const parts = [];
+      if (a.distance) parts.push(escapeHtml(a.distance));
+      if (a.duration) parts.push(escapeHtml(a.duration));
+      if (a.notes) parts.push('<i>' + escapeHtml(a.notes) + '</i>');
+      return `<div class="small" style="margin-top: 4px;"><b>${def.icon} ${def.label}</b>${parts.length ? ' — ' + parts.join(' · ') : ''}</div>`;
+    }).join('');
     const notes = s.notes ? escapeHtml(s.notes) : '';
     const burnQs = s.burnQuestions || [];
     const timeHtml = s.time
@@ -2046,6 +2172,7 @@ function renderHistory() {
       <div data-saved-at="${s.savedAt}" style="padding: 12px 0; border-top: 1px solid var(--line);">
         <div style="font-weight: 600;">${PLAN[s.day]?.label || s.day}${timeHtml}${durationHtml}${burnHtml}</div>
         ${cardio ? `<div class="small" style="margin-top: 4px; color: var(--muted);">${cardio}</div>` : ''}
+        ${cardioActivitiesHtml}
         ${s.entries.filter(e => e.sets.length).map(e => `
           <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
         `).join('')}
@@ -3628,7 +3755,7 @@ async function autoAnalyzeSession(savedAt, opts = {}) {
     const prompt = PROMPTS.sessionAnalysis
       .replace('{type}', PLAN[session.day]?.label || session.day)
       .replace('{date}', session.date)
-      .replace('{cardioNote}', session.cardioNote || '(none)')
+      .replace('{cardioNote}', session.cardioNote || '(none)').replace('{cardioActivities}', formatCardioActivitiesForAI(session.cardioActivities))
       .replace('{exercises}', exLines)
       .replace('{duration}', duration);
     const result = await callGeminiAnalysis(prompt);
@@ -3952,7 +4079,7 @@ function buildSessionSystemInstruction(session) {
   return PROMPTS.sessionChatSystem
     .replace('{type}', PLAN[session.day]?.label || session.day)
     .replace('{date}', session.date)
-    .replace('{cardioNote}', session.cardioNote || '(none)')
+    .replace('{cardioNote}', session.cardioNote || '(none)').replace('{cardioActivities}', formatCardioActivitiesForAI(session.cardioActivities))
     .replace('{exercises}', exLines)
     .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
     .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []));
@@ -4035,7 +4162,7 @@ async function requestSessionEstimateUpdate() {
     const updatePrompt = PROMPTS.sessionEstimateUpdate
       .replace('{type}', PLAN[session.day]?.label || session.day)
       .replace('{date}', session.date)
-      .replace('{cardioNote}', session.cardioNote || '(none)')
+      .replace('{cardioNote}', session.cardioNote || '(none)').replace('{cardioActivities}', formatCardioActivitiesForAI(session.cardioActivities))
       .replace('{exercises}', exLines)
       .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
       .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []));
@@ -5440,6 +5567,9 @@ if (state.sync?.webhookUrl) {
     autoGenerateMissingSummaries();
   }, 1500);
 }
+
+// Initial render for the active tab (Insights is the default)
+setTimeout(() => { renderAnalysis?.(); }, 0);
 
 // Schedule daily 23:55 generation
 scheduleMidnightGen();
