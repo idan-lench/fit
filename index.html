@@ -468,6 +468,8 @@
     <div class="card" id="compareCard">
       <div class="muted small" id="compareHint">Select two photos below to compare side by side.</div>
       <div class="photoGrid" id="compareGrid" style="margin-top: 10px; display: none;"></div>
+      <button class="primary" id="compareAnalyzeBtn" style="width:100%; margin-top: 10px; display: none;" onclick="analyzePhotoComparison()">🔍 Analyze changes with AI</button>
+      <div id="compareAnalysisResult" style="margin-top: 12px; display: none; padding: 12px 14px; background: var(--panel2); border-radius: 10px; line-height: 1.5; white-space: pre-wrap;"></div>
     </div>
 
     <div id="photoGrid" class="photoGrid"></div>
@@ -1692,7 +1694,7 @@ function renderWorkout() {
       <div class="sets">
         ${e.sets.length === 0 ? '<span class="set-pill empty">No sets yet</span>' : e.sets.map((s, si) => `<span class="set-pill" onclick="removeSet(${idx},${si})">${s.reps}</span>`).join('')}
       </div>
-      <input type="text" placeholder="Notes (weight, form, RPE…)" value="${escapeHtml(e.note || '')}" oninput="updateExerciseNote(${idx}, this.value)" style="margin-top: 8px; background: var(--panel2); font-size: 13px; padding: 8px 10px;">
+      <textarea placeholder="Notes (weight, form, RPE…)" rows="1" oninput="updateExerciseNote(${idx}, this.value); autoResizeTA(this)" style="margin-top: 8px; background: var(--panel2); font-size: 13px; padding: 8px 10px; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(e.note || '')}</textarea>
     `;
     list.appendChild(ex);
   });
@@ -2056,7 +2058,7 @@ function renderCardioActivities() {
         </div>
         <div style="margin-top: 8px;">
           <label class="muted small">Notes</label>
-          <input type="text" placeholder="pace, RPE, terrain…" value="${escapeHtml(a.notes || '')}" oninput="updateCardioField(${i}, 'notes', this.value)">
+          <textarea placeholder="pace, RPE, terrain…" rows="1" oninput="updateCardioField(${i}, 'notes', this.value); autoResizeTA(this)" style="resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(a.notes || '')}</textarea>
         </div>
       </div>
     `;
@@ -2677,9 +2679,13 @@ async function toggleCompare(id) {
 async function renderCompare(photos) {
   const grid = document.getElementById('compareGrid');
   const hint = document.getElementById('compareHint');
+  const btn = document.getElementById('compareAnalyzeBtn');
+  const result = document.getElementById('compareAnalysisResult');
   if (selectedForCompare.length !== 2) {
     grid.style.display = 'none';
     hint.style.display = 'block';
+    if (btn) btn.style.display = 'none';
+    if (result) { result.style.display = 'none'; result.innerHTML = ''; }
     hint.textContent = selectedForCompare.length === 1
       ? 'Select one more photo to compare.'
       : 'Tap two photos below to compare side by side.';
@@ -2692,6 +2698,66 @@ async function renderCompare(photos) {
     const url = URL.createObjectURL(p.blob);
     return `<div class="photoCell"><img src="${url}"><span class="label">${formatDate(p.date)}</span></div>`;
   }).join('');
+  if (btn) btn.style.display = getGeminiKey() ? 'block' : 'none';
+  // Clear stale analysis when selection changes
+  if (result) { result.style.display = 'none'; result.innerHTML = ''; }
+}
+
+async function analyzePhotoComparison() {
+  if (selectedForCompare.length !== 2) return;
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  const photos = await getAllPhotos();
+  const items = selectedForCompare.map(id => photos.find(p => p.id === id)).filter(Boolean);
+  if (items.length !== 2) return;
+  // Older first
+  items.sort((a, b) => a.date.localeCompare(b.date));
+  const btn = document.getElementById('compareAnalyzeBtn');
+  const result = document.getElementById('compareAnalysisResult');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Analyzing…';
+  result.style.display = 'block';
+  result.innerHTML = '<div class="muted small">AI is comparing your photos…</div>';
+  try {
+    const part0 = await blobToDataUrl(items[0].blob);
+    const part1 = await blobToDataUrl(items[1].blob);
+    const prompt = `You are an objective fitness analyst. Compare two body photos of the same person taken on different dates. The first photo is from ${items[0].date} (earlier), the second is from ${items[1].date} (later).
+
+Be HONEST and OBJECTIVE. If you don't see meaningful change, say so. If lighting, pose, or angle differ in ways that make comparison unreliable, mention it.
+
+Focus on observable changes (visible body composition, muscle definition, posture). Do NOT invent improvements that aren't visible. Do NOT mention skin tone or facial features.
+
+Format:
+1. **Overall verdict**: one short sentence — "improvement", "no clear change", or "regression".
+2. **What changed (visible)**: 2-4 specific observations with the relevant body region.
+3. **What didn't change**: 1-2 observations of areas that look similar.
+4. **Caveats**: any photo-quality issues affecting the comparison.
+
+Keep it under 200 words. Plain text, use markdown bold for headings.`;
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: items[0].blob.type || 'image/jpeg', data: part0.split(',')[1] } },
+            { inline_data: { mime_type: items[1].blob.type || 'image/jpeg', data: part1.split(',')[1] } }
+          ]
+        }]
+      })
+    });
+    if (!res.ok) throw new Error('Gemini ' + res.status);
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    result.innerHTML = text
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/\n/g, '<br>');
+  } catch (e) {
+    result.innerHTML = '<span style="color: var(--danger);">Failed: ' + e.message + '</span>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
 }
 
 async function removePhoto(id) {
