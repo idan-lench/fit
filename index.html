@@ -1313,11 +1313,13 @@ function loadWorkoutPlan() {
 
 function startWorkout(dayKey) {
   const date = workoutCurrentDate();
-  currentDay = dayKey;
+  // Fallback to 'custom' if the requested key isn't in PLAN
+  const safeKey = PLAN[dayKey] ? dayKey : 'custom';
+  currentDay = safeKey;
   state.current = {
-    day: dayKey,
+    day: safeKey,
     date,
-    cardio: PLAN[dayKey].cardio,
+    cardio: PLAN[safeKey].cardio,
     // Empty — user picks exercises from the daily plan chips, or adds custom
     entries: []
   };
@@ -1426,13 +1428,20 @@ function openWorkoutTypePicker() {
 }
 
 function selectDay(day) {
-  currentDay = day;
-  document.querySelectorAll('[data-day]').forEach(c => c.classList.toggle('on', c.dataset.day === day));
-  if (!state.current || state.current.day !== day) {
+  // selectDay is also called at startup with a default day. Don't auto-create
+  // a phantom session — only set up state.current if explicitly starting a
+  // session AND the day exists in PLAN.
+  const safeKey = PLAN[day] ? day : 'custom';
+  currentDay = safeKey;
+  document.querySelectorAll('[data-day]').forEach(c => c.classList.toggle('on', c.dataset.day === safeKey));
+  if (!state.current && PLAN[safeKey]) {
+    // Don't auto-create — let the user tap Add workout / Load plan
+  } else if (state.current && state.current.day !== safeKey && PLAN[safeKey]) {
+    // User explicitly switched day — sync
     state.current = {
-      day,
+      day: safeKey,
       date: workoutCurrentDate(),
-      cardio: PLAN[day].cardio,
+      cardio: PLAN[safeKey].cardio,
       entries: []
     };
   }
@@ -1459,10 +1468,11 @@ function isCurrentFresh() {
 }
 
 function freshSession(day) {
+  const safeKey = PLAN[day] ? day : 'custom';
   return {
-    day,
+    day: safeKey,
     date: todayISO(),
-    cardio: PLAN[day].cardio,
+    cardio: PLAN[safeKey].cardio,
     // Empty by default — user picks from the daily plan chips
     entries: []
   };
@@ -5363,10 +5373,11 @@ function hideToast() {
 // ---------- INIT ----------
 function suggestedDay() {
   const d = new Date().getDay(); // 0 Sun..6 Sat
-  if (d === 2) return 'tue';
-  if (d === 3) return 'wed';
-  if (d === 4) return 'thu';
-  if (d === 6) return 'sat';
+  // Only return keys that actually exist in PLAN
+  if (d === 0 && PLAN.sun) return 'sun';
+  if (d === 2 && PLAN.tue) return 'tue';
+  if (d === 3 && PLAN.wed) return 'wed';
+  if (d === 4 && PLAN.thu) return 'thu';
   return 'custom';
 }
 
