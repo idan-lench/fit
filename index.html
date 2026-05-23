@@ -464,10 +464,20 @@
       <div class="small muted" style="margin-top: 8px;">Tip: same lighting, same pose, same time of day. Mornings work best.</div>
     </div>
 
-    <h2 id="compareLabel">Compare</h2>
+    <h2 id="compareLabel">Compare dates</h2>
     <div class="card" id="compareCard">
-      <div class="muted small" id="compareHint">Select two photos below to compare side by side.</div>
-      <div class="photoGrid" id="compareGrid" style="margin-top: 10px; display: none;"></div>
+      <div class="row" style="gap: 8px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 130px;">
+          <label class="muted small">Earlier</label>
+          <input type="date" id="compareDateA" onchange="renderCompareByDate()">
+        </div>
+        <div style="flex: 1; min-width: 130px;">
+          <label class="muted small">Later</label>
+          <input type="date" id="compareDateB" onchange="renderCompareByDate()">
+        </div>
+      </div>
+      <div class="muted small" id="compareHint" style="margin-top: 10px;">Pick two dates to load all photos from each.</div>
+      <div id="compareGrid" style="margin-top: 10px; display: none;"></div>
       <button class="primary" id="compareAnalyzeBtn" style="width:100%; margin-top: 10px; display: none;" onclick="analyzePhotoComparison()">🔍 Analyze changes with AI</button>
       <div id="compareAnalysisResult" style="margin-top: 12px; display: none; padding: 12px 14px; background: var(--panel2); border-radius: 10px; line-height: 1.5; white-space: pre-wrap;"></div>
     </div>
@@ -570,13 +580,7 @@
       <div class="card">
         <div class="row between" style="margin-bottom: 10px; align-items: center;">
           <div style="font-weight: 600;">Daily steps</div>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <div class="segmented" style="display: inline-flex; gap: 0; background: var(--panel2); border-radius: 8px; padding: 2px;">
-              <button class="ghost" id="stepsModeWeek"  onclick="setStepsMode('week')"  style="padding: 3px 9px; font-size: 12px; border-radius: 6px;">Week</button>
-              <button class="ghost" id="stepsModeMonth" onclick="setStepsMode('month')" style="padding: 3px 9px; font-size: 12px; border-radius: 6px;">Month</button>
-            </div>
-            <button class="ghost" id="stepsEditBtn" onclick="toggleStepsEdit()" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
-          </div>
+          <button class="ghost" id="stepsEditBtn" onclick="toggleStepsEdit()" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
         </div>
         <div id="stepsChart"></div>
         <div id="stepsList" style="margin-top: 8px; display: none;"></div>
@@ -2467,13 +2471,9 @@ function renderSteps() {
     avgEl.textContent = '—';
   }
 
-  // Sync stepsMode toggle buttons
-  ['week','month'].forEach(k => {
-    const b = document.getElementById('stepsMode' + k.charAt(0).toUpperCase() + k.slice(1));
-    if (b) b.classList.toggle('on', stepsMode === k);
-  });
-  // Build a continuous range of `days` ending today (gaps for missing entries)
-  const days = stepsMode === 'month' ? 30 : 7;
+  // Steps chart follows the Trend chart's Day/Week/Month toggle.
+  // (Daily mode doesn't make sense for steps → fall back to week.)
+  const days = trendMode === 'month' ? 30 : 7;
   const todayDt = new Date();
   let rangeSS = [];
   const byDate = new Map(ss.map(s => [s.date, s]));
@@ -2659,58 +2659,74 @@ async function renderPhotos() {
     const cell = document.createElement('div');
     cell.className = 'photoCell';
     cell.innerHTML = `
-      <img src="${url}" alt="" onclick="toggleCompare(${p.id})">
-      <span class="label">${formatDate(p.date)}${selectedForCompare.includes(p.id) ? ' ✓' : ''}</span>
+      <img src="${url}" alt="">
+      <span class="label">${formatDate(p.date)}</span>
       <span class="x" onclick="event.stopPropagation(); removePhoto(${p.id});">✕</span>
     `;
     grid.appendChild(cell);
   }
-  renderCompare(photos);
+  // Default-pick the two most-distant dates with photos
+  const dates = [...new Set(photos.map(p => p.date))].sort();
+  const dateA = document.getElementById('compareDateA');
+  const dateB = document.getElementById('compareDateB');
+  if (dateA && dateB && dates.length >= 1) {
+    if (!dateA.value) dateA.value = dates[0];
+    if (!dateB.value) dateB.value = dates[dates.length - 1];
+  }
+  renderCompareByDate();
 }
 
-async function toggleCompare(id) {
-  selectedForCompare = selectedForCompare.includes(id)
-    ? selectedForCompare.filter(x => x !== id)
-    : [...selectedForCompare, id];
-  if (selectedForCompare.length > 2) selectedForCompare = selectedForCompare.slice(-2);
-  await renderPhotos();
-}
-
-async function renderCompare(photos) {
+async function renderCompareByDate() {
+  const dateA = document.getElementById('compareDateA')?.value;
+  const dateB = document.getElementById('compareDateB')?.value;
   const grid = document.getElementById('compareGrid');
   const hint = document.getElementById('compareHint');
   const btn = document.getElementById('compareAnalyzeBtn');
   const result = document.getElementById('compareAnalysisResult');
-  if (selectedForCompare.length !== 2) {
+  if (!grid) return;
+  if (!dateA || !dateB) {
     grid.style.display = 'none';
     hint.style.display = 'block';
+    hint.textContent = 'Pick two dates to load all photos from each.';
     if (btn) btn.style.display = 'none';
     if (result) { result.style.display = 'none'; result.innerHTML = ''; }
-    hint.textContent = selectedForCompare.length === 1
-      ? 'Select one more photo to compare.'
-      : 'Tap two photos below to compare side by side.';
+    return;
+  }
+  const photos = await getAllPhotos();
+  const a = photos.filter(p => p.date === dateA);
+  const b = photos.filter(p => p.date === dateB);
+  if (a.length === 0 && b.length === 0) {
+    grid.style.display = 'none';
+    hint.style.display = 'block';
+    hint.textContent = 'No photos on those dates.';
+    if (btn) btn.style.display = 'none';
     return;
   }
   hint.style.display = 'none';
-  grid.style.display = 'grid';
-  const items = selectedForCompare.map(id => photos.find(p => p.id === id)).filter(Boolean);
-  grid.innerHTML = items.map(p => {
-    const url = URL.createObjectURL(p.blob);
-    return `<div class="photoCell"><img src="${url}"><span class="label">${formatDate(p.date)}</span></div>`;
-  }).join('');
-  if (btn) btn.style.display = getGeminiKey() ? 'block' : 'none';
-  // Clear stale analysis when selection changes
+  grid.style.display = 'block';
+  const block = (label, list) => `
+    <div style="margin-top: 8px;">
+      <div class="muted small" style="margin-bottom: 4px;">${label} · ${list.length} photo${list.length !== 1 ? 's' : ''}</div>
+      <div class="photoGrid">${list.map(p => `<div class="photoCell"><img src="${URL.createObjectURL(p.blob)}"></div>`).join('') || '<div class="muted small">(no photos)</div>'}</div>
+    </div>`;
+  grid.innerHTML = block(formatDate(dateA), a) + block(formatDate(dateB), b);
+  if (btn) btn.style.display = (a.length && b.length && getGeminiKey()) ? 'block' : 'none';
   if (result) { result.style.display = 'none'; result.innerHTML = ''; }
 }
 
 async function analyzePhotoComparison() {
-  if (selectedForCompare.length !== 2) return;
+  const dateA = document.getElementById('compareDateA')?.value;
+  const dateB = document.getElementById('compareDateB')?.value;
+  if (!dateA || !dateB) return;
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
   const photos = await getAllPhotos();
-  const items = selectedForCompare.map(id => photos.find(p => p.id === id)).filter(Boolean);
-  if (items.length !== 2) return;
+  let a = photos.filter(p => p.date === dateA);
+  let b = photos.filter(p => p.date === dateB);
+  if (a.length === 0 || b.length === 0) return toast('Need at least one photo on each date');
   // Older first
-  items.sort((a, b) => a.date.localeCompare(b.date));
+  const earlierIsA = dateA <= dateB;
+  const earlier = { date: earlierIsA ? dateA : dateB, photos: earlierIsA ? a : b };
+  const later   = { date: earlierIsA ? dateB : dateA, photos: earlierIsA ? b : a };
   const btn = document.getElementById('compareAnalyzeBtn');
   const result = document.getElementById('compareAnalysisResult');
   const orig = btn.textContent;
@@ -2718,33 +2734,31 @@ async function analyzePhotoComparison() {
   result.style.display = 'block';
   result.innerHTML = '<div class="muted small">AI is comparing your photos…</div>';
   try {
-    const part0 = await blobToDataUrl(items[0].blob);
-    const part1 = await blobToDataUrl(items[1].blob);
-    const prompt = `You are an objective fitness analyst. Compare two body photos of the same person taken on different dates. The first photo is from ${items[0].date} (earlier), the second is from ${items[1].date} (later).
+    const earlierParts = await Promise.all(earlier.photos.map(p => blobToDataUrl(p.blob)));
+    const laterParts = await Promise.all(later.photos.map(p => blobToDataUrl(p.blob)));
+    const prompt = `You are an objective fitness analyst. Compare TWO SETS of body photos of the same person taken on different dates.
 
-Be HONEST and OBJECTIVE. If you don't see meaningful change, say so. If lighting, pose, or angle differ in ways that make comparison unreliable, mention it.
+EARLIER set (${earlier.date}): ${earlier.photos.length} photo(s) — shown first in this prompt.
+LATER set (${later.date}): ${later.photos.length} photo(s) — shown after the earlier set.
 
-Focus on observable changes (visible body composition, muscle definition, posture). Do NOT invent improvements that aren't visible. Do NOT mention skin tone or facial features.
+Be HONEST and OBJECTIVE. If you don't see meaningful change across the sets, say so. If lighting, pose, or angle differ in ways that make comparison unreliable, mention it.
+
+Focus on observable changes (visible body composition, muscle definition, posture). Each set may contain multiple angles — use them together. Do NOT invent improvements that aren't visible. Do NOT mention skin tone or facial features.
 
 Format:
 1. **Overall verdict**: one short sentence — "improvement", "no clear change", or "regression".
 2. **What changed (visible)**: 2-4 specific observations with the relevant body region.
 3. **What didn't change**: 1-2 observations of areas that look similar.
-4. **Caveats**: any photo-quality issues affecting the comparison.
+4. **Caveats**: any photo-quality / pose / lighting differences affecting the comparison.
 
-Keep it under 200 words. Plain text, use markdown bold for headings.`;
+Keep it under 220 words. Plain text, use markdown bold for headings.`;
+    const parts = [{ text: prompt }];
+    earlierParts.forEach((d, i) => parts.push({ inline_data: { mime_type: earlier.photos[i].blob.type || 'image/jpeg', data: d.split(',')[1] } }));
+    laterParts.forEach((d, i) => parts.push({ inline_data: { mime_type: later.photos[i].blob.type || 'image/jpeg', data: d.split(',')[1] } }));
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: items[0].blob.type || 'image/jpeg', data: part0.split(',')[1] } },
-            { inline_data: { mime_type: items[1].blob.type || 'image/jpeg', data: part1.split(',')[1] } }
-          ]
-        }]
-      })
+      body: JSON.stringify({ contents: [{ parts }] })
     });
     if (!res.ok) throw new Error('Gemini ' + res.status);
     const data = await res.json();
@@ -3258,8 +3272,6 @@ async function renderEnergy() {
 }
 
 let trendMode = 'week'; // 'day' | 'week' | 'month'
-let stepsMode = 'week'; // 'week' | 'month'
-
 function setTrendMode(m) {
   trendMode = m;
   ['day','week','month'].forEach(k => {
@@ -3267,14 +3279,8 @@ function setTrendMode(m) {
     if (b) b.classList.toggle('on', m === k);
   });
   drawEnergyChart('analysisChart');
-}
-function setStepsMode(m) {
-  stepsMode = m;
-  ['week','month'].forEach(k => {
-    const b = document.getElementById('stepsMode' + k.charAt(0).toUpperCase() + k.slice(1));
-    if (b) b.classList.toggle('on', m === k);
-  });
-  renderSteps();
+  // Steps chart follows the trend mode too
+  renderSteps?.();
 }
 
 function _isoDate(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
