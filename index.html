@@ -693,6 +693,7 @@
     <button style="width:100%; margin-bottom:8px;" onclick="exportData({local:true})">💾 Download local copy</button>
     <div class="muted small" style="margin: -2px 4px 10px;">Saves the JSON to your computer / phone Files.</div>
     <button style="width:100%; margin-bottom:8px;" id="fullBackupBtn" onclick="exportData({cloud: !!state.sync?.webhookUrl, local: !state.sync?.webhookUrl, includePhotos:true})">📦 Full backup (with photos)</button>
+    <button class="ghost" style="width:100%; margin-bottom:8px;" id="restorePhotosBtn" onclick="restorePhotosFromDrive()">📸 Restore photos from Drive (merge)</button>
     <div class="muted small" id="fullBackupHint" style="margin: -2px 4px 10px;">Includes photos as base64. Use occasionally.</div>
     <hr class="div">
     <div style="font-weight:600; margin-bottom:6px;">Cloud sync (Google Drive)</div>
@@ -4958,6 +4959,70 @@ function openSettings() {
   if (k) k.value = getGeminiKey();
 }
 function closeSettings() { document.getElementById('settingsModal').classList.remove('show'); }
+
+async function restorePhotosFromDrive() {
+  if (!state.sync?.webhookUrl || !state.sync?.secret) {
+    return toast('Drive sync not configured');
+  }
+  const btn = document.getElementById('restorePhotosBtn');
+  const orig = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = 'Fetching backup…'; }
+  toast('Fetching from Drive…', { persistent: true });
+  try {
+    const res = await fetch(state.sync.webhookUrl + '?secret=' + encodeURIComponent(state.sync.secret));
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Drive error');
+    const photos = data.payload?.photos || [];
+    if (photos.length === 0) {
+      hideToast();
+      toast('No photos in the latest backup');
+      return;
+    }
+    if (btn) btn.textContent = `Restoring 0 / ${photos.length}…`;
+    const existing = await getAllPhotos();
+    // Match by date — restored photos may have new `created` timestamps,
+    // so use date alone for dedupe (multiple per day is OK to keep all).
+    const existingByDate = {};
+    existing.forEach(p => {
+      existingByDate[p.date] = (existingByDate[p.date] || 0) + 1;
+    });
+    const remoteByDate = {};
+    photos.forEach(p => {
+      remoteByDate[p.date] = (remoteByDate[p.date] || 0) + 1;
+    });
+    let restored = 0, skipped = 0;
+    for (let i = 0; i < photos.length; i++) {
+      const p = photos[i];
+      // If we already have AT LEAST as many photos on this date as the backup, skip
+      const localCount = existingByDate[p.date] || 0;
+      if (localCount >= (remoteByDate[p.date] || 0)) {
+        skipped++;
+        continue;
+      }
+      if (p.dataUrl) {
+        const blob = await (await fetch(p.dataUrl)).blob();
+        const db = await openPhotoDB();
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction('photos', 'readwrite');
+          const req = tx.objectStore('photos').add({ blob, date: p.date, created: p.created || Date.now() });
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+        existingByDate[p.date] = (existingByDate[p.date] || 0) + 1;
+        restored++;
+      }
+      if (btn) btn.textContent = `Restoring ${i + 1} / ${photos.length}…`;
+    }
+    hideToast();
+    toast(`Restored ${restored} photos (${skipped} already present) ✓`);
+    if (typeof renderPhotos === 'function') renderPhotos();
+  } catch (e) {
+    hideToast();
+    toast('Restore failed: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+  }
+}
 
 async function exportData(opts = {}) {
   const { cloud = false, local = false, includePhotos = false } = opts;
