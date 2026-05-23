@@ -395,6 +395,8 @@
     </div>
 
     <div class="row" style="gap: 8px; align-items: center; padding: 8px 4px 0; flex-wrap: wrap;" id="sessionMetaRow">
+      <label class="muted small" style="margin: 0;">Date:</label>
+      <input type="date" id="sessionDate" style="flex: 1; max-width: 150px;" onchange="updateSessionDate(this.value)">
       <label class="muted small" style="margin: 0;">Time:</label>
       <input type="time" id="sessionTime" style="flex: 1; max-width: 120px;" onchange="updateSessionTime(this.value)">
       <button class="ghost" style="padding: 8px 12px; font-size: 14px;" onclick="openPlanModal()">View plan</button>
@@ -1578,8 +1580,10 @@ function renderWorkout() {
   // Active session exists for this date
   if (banner) banner.style.display = 'none';
   if (empty) empty.style.display = 'none';
-  const hasEntries = (state.current.entries || []).length > 0;
-  if (metaRow) metaRow.style.display = hasEntries ? 'flex' : 'none';
+  // Show date/time as soon as there's any content (exercise OR cardio activity)
+  const hasContent = (state.current.entries || []).length > 0
+                  || (state.current.cardioActivities || []).length > 0;
+  if (metaRow) metaRow.style.display = hasContent ? 'flex' : 'none';
   if (headerRow) headerRow.style.display = 'flex';
   if (cancelBtn) cancelBtn.style.display = 'inline-flex';
 
@@ -1620,6 +1624,8 @@ function renderWorkout() {
   }
   const timeInput = document.getElementById('sessionTime');
   if (timeInput && state.current) timeInput.value = state.current.time || '';
+  const dateInput = document.getElementById('sessionDate');
+  if (dateInput && state.current) dateInput.value = state.current.date || todayISO();
   if (saveRow) saveRow.style.display = (editing || !isCurrentFresh()) ? 'flex' : 'none';
   list.innerHTML = '';
   currentDay = state.current.day; // sync
