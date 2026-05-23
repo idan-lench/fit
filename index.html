@@ -5576,8 +5576,32 @@ async function autoSilentFitSync() {
 // Auto-pull from Drive on startup, then silent Fit sync, then auto-gen summaries
 if (state.sync?.webhookUrl) {
   setTimeout(async () => {
-    const r = await pullFromDrive({ silent: true });
-    if (r.applied) toast('Auto-synced from Drive ✓');
+    // If local looks empty (browser data wiped or fresh device), bypass the
+    // timestamp guard so we always restore the latest Drive backup.
+    const looksEmpty = (state.sessions || []).length === 0
+      && (state.measurements || []).length === 0
+      && (state.steps || []).length === 0;
+    if (looksEmpty) {
+      toast('Restoring from Drive…', { persistent: true });
+      try {
+        // Direct fetch — bypass silent timestamp check + skip confirm dialog
+        const res = await fetch(state.sync.webhookUrl + '?secret=' + encodeURIComponent(state.sync.secret), { method: 'GET', redirect: 'follow' });
+        const data = await res.json();
+        if (data && data.ok && data.payload) {
+          await applyDrivePayload(data.payload, data.updatedAt);
+          hideToast();
+          toast('Restored from Drive ✓');
+        } else {
+          hideToast();
+        }
+      } catch (e) {
+        hideToast();
+        toast('Drive restore failed: ' + e.message);
+      }
+    } else {
+      const r = await pullFromDrive({ silent: true });
+      if (r.applied) toast('Auto-synced from Drive ✓');
+    }
     await autoSilentFitSync();
     autoGenerateMissingSummaries();
   }, 1500);
