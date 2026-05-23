@@ -1290,8 +1290,11 @@ function shiftWorkoutDate(delta) {
 function getPlanKeyForDate(dateISO) {
   const [y, m, d] = dateISO.split('-').map(Number);
   const dow = new Date(y, m - 1, d).getDay(); // 0=Sun..6=Sat
-  const map = { 2: 'tue', 3: 'wed', 4: 'thu', 6: 'sat' };
-  return map[dow] || null;
+  // Match WEEKLY_PLAN: Sun=Legs, Mon=rest, Tue=8k run, Wed=Movement, Thu=Intervals, Fri/Sat=rest
+  const map = { 0: 'sun', 2: 'tue', 3: 'wed', 4: 'thu' };
+  const key = map[dow];
+  // Only return a plan key if PLAN actually has it defined
+  return (key && PLAN[key]) ? key : null;
 }
 
 function loadWorkoutPlan() {
@@ -1499,7 +1502,7 @@ function renderWorkout() {
       addAnotherBtn.style.display = 'block';
     } else {
       if (addAnotherBtn) addAnotherBtn.style.display = 'none';
-      if (planKey && banner) {
+      if (planKey && PLAN[planKey] && banner) {
         document.getElementById('workoutPlanLabel').textContent = PLAN[planKey].label;
         banner.style.display = 'block';
       } else if (empty) {
