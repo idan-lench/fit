@@ -363,10 +363,7 @@
     <!-- Empty state for non-plan days: just show the action buttons -->
     <div id="workoutEmptyState" class="card" style="display: none;">
       <div class="muted small" style="margin-bottom: 10px;">No workout for this day yet.</div>
-      <div class="row" style="gap: 8px;">
-        <button class="primary grow" onclick="startWorkout('custom')">+ Add workout</button>
-        <button class="grow" onclick="startWorkoutWithTimer()">▶ Start timer</button>
-      </div>
+      <button class="primary" style="width:100%;" onclick="startWorkout('custom')">+ Add workout</button>
     </div>
 
     <div class="row between" style="margin-top: 18px; align-items: center;" id="sessionHeaderRow">
@@ -1321,16 +1318,11 @@ function startWorkout(dayKey) {
     day: dayKey,
     date,
     cardio: PLAN[dayKey].cardio,
-    entries: PLAN[dayKey].exercises.map(name => ({ name, sets: [] }))
+    // Empty — user picks exercises from the daily plan chips, or adds custom
+    entries: []
   };
   save();
   renderWorkout();
-}
-
-// Start a custom session AND kick off the timer in one tap
-function startWorkoutWithTimer() {
-  startWorkout('custom');
-  startWorkoutTimer();
 }
 
 // --- Workout timer ---
