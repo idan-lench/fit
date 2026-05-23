@@ -1381,7 +1381,7 @@ function selectDay(day) {
       day,
       date: workoutCurrentDate(),
       cardio: PLAN[day].cardio,
-      entries: PLAN[day].exercises.map(name => ({ name, sets: [] }))
+      entries: []
     };
   }
   renderWorkout();
@@ -1402,9 +1402,7 @@ function isCurrentFresh() {
   if (state.current.entries.some(e => e.sets.length)) return false;
   if (state.current.cardioNote && state.current.cardioNote.trim()) return false;
   if ((state.current.cardioActivities || []).length > 0) return false;
-  // Also: if user added/removed exercises beyond template defaults
-  const defaults = PLAN[state.current.day]?.exercises || [];
-  if (state.current.entries.length !== defaults.length) return false;
+  if (state.current.entries.length > 0) return false; // any picked exercise
   return true;
 }
 
@@ -1413,7 +1411,8 @@ function freshSession(day) {
     day,
     date: todayISO(),
     cardio: PLAN[day].cardio,
-    entries: PLAN[day].exercises.map(name => ({ name, sets: [] }))
+    // Empty by default — user picks from the daily plan chips
+    entries: []
   };
 }
 
@@ -1592,6 +1591,20 @@ function renderWorkout() {
         if (sr) sr.style.display = isCurrentFresh() ? 'none' : 'flex';
       });
     }, 0);
+  }
+
+  // Daily plan chip menu — items not yet added to entries
+  const planExercises = (PLAN[state.current.day]?.exercises || []);
+  const pickedNames = new Set(state.current.entries.map(e => e.name.toLowerCase()));
+  const remainingPlan = planExercises.filter(name => !pickedNames.has(name.toLowerCase()));
+  if (remainingPlan.length > 0) {
+    const planMenu = document.createElement('div');
+    planMenu.style.cssText = 'margin: 8px 0; padding: 10px 12px; background: var(--panel2); border-radius: 10px;';
+    planMenu.innerHTML = `<div class="muted small" style="margin-bottom: 8px; font-weight: 500;">Today's plan — tap to add</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+        ${remainingPlan.map(name => `<button class="chip" onclick="addPlanExercise('${name.replace(/'/g, "\\'")}')" style="padding: 6px 12px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); cursor: pointer; font-size: 13px;">+ ${escapeHtml(name)}</button>`).join('')}
+      </div>`;
+    list.appendChild(planMenu);
   }
 
   state.current.entries.forEach((e, idx) => {
@@ -2040,6 +2053,13 @@ function renderExerciseList(filter = '') {
   }
   if (total === 0) html = `<div class="empty">No matches. Use "+ Custom name…" below to add it.</div>`;
   body.innerHTML = html;
+}
+
+function addPlanExercise(name) {
+  if (!state.current) return;
+  state.current.entries.push({ name, sets: [] });
+  save();
+  renderWorkout();
 }
 
 function addCustomExercise() {
@@ -5568,8 +5588,19 @@ if (state.sync?.webhookUrl) {
   }, 1500);
 }
 
-// Initial render for the active tab (Insights is the default)
-setTimeout(() => { renderAnalysis?.(); }, 0);
+// Initial render — ensure all main sections populate from existing local state
+// (Drive pull happens async at 1.5s and will re-render when it lands)
+function _initialRender() {
+  try { if (typeof renderAnalysis === 'function') renderAnalysis(); } catch {}
+  try { if (typeof renderWorkout === 'function') { selectDay(currentDay); } } catch {}
+  try { if (typeof renderMeals === 'function') renderMeals(); } catch {}
+  try { if (typeof renderBody === 'function') renderBody(); } catch {}
+}
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+  _initialRender();
+} else {
+  document.addEventListener('DOMContentLoaded', _initialRender);
+}
 
 // Schedule daily 23:55 generation
 scheduleMidnightGen();
