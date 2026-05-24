@@ -3157,7 +3157,9 @@ async function saveMeal() {
       let useBreakdown = _pendingTemplate.breakdown;
       let useCalories = _pendingTemplate.calories;
       let useProtein  = _pendingTemplate.protein;
-      let useAiSaw   = _pendingTemplate.aiSaw;
+      // Use a clear marker instead of the template's stale "AI saw…" text
+      // (which would reference the original photos and confuse the user)
+      let useAiSaw = 'From template — same breakdown as the saved template (no new analysis).';
       if (deltaText && getGeminiKey()) {
         toast('Applying changes…', { persistent: true });
         try {
@@ -3166,7 +3168,9 @@ async function saveMeal() {
             useBreakdown = adjusted.items || useBreakdown;
             useCalories = (typeof adjusted.total === 'number') ? adjusted.total : useCalories;
             useProtein  = (typeof adjusted.totalProtein === 'number') ? adjusted.totalProtein : useProtein;
-            useAiSaw   = adjusted.changeNote ? `${useAiSaw || ''}\nChange: ${adjusted.changeNote}`.trim() : useAiSaw;
+            useAiSaw   = adjusted.changeNote
+              ? `From template with change: ${adjusted.changeNote}`
+              : useAiSaw;
           }
           hideToast();
         } catch (e) {
