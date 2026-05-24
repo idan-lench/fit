@@ -11,22 +11,23 @@ window.PROMPTS = {
 
   // ---------------- MEAL ANALYSIS ----------------
   // Used when a meal is saved with photo(s) or description.
-  // Placeholder: {description}
+  // Placeholders: {description}, {photosBlock}, {sawInstruction}
+  // {photosBlock} → photo-related instructions OR a "no photos" notice
+  // {sawInstruction} → what to put in the `saw` JSON field
   // Returns JSON: { items, total, totalProtein, confidence, saw, questions }
   mealAnalysis: `You are estimating calories AND protein for a meal eaten by a 58kg, 44yo adult male in Israel/Mediterranean diet context. Be CONSERVATIVE on portions — Mediterranean/Israeli portions are smaller than American standards.
 
+{photosBlock}
+
 CRITICAL RULES:
-1. Look at ALL photos provided. A single meal may have multiple photos showing different parts (e.g. salad in one, main plate in another). Count items across ALL photos.
-2. The user's description is a guide. If photos show clearly more food (e.g. user wrote "bread" but photo shows bread + cottage + veg on one plate), count what they actually ate.
-3. Focus on the foreground / clearly eaten item per photo. Items in the background of OTHER plates (not the one being eaten) are NOT counted.
-4. Be conservative on portions:
+1. Be conservative on portions:
    - 1 slice bread = ~30g (~80 kcal)
    - Chicken breast cutlet (thin, restaurant) = ~80-100g cooked each
    - Pilaf rice serving = ~200-250g cooked (~250-300 kcal)
    - Salad bowl = ~150-200g typical
    - Cottage cheese full container in Israel = 250g (~280 kcal at 5% fat)
    - Tahini "sauce" in restaurants is diluted — count at ~half pure tahini calories
-5. If the user gave a quantity ("half", "25% of", "3/4", "1 slice") respect it strictly.
+2. If the user gave a quantity ("half", "25% of", "3/4", "1 slice") respect it strictly.
 
 USER'S DESCRIPTION: "{description}"
 
@@ -39,10 +40,24 @@ Return ONLY valid JSON. No markdown, no code fences. Format:
   "total": number,
   "totalProtein": number,
   "confidence": "high" | "medium" | "low",
-  "saw": "factual description of EVERY photo's contents, noting items counted vs ignored",
+  "saw": "{sawInstruction}",
   "questions": ["string"]
 }
 Set "questions" to [] if confident.`,
+
+  // Sub-block used to fill {photosBlock} when photos ARE attached.
+  mealAnalysisPhotosBlock_withPhotos: `PHOTOS ATTACHED:
+1. Look at ALL photos provided. A single meal may have multiple photos showing different parts (e.g. salad in one, main plate in another). Count items across ALL photos.
+2. The user's description is a guide. If photos show clearly more food (e.g. user wrote "bread" but photo shows bread + cottage + veg on one plate), count what they actually ate.
+3. Focus on the foreground / clearly eaten item per photo. Items in the background of OTHER plates (not the one being eaten) are NOT counted.`,
+
+  // Sub-block used to fill {photosBlock} when NO photos are attached.
+  mealAnalysisPhotosBlock_noPhotos: `NO PHOTOS PROVIDED — analyze from the description text only.
+Do NOT pretend to see photos. Do NOT invent visual details. Base the estimate strictly on the user's written description.`,
+
+  // Sub-string used to fill {sawInstruction} in the JSON schema.
+  mealAnalysisSaw_withPhotos: `factual description of EVERY photo's contents, noting items counted vs ignored`,
+  mealAnalysisSaw_noPhotos:   `(no photos — analyzed from description only)`,
 
 
   // ---------------- SESSION ANALYSIS ----------------

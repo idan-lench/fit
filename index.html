@@ -3888,7 +3888,17 @@ async function autoAnalyzeMeal(mealId, opts = {}) {
   if (!opts.silent) toast('Analyzing meal…', { persistent: true });
   try {
     const blobs = mealBlobs(meal);
-    const prompt = PROMPTS.mealAnalysis.replace('{description}', meal.description || '(none)');
+    const hasPhotos = blobs && blobs.length > 0;
+    const photosBlock = hasPhotos
+      ? PROMPTS.mealAnalysisPhotosBlock_withPhotos
+      : PROMPTS.mealAnalysisPhotosBlock_noPhotos;
+    const sawInstruction = hasPhotos
+      ? PROMPTS.mealAnalysisSaw_withPhotos
+      : PROMPTS.mealAnalysisSaw_noPhotos;
+    const prompt = PROMPTS.mealAnalysis
+      .replace('{description}', meal.description || '(none)')
+      .replace('{photosBlock}', photosBlock)
+      .replace('{sawInstruction}', sawInstruction);
     const result = await callGeminiAnalysis(prompt, blobs);
     const parsed = parseJSONResponse(result);
     if (parsed && typeof parsed.total === 'number' && parsed.total > 0 && parsed.total < 5000) {
