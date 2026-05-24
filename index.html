@@ -483,7 +483,6 @@
       <div class="muted small" id="compareHint" style="margin-top: 10px;">Pick two dates to load all photos from each.</div>
       <div id="compareGrid" style="margin-top: 10px; display: none;"></div>
       <button class="primary" id="compareAnalyzeBtn" style="width:100%; margin-top: 10px; display: none;" onclick="analyzePhotoComparison()">🔍 Analyze changes with AI</button>
-      <div id="compareAnalysisResult" style="margin-top: 12px; display: none; padding: 12px 14px; background: var(--panel2); border-radius: 10px; line-height: 1.5; white-space: pre-wrap;"></div>
     </div>
 
     <h2 id="compareHistoryTitle" style="display: none;">Comparison history</h2>
@@ -2700,14 +2699,12 @@ async function renderCompareByDate() {
   const grid = document.getElementById('compareGrid');
   const hint = document.getElementById('compareHint');
   const btn = document.getElementById('compareAnalyzeBtn');
-  const result = document.getElementById('compareAnalysisResult');
   if (!grid) return;
   if (!dateA || !dateB) {
     grid.style.display = 'none';
     hint.style.display = 'block';
     hint.textContent = 'Pick two dates to load all photos from each.';
     if (btn) btn.style.display = 'none';
-    if (result) { result.style.display = 'none'; result.innerHTML = ''; }
     return;
   }
   const photos = await getAllPhotos();
@@ -2734,7 +2731,6 @@ async function renderCompareByDate() {
     </div>`;
   grid.innerHTML = block(formatDate(dateA), a) + block(formatDate(dateB), b);
   if (btn) btn.style.display = (a.length && b.length && getGeminiKey()) ? 'block' : 'none';
-  if (result) { result.style.display = 'none'; result.innerHTML = ''; }
 }
 
 async function analyzePhotoComparison() {
@@ -2751,30 +2747,36 @@ async function analyzePhotoComparison() {
   const earlier = { date: earlierIsA ? dateA : dateB, photos: earlierIsA ? a : b };
   const later   = { date: earlierIsA ? dateB : dateA, photos: earlierIsA ? b : a };
   const btn = document.getElementById('compareAnalyzeBtn');
-  const result = document.getElementById('compareAnalysisResult');
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = 'Analyzing…';
-  result.style.display = 'block';
-  result.innerHTML = '<div class="muted small">AI is comparing your photos…</div>';
+  toast('AI is comparing your photos…', { persistent: true });
   try {
     const earlierParts = await Promise.all(earlier.photos.map(p => blobToDataUrl(p.blob)));
     const laterParts = await Promise.all(later.photos.map(p => blobToDataUrl(p.blob)));
     const prompt = `You are an objective fitness analyst. Compare TWO SETS of body photos of the same person taken on different dates.
 
-EARLIER set (${earlier.date}): ${earlier.photos.length} photo(s) — shown first in this prompt.
-LATER set (${later.date}): ${later.photos.length} photo(s) — shown after the earlier set.
+EARLIER set (${earlier.date}): ${earlier.photos.length} photo(s) — shown first.
+LATER set (${later.date}): ${later.photos.length} photo(s) — shown after.
 
-Be HONEST and OBJECTIVE. If you don't see meaningful change across the sets, say so. If lighting, pose, or angle differ in ways that make comparison unreliable, mention it.
+Goal: short, focused, honest comparison. The user is a 44yo male, 168cm, ~58kg, lean but low muscle. Goal: build upper body muscle + reduce waist/midsection fat.
 
-Focus on observable changes (visible body composition, muscle definition, posture). Each set may contain multiple angles — use them together. Do NOT invent improvements that aren't visible. Do NOT mention skin tone or facial features.
+Be HONEST. If no real change is visible, say so. If pose/lighting differ in ways that affect comparison, mention briefly in the verdict.
 
-Format:
-1. **Overall verdict**: one short sentence — "improvement", "no clear change", or "regression".
-2. **What changed (visible)**: 2-4 specific observations with the relevant body region.
-3. **What didn't change**: 1-2 observations of areas that look similar.
-4. **Caveats**: any photo-quality / pose / lighting differences affecting the comparison.
+ONLY focus on these 3 areas:
+1. **Upper body** (chest, shoulders, arms, back) — muscle size & definition
+2. **Core** (abs, obliques) — definition & midsection tightness
+3. **Fat / waist** — visible waistline, midsection bulk, overall leanness
 
-Keep it under 220 words. Plain text, use markdown bold for headings.`;
+Then add ONE forward-looking recommendation grounded in what you observed.
+
+Format (PLAIN TEXT, markdown bold for headings, no bullets unless tight):
+**Verdict**: one phrase — improvement / no clear change / regression — plus 1 short reason
+**Upper body**: 1-2 sentences
+**Core**: 1-2 sentences
+**Fat / waist**: 1-2 sentences
+**Recommendation**: 1 sentence — what to focus on next
+
+Keep under 130 words total. Do NOT mention skin tone or facial features.`;
     const parts = [{ text: prompt }];
     earlierParts.forEach((d, i) => parts.push({ inline_data: { mime_type: earlier.photos[i].blob.type || 'image/jpeg', data: d.split(',')[1] } }));
     laterParts.forEach((d, i) => parts.push({ inline_data: { mime_type: later.photos[i].blob.type || 'image/jpeg', data: d.split(',')[1] } }));
@@ -2786,10 +2788,7 @@ Keep it under 220 words. Plain text, use markdown bold for headings.`;
     if (!res.ok) throw new Error('Gemini ' + res.status);
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    result.innerHTML = text
-      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
-      .replace(/\n/g, '<br>');
-    // Persist the analysis so it shows up in Comparison history
+    // Persist — newest first; only the newest is auto-expanded
     state.compareAnalyses = state.compareAnalyses || [];
     state.compareAnalyses.unshift({
       id: Date.now(),
@@ -2803,8 +2802,11 @@ Keep it under 220 words. Plain text, use markdown bold for headings.`;
     state.compareAnalyses = state.compareAnalyses.slice(0, 50);
     save();
     renderCompareHistory();
+    hideToast();
+    toast('Analysis complete ✓');
   } catch (e) {
-    result.innerHTML = '<span style="color: var(--danger);">Failed: ' + e.message + '</span>';
+    hideToast();
+    toast('Analysis failed: ' + e.message);
   } finally {
     btn.disabled = false;
     btn.textContent = orig;
@@ -2822,12 +2824,13 @@ function renderCompareHistory() {
     return;
   }
   if (title) title.style.display = '';
-  list.innerHTML = items.map(a => {
+  list.innerHTML = items.map((a, idx) => {
     const formatted = (a.text || '')
       .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
       .replace(/\n/g, '<br>');
     const created = new Date(a.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    return `<details style="margin-top: 8px;">
+    const open = idx === 0 ? 'open' : '';
+    return `<details ${open} style="margin-top: 8px;">
       <summary class="muted small" style="font-weight: 500; cursor: pointer; list-style: none; padding: 8px 10px; background: var(--panel); border-radius: 10px; display: flex; justify-content: space-between; align-items: center;">
         <span>▸ ${formatDate(a.earlierDate)} → ${formatDate(a.laterDate)}</span>
         <span style="font-size: 11px;">${created}</span>
