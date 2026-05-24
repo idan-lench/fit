@@ -3201,9 +3201,12 @@ async function saveMeal() {
             breakdown: existing.breakdown
           }, deltaText);
           if (adjusted) {
-            updates.breakdown = adjusted.items || existing.breakdown;
-            if (typeof adjusted.total === 'number') updates.calories = adjusted.total;
-            if (typeof adjusted.totalProtein === 'number') updates.protein = adjusted.totalProtein;
+            const items = adjusted.items || existing.breakdown;
+            updates.breakdown = items;
+            // Always recompute from items — the AI's stated total/totalProtein is unreliable
+            const totals = _recomputeMealTotals(items);
+            if (totals.total != null) updates.calories = totals.total;
+            if (totals.protein != null) updates.protein = totals.protein;
             updates.aiSaw = adjusted.changeNote ? `${existing.aiSaw || ''}\nChange: ${adjusted.changeNote}`.trim() : existing.aiSaw;
           }
           hideToast();
@@ -3237,9 +3240,11 @@ async function saveMeal() {
           const adjusted = await applyTemplateDelta(_pendingTemplate, deltaText);
           if (adjusted) {
             useBreakdown = adjusted.items || useBreakdown;
-            useCalories = (typeof adjusted.total === 'number') ? adjusted.total : useCalories;
-            useProtein  = (typeof adjusted.totalProtein === 'number') ? adjusted.totalProtein : useProtein;
-            useAiSaw   = adjusted.changeNote
+            // Always recompute from items — the AI's stated total is unreliable
+            const totals = _recomputeMealTotals(useBreakdown);
+            if (totals.total != null) useCalories = totals.total;
+            if (totals.protein != null) useProtein = totals.protein;
+            useAiSaw = adjusted.changeNote
               ? `From template with change: ${adjusted.changeNote}`
               : useAiSaw;
           }
@@ -3366,6 +3371,23 @@ function setTrendMode(m) {
 }
 
 function _isoDate(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+
+// Always trust the itemized breakdown over the AI's claimed totals — LLMs
+// frequently get the addition wrong (e.g. removes an item but forgets to
+// subtract its calories from the total). Returns recomputed { total, protein }.
+function _recomputeMealTotals(items) {
+  if (!Array.isArray(items)) return { total: null, protein: null };
+  let cal = 0, prot = 0;
+  let hasCal = false, hasProt = false;
+  for (const it of items) {
+    if (typeof it.calories === 'number') { cal += it.calories; hasCal = true; }
+    if (typeof it.protein === 'number') { prot += it.protein; hasProt = true; }
+  }
+  return {
+    total: hasCal ? Math.round(cal) : null,
+    protein: hasProt ? Math.round(prot) : null
+  };
+}
 
 // Build the dual-axis nutrition trend chart (Day = cumulative hourly; Week/Month = daily totals).
 async function drawEnergyChart(elementId = 'analysisChart') {
@@ -3975,15 +3997,20 @@ async function autoAnalyzeMeal(mealId, opts = {}) {
     if (parsed && typeof parsed.total === 'number' && parsed.total > 0 && parsed.total < 5000) {
       const fresh = await getMeal(mealId);
       if (fresh) {
-        fresh.calories = Math.round(parsed.total);
-        fresh.protein = typeof parsed.totalProtein === 'number' ? Math.round(parsed.totalProtein) : null;
-        fresh.breakdown = parsed.items || [];
+        const items = parsed.items || [];
+        // Always recompute totals from items so they're never out-of-sync with the breakdown
+        const totals = _recomputeMealTotals(items);
+        fresh.calories = totals.total != null ? totals.total : Math.round(parsed.total);
+        fresh.protein  = totals.protein != null ? totals.protein
+                       : (typeof parsed.totalProtein === 'number' ? Math.round(parsed.totalProtein) : null);
+        fresh.breakdown = items;
         fresh.confidence = parsed.confidence || null;
         fresh.aiSaw = parsed.saw || null;
         fresh.questions = (parsed.questions || []).filter(q => q && q.trim());
         await putMeal(fresh);
       }
-      if (!opts.silent) { hideToast(); toast(`Meal: ~${Math.round(parsed.total)} kcal ✓`); }
+      const finalCal = (await getMeal(mealId))?.calories || parsed.total;
+      if (!opts.silent) { hideToast(); toast(`Meal: ~${finalCal} kcal ✓`); }
       if (typeof renderMeals === 'function') renderMeals();
       if (typeof renderAnalysis === 'function') renderAnalysis();
       return true;
@@ -4206,6 +4233,11 @@ async function requestMealEstimateUpdate() {
     const parsed = parseJSONResponse(reply);
     hideToast();
     if (!parsed || typeof parsed.total !== 'number') { toast('Could not parse proposal'); return; }
+    // Override AI's claimed total/totalProtein with the sum of items so the
+    // displayed proposal always equals the breakdown (no math mismatch).
+    const totals = _recomputeMealTotals(parsed.items);
+    if (totals.total != null) parsed.total = totals.total;
+    if (totals.protein != null) parsed.totalProtein = totals.protein;
     _pendingRefine = parsed;
     renderMealRefineChat();
   } catch (e) {
