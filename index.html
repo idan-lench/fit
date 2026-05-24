@@ -3725,7 +3725,30 @@ async function renderAnalysis() {
   }
 }
 
+// One-time per-load reconciliation: fix any meals where stored calories/protein
+// don't match the sum of their breakdown items (legacy bug fixed in app, but
+// existing records still hold the old wrong total).
+let _mealTotalsReconciled = false;
+async function _reconcileMealTotals() {
+  if (_mealTotalsReconciled) return;
+  _mealTotalsReconciled = true;
+  const meals = await getAllMeals();
+  for (const m of meals) {
+    if (!Array.isArray(m.breakdown) || m.breakdown.length === 0) continue;
+    const totals = _recomputeMealTotals(m.breakdown);
+    if (totals.total == null) continue;
+    const calMismatch = typeof m.calories === 'number' && Math.abs(m.calories - totals.total) > 1;
+    const protMismatch = totals.protein != null && typeof m.protein === 'number' && Math.abs(m.protein - totals.protein) > 1;
+    if (calMismatch || protMismatch) {
+      m.calories = totals.total;
+      if (totals.protein != null) m.protein = totals.protein;
+      await putMeal(m);
+    }
+  }
+}
+
 async function renderMeals() {
+  await _reconcileMealTotals();
   const meals = await getAllMeals();
   const list = document.getElementById('mealList');
   const empty = document.getElementById('mealEmpty');
