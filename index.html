@@ -5179,6 +5179,21 @@ async function exportData(opts = {}) {
 
   payload.meals = allMeals.map(m => ({ ...mealMeta(m), dataUrls: [] }));
 
+  // Include meal templates (with their photos as data URLs — usually small set)
+  const allTemplates = await getAllTemplates();
+  payload.templates = allTemplates.map(t => ({
+    name: t.name,
+    description: t.description || '',
+    calories: t.calories ?? null,
+    protein: t.protein ?? null,
+    breakdown: t.breakdown || [],
+    confidence: t.confidence || null,
+    aiSaw: t.aiSaw || null,
+    dataUrls: t.dataUrls || [],
+    created: t.created,
+    lastUsed: t.lastUsed || null
+  }));
+
   if (includePhotos) {
     const photos = await getAllPhotos();
     payload.photos = await Promise.all(photos.map(async p => ({
@@ -5305,6 +5320,28 @@ async function applyDrivePayload(payload, updatedAt) {
         breakdown: m.breakdown || [], confidence: m.confidence || null,
         aiSaw: m.aiSaw || null, questions: m.questions || [],
         blobs
+      });
+    }
+  }
+
+  // Sync meal templates (merge by name+created so we don't wipe local-only ones)
+  if (Array.isArray(payload.templates)) {
+    const localTpls = await getAllTemplates();
+    const localKeys = new Set(localTpls.map(t => `${t.name}|${t.created}`));
+    for (const t of payload.templates) {
+      const key = `${t.name}|${t.created}`;
+      if (localKeys.has(key)) continue; // already have it
+      await putTemplate({
+        name: t.name,
+        description: t.description || '',
+        calories: t.calories ?? null,
+        protein: t.protein ?? null,
+        breakdown: t.breakdown || [],
+        confidence: t.confidence || null,
+        aiSaw: t.aiSaw || null,
+        dataUrls: t.dataUrls || [],
+        created: t.created,
+        lastUsed: t.lastUsed || null
       });
     }
   }
