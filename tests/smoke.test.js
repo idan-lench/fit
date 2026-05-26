@@ -23,7 +23,17 @@ class LocalOnlyLoader extends ResourceLoader {
 }
 
 test('index.html boots in jsdom without throwing', async () => {
-  const html = readFileSync(join(repoRoot, 'index.html'), 'utf8');
+  let html = readFileSync(join(repoRoot, 'index.html'), 'utf8');
+
+  // jsdom doesn't fetch `<script type="module" src="...">` via our loader and
+  // doesn't fully support ES modules. Inline the app's own scripts (prompts.js,
+  // app.js) so the smoke test actually executes them. External scripts (GIS,
+  // body-muscles) stay blocked by LocalOnlyLoader.
+  const promptsJs = readFileSync(join(repoRoot, 'prompts.js'), 'utf8');
+  const appJs = readFileSync(join(repoRoot, 'app.js'), 'utf8');
+  html = html
+    .replace('<script src="prompts.js"></script>', `<script>\n${promptsJs}\n</script>`)
+    .replace('<script type="module" src="./app.js"></script>', `<script>\n${appJs}\n</script>`);
 
   const errors = [];
   const dom = new JSDOM(html, {

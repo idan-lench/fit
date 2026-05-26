@@ -199,7 +199,7 @@ Each step is its own commit, app stays working after each commit, can roll back.
 | 16 | Extract `ui/chat-tab.js`. | Medium | 30 min |
 | 17 | Extract `ui/settings.js`. | Medium | 30 min |
 | 18 | Extract `<style>` to `styles.css`. | Low | 30 min |
-| 19 | Cleanup: remove dead globals, prune `window.*` legacy exports where possible. | Low | 1 hr |
+| 19 | Cleanup: remove dead globals, prune `window.*` legacy exports where possible. Run the dead-code check across the whole repo (see Verification §6). | Low | 1 hr |
 | 20 | Convert `prompts.js` → `prompts/` directory, one file per prompt; verify each ≤ ~1000 tokens; update all imports. | Low | 1 hr |
 
 **Total estimate**: ~22–26 hours including tests (Step 0 + ~15 min of unit tests per module-extraction step), 21 commits, all on one branch.
@@ -266,7 +266,14 @@ Quick smoke test after each commit:
    - Same HTML pattern repeated → extract to a `ui/shared/` component
    - Two AI prompts that have 80% identical text → share a sub-block in `prompts/`
    Allowed duplication: when the two pieces are deliberately independent and likely to diverge (rare — almost never the case during a refactor).
-6. **Prompt-length check** (for any step touching `prompts/`): rough token count = chars / 4. Flag any prompt file over ~3000 chars (~1000 tokens) — likely needs splitting.
+6. **Dead code check**: after each step, scan for code that is no longer reachable or referenced. Examples:
+   - Functions/consts declared but never called or exported
+   - Exports that no consumer imports
+   - `window.foo = foo` shims for handlers that no longer exist in HTML
+   - Commented-out blocks left behind during the move
+   - Leftover wrappers that just call through to the real implementation
+   Use `grep -R "name"` across the repo before deleting; if zero non-definition hits, it's dead.
+7. **Prompt-length check** (for any step touching `prompts/`): rough token count = chars / 4. Flag any prompt file over ~3000 chars (~1000 tokens) — likely needs splitting.
 
 If anything breaks: `git revert HEAD` and try smaller.
 
