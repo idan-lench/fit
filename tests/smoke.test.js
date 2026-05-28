@@ -22,18 +22,44 @@ class LocalOnlyLoader extends ResourceLoader {
   }
 }
 
+// Pseudo-bundle: resolve `import { X, Y } from './path.js'` by inlining the
+// target module's contents (with `export` keywords stripped) and removing the
+// import statement. Just enough to flatten a small dependency tree into one
+// classic-script blob jsdom can execute. Recursively follows imports.
+function flattenModules(entryPath) {
+  const visited = new Set();
+  const chunks = [];
+  function visit(absPath) {
+    if (visited.has(absPath)) return;
+    visited.add(absPath);
+    let src = readFileSync(absPath, 'utf8');
+    const importRe = /^\s*import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]\s*;?\s*$/gm;
+    const deps = [];
+    src = src.replace(importRe, (_, _names, rel) => {
+      deps.push(join(dirname(absPath), rel));
+      return '';
+    });
+    src = src
+      .replace(/^\s*export\s+(function|class|const|let|var)\s+/gm, '$1 ')
+      .replace(/^\s*export\s*\{[^}]*\}\s*;?\s*$/gm, '');
+    for (const d of deps) visit(d);
+    chunks.push(`// ---- inlined: ${absPath.replace(repoRoot + '/', '')} ----\n${src}`);
+  }
+  visit(entryPath);
+  return chunks.join('\n');
+}
+
 test('index.html boots in jsdom without throwing', async () => {
   let html = readFileSync(join(repoRoot, 'index.html'), 'utf8');
 
-  // jsdom doesn't fetch `<script type="module" src="...">` via our loader and
-  // doesn't fully support ES modules. Inline the app's own scripts (prompts.js,
-  // app.js) so the smoke test actually executes them. External scripts (GIS,
-  // body-muscles) stay blocked by LocalOnlyLoader.
+  // jsdom doesn't fetch `<script type="module" src="...">` via our loader.
+  // Flatten the app's module graph into a single classic-script blob for the
+  // test. External scripts (GIS, body-muscles) stay blocked by LocalOnlyLoader.
   const promptsJs = readFileSync(join(repoRoot, 'prompts.js'), 'utf8');
-  const appJs = readFileSync(join(repoRoot, 'app.js'), 'utf8');
+  const appBundle = flattenModules(join(repoRoot, 'app.js'));
   html = html
     .replace('<script src="prompts.js"></script>', `<script>\n${promptsJs}\n</script>`)
-    .replace('<script type="module" src="./app.js"></script>', `<script>\n${appJs}\n</script>`);
+    .replace('<script type="module" src="./app.js"></script>', `<script>\n${appBundle}\n</script>`);
 
   const errors = [];
   const dom = new JSDOM(html, {

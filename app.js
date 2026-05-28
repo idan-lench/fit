@@ -1,3 +1,9 @@
+// ---------- IMPORTS (core/) ----------
+import { _isoDate, todayISO, formatDate } from './core/time.js';
+import { escapeHtml, blobToDataUrl, parseJSONResponse } from './core/format.js';
+import { autoResizeTA, toast, hideToast } from './core/dom.js';
+import { DEFAULT_PROFILE, calcBMR, calcStepsPerKcal } from './core/profile.js';
+
 // ---------- DATA ----------
 const STORE_KEY = 'fit.v1';
 const PHOTO_DB = 'fit-photos';
@@ -55,13 +61,27 @@ const WEEKLY_PLAN = [
 const state = load() || { sessions: [], measurements: [], current: null, steps: [], dailyNotes: [] };
 state.steps = state.steps || [];
 state.dailyNotes = state.dailyNotes || [];
+// Personal parameters live on state.profile. Eventually written by the
+// Coach/Trainer/Dietitian agents (see AGENT_PLAN.md); seeded from defaults
+// on first load.
+state.profile = state.profile || JSON.parse(JSON.stringify(DEFAULT_PROFILE));
 
-const STEPS_GOAL = 10000;
-const WAIST_GOAL = 75;
-const BMR = 1415;          // Resting burn for 44yo male, 168cm, 58kg
-const DAILY_CAL_GOAL = 1700;    // Target intake for mild fat loss
-const DAILY_PROTEIN_GOAL = 95;  // ~1.6g/kg for recomposition at 58kg
-const STEPS_PER_KCAL = 22;   // ~22 steps per kcal at 58kg
+// Local handles derived from state.profile. Existing call sites read these
+// names directly; when an agent updates state.profile, call refreshProfile()
+// to re-derive. They are `let` (not `const`) for that reason.
+let STEPS_GOAL, WAIST_GOAL, BMR, DAILY_CAL_GOAL, DAILY_PROTEIN_GOAL, STEPS_PER_KCAL;
+function refreshProfile() {
+  const p = state.profile;
+  STEPS_GOAL          = p.goals.steps;
+  WAIST_GOAL          = p.goals.waistCm;
+  DAILY_CAL_GOAL      = p.goals.dailyCalories;
+  DAILY_PROTEIN_GOAL  = p.goals.dailyProteinG;
+  BMR                 = calcBMR(p);
+  STEPS_PER_KCAL      = calcStepsPerKcal(p);
+}
+refreshProfile();
+window.refreshProfile = refreshProfile; // agents/tools will call this after writes
+
 
 // AI PROMPTS — defined in prompts.js (separate file in repo for easy review).
 // Fallback to embedded copy if prompts.js fails to load.
@@ -2379,7 +2399,6 @@ function setTrendMode(m) {
   renderSteps?.();
 }
 
-function _isoDate(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 
 // Always trust the itemized breakdown over the AI's claimed totals — LLMs
 // frequently get the addition wrong (e.g. removes an item but forgets to
@@ -2956,16 +2975,6 @@ async function callGeminiAnalysis(prompt, imageBlobs = []) {
   if (!res.ok) throw new Error('Gemini ' + res.status);
   const data = await res.json();
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
-
-function parseJSONResponse(text) {
-  // Strip code fences and any markdown
-  let clean = text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '').trim();
-  try { return JSON.parse(clean); } catch {}
-  // Try to find JSON object inside text
-  const match = clean.match(/\{[\s\S]*\}/);
-  if (match) { try { return JSON.parse(match[0]); } catch {} }
-  return null;
 }
 
 async function reanalyzeMeal() {
@@ -4052,11 +4061,6 @@ function renderAiAttachPreview() {
   ).join('');
 }
 
-function autoResizeTA(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 140) + 'px';
-}
-
 function insertNewline(id) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -4628,14 +4632,6 @@ function refreshSyncStatus() {
       : 'Includes photos. Downloads locally (set up Drive sync to upload).';
   }
 }
-function blobToDataUrl(blob) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result);
-    r.onerror = rej;
-    r.readAsDataURL(blob);
-  });
-}
 async function importData(e) {
   const file = e.target.files[0];
   if (!file) return;
@@ -4696,29 +4692,6 @@ async function wipeAll() {
 }
 
 // ---------- UTIL ----------
-function todayISO() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
-}
-function formatDate(iso) {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-function escapeHtml(s) { return (s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]); }
-function toast(msg, opts = {}) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.classList.add('show');
-  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  if (toast._timer) { clearTimeout(toast._timer); toast._timer = null; }
-  if (!opts.persistent) {
-    toast._timer = setTimeout(() => el.classList.remove('show'), opts.duration || 2400);
-  }
-}
-function hideToast() {
-  if (toast._timer) { clearTimeout(toast._timer); toast._timer = null; }
-  document.getElementById('toast').classList.remove('show');
-}
 
 // ---------- INIT ----------
 function suggestedDay() {
