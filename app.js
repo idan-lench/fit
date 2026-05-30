@@ -20,58 +20,14 @@ import {
   restorePhotosFromDrive, buildAppsScript, checkSyncImportFromUrl,
   pingSync, uploadToDrive, photoSizeKey as _photoSizeKey,
 } from './integrations/drive-sync.js';
+import { PLAN, WEEKLY_PLAN, getPlanKeyForDate, suggestedDay } from './domain/plan.js';
+import { EXERCISE_LIBRARY, getPrevSets as getPrevSetsInSessions } from './domain/exercises.js';
+import { CARDIO_TYPES, formatCardioActivitiesForAI } from './domain/cardio.js';
+import { MUSCLE_MAP, computeMuscleHeatmap, renderMuscleHeatmapSvg } from './domain/muscle-map.js';
 
 // ---------- DATA ----------
 
-const PLAN = {
-  tue: {
-    label: 'Tuesday — 8k run + upper',
-    cardio: '8k easy run',
-    exercises: ['Push-ups', 'Pull-ups', 'Plank (sec)']
-  },
-  wed: {
-    label: 'Wednesday — Movement',
-    cardio: 'Movement training (1 hr)',
-    exercises: []
-  },
-  thu: {
-    label: 'Thursday — Intervals + upper',
-    cardio: '20–30 min intervals',
-    exercises: ['Push-ups', 'Pull-ups', 'Plank (sec)']
-  },
-  sun: {
-    label: 'Sunday — Legs',
-    cardio: null,
-    exercises: ['Squats', 'Lunges (each leg)', 'Glute bridges', 'Plank (sec)']
-  },
-  hike: {
-    label: 'Hike / Trek',
-    cardio: 'Trail / route · distance · elevation · time',
-    cardioPlaceholder: 'נחל צאלים · 13km · 700m elev · 8h',
-    exercises: []
-  },
-  bike: {
-    label: 'Bike ride',
-    cardio: 'Route · distance · elevation · time · pace',
-    cardioPlaceholder: 'Tel Aviv loop · 30km · 200m · 1h 15m',
-    exercises: []
-  },
-  custom: {
-    label: 'Custom workout',
-    cardio: null,
-    exercises: []
-  }
-};
 
-const WEEKLY_PLAN = [
-  { day: 'Sunday', plan: 'Legs (squats, lunges, glutes, abs)', rest: false, key: 'sun' },
-  { day: 'Monday', plan: 'Rest day', rest: true, key: 'mon' },
-  { day: 'Tuesday', plan: '8k run + upper (push-ups, pull-ups, abs)', rest: false, key: 'tue' },
-  { day: 'Wednesday', plan: 'Movement training (1 hr)', rest: false, key: 'wed' },
-  { day: 'Thursday', plan: 'Intervals + upper (push-ups, pull-ups, abs)', rest: false, key: 'thu' },
-  { day: 'Friday', plan: 'Rest day', rest: true, key: 'fri' },
-  { day: 'Saturday', plan: 'Rest day', rest: true, key: 'sat' }
-];
 
 // Personal parameters live on state.profile. Eventually written by the
 // Coach/Trainer/Dietitian agents (see AGENT_PLAN.md); seeded from defaults
@@ -225,15 +181,6 @@ function shiftWorkoutDate(delta) {
   renderWorkout();
 }
 
-function getPlanKeyForDate(dateISO) {
-  const [y, m, d] = dateISO.split('-').map(Number);
-  const dow = new Date(y, m - 1, d).getDay(); // 0=Sun..6=Sat
-  // Match WEEKLY_PLAN: Sun=Legs, Mon=rest, Tue=8k run, Wed=Movement, Thu=Intervals, Fri/Sat=rest
-  const map = { 0: 'sun', 2: 'tue', 3: 'wed', 4: 'thu' };
-  const key = map[dow];
-  // Only return a plan key if PLAN actually has it defined
-  return (key && PLAN[key]) ? key : null;
-}
 
 function loadWorkoutPlan() {
   const date = workoutCurrentDate();
@@ -580,7 +527,7 @@ function renderWorkout() {
   }
 
   state.current.entries.forEach((e, idx) => {
-    const last = lastSetsFor(e.name);
+    const last = getPrevSets(e.name);
     const isTime = /plank|hold|sec|hang/i.test(e.name);
     const ex = document.createElement('div');
     ex.className = 'ex';
@@ -612,19 +559,13 @@ function renderWorkout() {
   renderHistory();
 }
 
-function lastSetsFor(name) {
-  for (let i = state.sessions.length - 1; i >= 0; i--) {
-    const s = state.sessions[i];
-    const e = s.entries.find(en => en.name === name);
-    if (e && e.sets.length) return e.sets.map(x => x.reps);
-  }
-  return null;
-}
+// Thin wrapper so existing call sites don't need to pass state.sessions.
+function getPrevSets(name) { return getPrevSetsInSessions(state.sessions, name); }
 
 function openSet(exerciseIdx) {
   currentSetCtx = { exerciseIdx };
   const last = state.current.entries[exerciseIdx].sets.slice(-1)[0];
-  currentReps = last ? last.reps : (lastSetsFor(state.current.entries[exerciseIdx].name)?.[0] || 8);
+  currentReps = last ? last.reps : (getPrevSets(state.current.entries[exerciseIdx].name)?.[0] || 8);
   document.getElementById('setRepsVal').textContent = currentReps;
   document.getElementById('setModalTitle').textContent = state.current.entries[exerciseIdx].name;
   document.getElementById('setModal').classList.add('show');
@@ -685,192 +626,10 @@ function removeCardio() {
 
 // ─── Muscle Heatmap ──────────────────────────────────────────────────────────
 // Map exercise name → muscles it works, with weights (1.0 = primary, 0.3 = light)
-const MUSCLE_MAP = {
-  // Upper push
-  'push-ups':            { chest: 1.0, triceps: 0.6, delts_front: 0.4, abs: 0.2 },
-  'ring push-ups':       { chest: 1.0, triceps: 0.7, delts_front: 0.5, abs: 0.4 },
-  'decline push-ups':    { chest: 1.0, delts_front: 0.6, triceps: 0.5 },
-  'diamond push-ups':    { triceps: 1.0, chest: 0.6, delts_front: 0.3 },
-  'archer push-ups':     { chest: 1.0, triceps: 0.7, delts_front: 0.4, abs: 0.4 },
-  'pike push-ups':       { delts_front: 1.0, triceps: 0.7, chest: 0.3 },
-  'bench press':         { chest: 1.0, triceps: 0.6, delts_front: 0.5 },
-  'incline bench press': { chest: 0.9, delts_front: 0.7, triceps: 0.5 },
-  'overhead press':      { delts_front: 1.0, triceps: 0.6, traps: 0.4 },
-  'front raises':        { delts_front: 1.0 },
-  'dips':                { triceps: 1.0, chest: 0.7, delts_front: 0.4 },
-  'parallel bars':       { triceps: 1.0, chest: 0.7, delts_front: 0.5 },
-  // Upper pull
-  'pull-ups':            { lats: 1.0, biceps: 0.7, traps: 0.4, forearms: 0.4 },
-  'chin-ups':            { biceps: 1.0, lats: 0.8, forearms: 0.4 },
-  'inverted rows':       { lats: 0.8, traps: 0.7, biceps: 0.6, delts_rear: 0.5 },
-  'trx low row':         { lats: 0.7, traps: 0.7, biceps: 0.6, delts_rear: 0.5 },
-  'barbell rows':        { lats: 0.9, traps: 0.7, biceps: 0.5, delts_rear: 0.5 },
-  // Lower
-  'squats':              { quads: 1.0, glutes: 0.7, hamstrings: 0.4, calves: 0.3 },
-  'lunges (each leg)':   { quads: 1.0, glutes: 0.7, hamstrings: 0.4 },
-  'bulgarian split squats': { quads: 1.0, glutes: 0.8, hamstrings: 0.4 },
-  'glute bridges':       { glutes: 1.0, hamstrings: 0.6 },
-  'single-leg glute bridges': { glutes: 1.0, hamstrings: 0.7 },
-  'calf raises':         { calves: 1.0 },
-  'wall sit (sec)':      { quads: 1.0, glutes: 0.4 },
-  'step-ups':            { quads: 1.0, glutes: 0.7, hamstrings: 0.4 },
-  'leg press':           { quads: 1.0, glutes: 0.6, hamstrings: 0.4 },
-  // Core
-  'plank (sec)':         { abs: 1.0, delts_front: 0.3 },
-  'side plank (sec)':    { obliques: 1.0, abs: 0.5 },
-  'hanging leg raises':  { abs: 1.0, forearms: 0.4 },
-  'hanging knee tucks':  { abs: 0.9, forearms: 0.4 },
-  'hanging knee to leg extension': { abs: 1.0, hip_flexor: 0.6, forearms: 0.4, quads: 0.3 },
-  'hollow hold (sec)':   { abs: 1.0 },
-  'crunches':            { abs: 1.0 },
-  'bicycle crunches':    { abs: 1.0, obliques: 0.7 },
-  'russian twists':      { obliques: 1.0, abs: 0.6 },
-  'dead bug':            { abs: 1.0 },
-  'mountain climbers':   { abs: 0.8, delts_front: 0.4 },
-  'bird dog':            { abs: 0.6, glutes: 0.4, lower_back: 0.5 }
-};
-
-function computeMuscleHeatmap(session) {
-  const totals = {};
-  for (const e of session.entries || []) {
-    if (!e.sets || e.sets.length === 0) continue;
-    const key = (e.name || '').toLowerCase().trim();
-    const map = MUSCLE_MAP[key];
-    if (!map) continue;
-    const volume = e.sets.reduce((sum, s) => sum + (s.reps || 0), 0);
-    for (const [muscle, weight] of Object.entries(map)) {
-      totals[muscle] = (totals[muscle] || 0) + volume * weight;
-    }
-  }
-  return totals;
-}
 
 
-// ─── Body Muscles library integration ──────────────────────────────────────
-// Maps our generic muscle keys (from MUSCLE_MAP) to specific IDs in body-muscles lib
-const _BODY_MUSCLE_IDS = {
-  chest:       ['chest-upper-left', 'chest-upper-right', 'chest-lower-left', 'chest-lower-right'],
-  delts_front: ['shoulder-front-left', 'shoulder-front-right', 'shoulder-side-left', 'shoulder-side-right'],
-  delts_rear:  ['deltoid-rear-left', 'deltoid-rear-right'],
-  biceps:      ['biceps-left', 'biceps-right'],
-  triceps:     ['triceps-long-left', 'triceps-long-right', 'triceps-lateral-left', 'triceps-lateral-right'],
-  forearms:    ['forearm-left', 'forearm-right', 'forearm-extensors-left', 'forearm-extensors-right', 'forearm-flexors-left', 'forearm-flexors-right'],
-  abs:         ['abs-upper-left', 'abs-upper-right', 'abs-lower-left', 'abs-lower-right'],
-  obliques:    ['obliques-left', 'obliques-right'],
-  traps:       ['traps-upper-left', 'traps-upper-right', 'traps-mid-left', 'traps-mid-right'],
-  lats:        ['lats-upper-left', 'lats-upper-right', 'lats-mid-left', 'lats-mid-right', 'lats-lower-left', 'lats-lower-right'],
-  lower_back:  ['lower-back-erectors-left', 'lower-back-erectors-right', 'lower-back-ql-left', 'lower-back-ql-right'],
-  glutes:      ['gluteus-maximus-left', 'gluteus-maximus-right'],
-  quads:       ['quads-left', 'quads-right'],
-  hamstrings:  ['hamstrings-lateral-left', 'hamstrings-lateral-right', 'hamstrings-medial-left', 'hamstrings-medial-right'],
-  calves:      ['calves-gastroc-lateral-left', 'calves-gastroc-lateral-right', 'calves-gastroc-medial-left', 'calves-gastroc-medial-right', 'tibialis-anterior-left', 'tibialis-anterior-right']
-};
-
-function _buildBodyState(intensities) {
-  const max = Math.max(0, ...Object.values(intensities));
-  const state = {};
-  if (!max) return state;
-  for (const [ourKey, val] of Object.entries(intensities)) {
-    const ids = _BODY_MUSCLE_IDS[ourKey];
-    if (!ids) continue;
-    const t = Math.min(1, val / max);
-    const libIntensity = Math.max(1, Math.round(t * 10)); // never 0 for active muscles
-    for (const id of ids) state[id] = { intensity: libIntensity, selected: false };
-  }
-  return state;
-}
-
-let _heatmapCounter = 0;
-const _pendingHeatmaps = [];
-
-// Library colors → our red-scale (intensity 1=lightest, 10=darkest).
-// Library uses aria-label (not id) for muscles, so we can't query by muscle.
-// Instead: walk all <path> elements and remap any of the library's intensity
-// colors to our equivalent in the pink→red scale.
-const _libToRed = {
-  '#fde047': '#ffcccc', // 1
-  '#facc15': '#ffb3b3', // 2
-  '#eab308': '#ff9999', // 3
-  '#fb923c': '#ff8080', // 4
-  '#f97316': '#f06060', // 5
-  '#ea580c': '#e04040', // 6
-  '#ef4444': '#d02828', // 7
-  '#dc2626': '#b01818', // 8
-  '#b91c1c': '#990a0a', // 9
-  '#7f1d1d': '#8b0000', // 10
-};
-
-function _applyRedScale(containerEl) {
-  containerEl.querySelectorAll('path').forEach(p => {
-    const fill = (p.getAttribute('fill') || '').toLowerCase();
-    if (_libToRed[fill]) {
-      p.setAttribute('fill', _libToRed[fill]);
-      p.style.fill = _libToRed[fill];
-    }
-  });
-}
-
-function _scheduleRedScale(containerEl) {
-  // Run a few times — once when library mounts, again to catch any post-mount colorization
-  let tries = 0;
-  const apply = () => {
-    _applyRedScale(containerEl);
-    tries++;
-    if (tries < 8) setTimeout(apply, 80);
-  };
-  apply();
-}
-
-function _tryMountHeatmaps() {
-  if (typeof BodyMuscles === 'undefined' || !BodyMuscles.BodyChart) {
-    setTimeout(_tryMountHeatmaps, 200);
-    return;
-  }
-  for (let i = _pendingHeatmaps.length - 1; i >= 0; i--) {
-    const item = _pendingHeatmaps[i];
-    const container = document.getElementById(item.id);
-    if (!container) continue;
-    const frontEl = container.querySelector('[data-view="FRONT"]');
-    const backEl = container.querySelector('[data-view="BACK"]');
-    if (frontEl && !frontEl.dataset.mounted) {
-      new BodyMuscles.BodyChart(frontEl, { view: BodyMuscles.ViewSide.FRONT, bodyState: item.state, enableTransitions: false });
-      _scheduleRedScale(frontEl);
-      frontEl.dataset.mounted = '1';
-    }
-    if (backEl && !backEl.dataset.mounted) {
-      new BodyMuscles.BodyChart(backEl, { view: BodyMuscles.ViewSide.BACK, bodyState: item.state, enableTransitions: false });
-      _scheduleRedScale(backEl);
-      backEl.dataset.mounted = '1';
-    }
-    _pendingHeatmaps.splice(i, 1);
-  }
-  if (_pendingHeatmaps.length) setTimeout(_tryMountHeatmaps, 200);
-}
-
-function renderMuscleHeatmapSvg(session, opts = {}) {
-  const intensities = computeMuscleHeatmap(session);
-  const state = _buildBodyState(intensities);
-  const id = 'heatmap-' + (++_heatmapCounter);
-  _pendingHeatmaps.push({ id, state });
-  setTimeout(_tryMountHeatmaps, 0);
-  return `
-    <div id="${id}" style="display: flex; gap: 8px; justify-content: center; align-items: flex-start; margin: 8px 0;">
-      <div data-view="FRONT" style="flex: 1; max-width: 50%; min-height: 200px;"></div>
-      <div data-view="BACK"  style="flex: 1; max-width: 50%; min-height: 200px;"></div>
-    </div>`;
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Cardio activity types ─────────────────────────────────────────────────
-const CARDIO_TYPES = [
-  { key: 'long-run',  icon: '🏃',  label: 'Long run',          showDist: true,  showDur: true },
-  { key: 'interval',  icon: '⚡',  label: 'Speed / interval',   showDist: true,  showDur: true },
-  { key: 'movement',  icon: '🤸',  label: 'Movement class',    showDist: false, showDur: true },
-  { key: 'hike',      icon: '🥾',  label: 'Hike / trek',       showDist: true,  showDur: true },
-  { key: 'bike',      icon: '🚴',  label: 'Bike ride',         showDist: true,  showDur: true },
-  { key: 'swim',      icon: '🏊',  label: 'Swim',              showDist: true,  showDur: true },
-  { key: 'custom',    icon: '➕',  label: 'Custom cardio',     showDist: true,  showDur: true }
-];
 
 function openCardioPicker() {
   const list = document.getElementById('cardioPickerList');
@@ -913,17 +672,6 @@ function updateCardioField(idx, field, value) {
   save();
 }
 
-function formatCardioActivitiesForAI(activities) {
-  if (!activities || !activities.length) return '  (none)';
-  return activities.map(a => {
-    const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
-    const parts = [def.label];
-    if (a.distance) parts.push('dist: ' + a.distance);
-    if (a.duration) parts.push('time: ' + a.duration);
-    if (a.notes) parts.push('notes: ' + a.notes);
-    return '  - ' + parts.join(' · ');
-  }).join('\n');
-}
 
 function renderCardioActivities() {
   const list = document.getElementById('cardioList');
@@ -957,22 +705,6 @@ function renderCardioActivities() {
   }).join('');
 }
 
-const EXERCISE_LIBRARY = {
-  Upper: [
-    'Push-ups', 'Ring push-ups', 'Decline push-ups', 'Diamond push-ups', 'Archer push-ups',
-    'Pull-ups', 'Chin-ups', 'Inverted rows', 'TRX low row', 'Dips', 'Parallel bars', 'Pike push-ups',
-    'Front raises', 'Bench press', 'Incline bench press', 'Overhead press', 'Barbell rows'
-  ],
-  Lower: [
-    'Squats', 'Lunges (each leg)', 'Bulgarian split squats', 'Glute bridges',
-    'Single-leg glute bridges', 'Calf raises', 'Wall sit (sec)', 'Step-ups', 'Leg press'
-  ],
-  Core: [
-    'Plank (sec)', 'Side plank (sec)', 'Hanging leg raises', 'Hanging knee tucks', 'Hanging knee to leg extension',
-    'Hollow hold (sec)', 'Crunches', 'Bicycle crunches', 'Russian twists',
-    'Dead bug', 'Mountain climbers', 'Bird dog'
-  ]
-};
 
 function getPreviouslyUsedExercises() {
   const libNames = new Set();
@@ -3945,15 +3677,6 @@ async function wipeAll() {
 // ---------- UTIL ----------
 
 // ---------- INIT ----------
-function suggestedDay() {
-  const d = new Date().getDay(); // 0 Sun..6 Sat
-  // Only return keys that actually exist in PLAN
-  if (d === 0 && PLAN.sun) return 'sun';
-  if (d === 2 && PLAN.tue) return 'tue';
-  if (d === 3 && PLAN.wed) return 'wed';
-  if (d === 4 && PLAN.thu) return 'thu';
-  return 'custom';
-}
 
 function updateSessionDate(value) {
   if (!value) return;
