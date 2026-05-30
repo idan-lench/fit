@@ -43,6 +43,17 @@ for (const f of files) {
   }
 }
 
+// ── 3. raw Gemini URLs outside integrations/gemini.js ──────────────────────
+const geminiPattern = /generativelanguage\.googleapis\.com/g;
+for (const f of files) {
+  if (relative(ROOT, f) === 'integrations/gemini.js') continue;
+  const src = readFileSync(f, 'utf8');
+  const hits = src.match(geminiPattern);
+  if (hits) {
+    findings.push(`${hits.length} raw Gemini URL(s) in ${relative(ROOT, f)} — use integrations/gemini.js geminiGenerate / callGeminiAnalysis`);
+  }
+}
+
 if (findings.length) {
   console.error(`✗ Duplication: ${findings.length} finding(s):`);
   for (const f of findings) console.error(`    ${f}`);

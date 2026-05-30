@@ -7,6 +7,9 @@ import { state, save, load } from './data/state.js';
 import { putPhoto, getAllPhotos, deletePhoto, clearPhotos } from './data/photo-store.js';
 import { putMeal, getMeal, getAllMeals, deleteMeal, clearMeals } from './data/meals-store.js';
 import { putTemplate, getAllTemplates, getTemplate, deleteTemplate } from './data/template-store.js';
+import {
+  getGeminiKey, setGeminiKey, geminiGenerate, callGeminiAnalysis,
+} from './integrations/gemini.js';
 
 // ---------- DATA ----------
 
@@ -1629,14 +1632,7 @@ Keep under 130 words total. Do NOT mention skin tone or facial features.`;
     const parts = [{ text: prompt }];
     earlierParts.forEach((d, i) => parts.push({ inline_data: { mime_type: earlier.photos[i].blob.type || 'image/jpeg', data: d.split(',')[1] } }));
     laterParts.forEach((d, i) => parts.push({ inline_data: { mime_type: later.photos[i].blob.type || 'image/jpeg', data: d.split(',')[1] } }));
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts }] })
-    });
-    if (!res.ok) throw new Error('Gemini ' + res.status);
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const text = await geminiGenerate({ contents: [{ parts }] });
     // Persist — newest first; only the newest is auto-expanded
     state.compareAnalyses = state.compareAnalyses || [];
     state.compareAnalyses.unshift({
@@ -1975,14 +1971,7 @@ async function applyTemplateDelta(template, userChange) {
     .replace('{originalTotalCal}', String(template.calories || 0))
     .replace('{originalTotalProtein}', String(template.protein || 0))
     .replace('{userChange}', userChange);
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-  });
-  if (!res.ok) throw new Error('Gemini ' + res.status);
-  const data = await res.json();
-  let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  let text = await geminiGenerate({ contents: [{ parts: [{ text: prompt }] }] });
   text = text.replace(/^```(json)?/i, '').replace(/```$/i, '').trim();
   try { return JSON.parse(text); } catch { return null; }
 }
@@ -2693,12 +2682,8 @@ async function removeMeal(id) {
 }
 
 // ---------- AI / GEMINI ----------
-function getGeminiKey() { return localStorage.getItem('fit.geminiKey') || ''; }
-function saveGeminiKey(v) {
-  v = (v || '').trim();
-  if (v) localStorage.setItem('fit.geminiKey', v);
-  else localStorage.removeItem('fit.geminiKey');
-}
+// Thin wrapper over setGeminiKey: trims pasted input (UI concern).
+function saveGeminiKey(v) { setGeminiKey((v || '').trim()); }
 
 function aiHistory() {
   try { return JSON.parse(localStorage.getItem('fit.aiHistory') || '[]'); } catch { return []; }
@@ -2732,25 +2717,6 @@ async function buildAIContext() {
     today: todayISO()
   };
   return ctx;
-}
-
-async function callGeminiAnalysis(prompt, imageBlobs = []) {
-  const key = getGeminiKey();
-  if (!key) throw new Error('No Gemini key');
-  const parts = [{ text: prompt }];
-  for (const blob of imageBlobs) {
-    const dataUrl = await blobToDataUrl(blob);
-    const base64 = dataUrl.split(',')[1];
-    parts.push({ inline_data: { mime_type: blob.type || 'image/jpeg', data: base64 } });
-  }
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(key)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents: [{ parts }] })
-  });
-  if (!res.ok) throw new Error('Gemini ' + res.status);
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 async function reanalyzeMeal() {
@@ -2965,17 +2931,7 @@ async function refineMealEstimate() {
       contents.unshift({ role: m.role === 'user' ? 'user' : 'model', parts });
     }
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents
-      })
-    });
-    if (!res.ok) throw new Error('Gemini ' + res.status);
-    const data = await res.json();
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const reply = await geminiGenerate({ systemInstruction, contents });
     _mealChatHistory.push({ role: 'model', text: reply });
 
     // Persist chat history on the meal so it survives across modal opens / device sync
@@ -3039,14 +2995,7 @@ async function requestMealEstimateUpdate() {
     }
     contents.push({ role: 'user', parts: updateParts });
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ systemInstruction: { parts: [{ text: systemInstruction }] }, contents })
-    });
-    if (!res.ok) throw new Error('Gemini ' + res.status);
-    const data = await res.json();
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const reply = await geminiGenerate({ systemInstruction, contents });
     const parsed = parseJSONResponse(reply);
     hideToast();
     if (!parsed || typeof parsed.total !== 'number') { toast('Could not parse proposal'); return; }
@@ -3212,17 +3161,7 @@ async function refineSessionEstimate() {
       return { role: m.role === 'user' ? 'user' : 'model', parts };
     });
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents
-      })
-    });
-    if (!res.ok) throw new Error('Gemini ' + res.status);
-    const data = await res.json();
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const reply = await geminiGenerate({ systemInstruction, contents });
     _sessionChatHistory.push({ role: 'model', text: reply });
 
     // Persist chat history on the session
@@ -3266,17 +3205,7 @@ async function requestSessionEstimateUpdate() {
     }));
     contents.push({ role: 'user', parts: [{ text: updatePrompt }] });
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(getGeminiKey())}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        contents
-      })
-    });
-    if (!res.ok) throw new Error('Gemini ' + res.status);
-    const data = await res.json();
-    const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const reply = await geminiGenerate({ systemInstruction, contents });
     const parsed = parseJSONResponse(reply);
     hideToast();
     if (!parsed || typeof parsed.total !== 'number') {
@@ -3643,8 +3572,6 @@ Generated ${new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2
 
 
 async function callGemini(messages) {
-  const key = getGeminiKey();
-  if (!key) throw new Error('Gemini API key not set');
   const ctx = await buildAIContext();
   const systemInstruction = PROMPTS.chatSystem
     .replace('{today}', ctx.today)
@@ -3661,20 +3588,7 @@ async function callGemini(messages) {
     return { role: m.role === 'user' ? 'user' : 'model', parts };
   });
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${encodeURIComponent(key)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemInstruction }] },
-      contents
-    })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Gemini ${res.status}: ${text.slice(0, 200)}`);
-  }
-  const data = await res.json();
-  const reply = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  const reply = await geminiGenerate({ systemInstruction, contents });
   if (!reply) throw new Error('Empty reply from Gemini');
   return reply;
 }
