@@ -37,5 +37,11 @@ jobs:
             node --check "$f"
           done
 
+      - name: Dead-code scan
+        run: node scripts/check-dead-code.js
+
+      - name: Duplication scan
+        run: node scripts/check-duplication.js
+
       - name: Run tests
         run: node --test --test-reporter=spec

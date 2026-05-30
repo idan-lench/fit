@@ -338,12 +338,6 @@ function tickTimer() {
   }
 }
 
-function openWorkoutTypePicker() {
-  const choice = prompt('Workout type:\nhike, bike, or custom');
-  if (!choice) return;
-  const k = choice.trim().toLowerCase();
-  if (PLAN[k]) startWorkout(k);
-}
 
 function selectDay(day) {
   // selectDay is also called at startup with a default day. Don't auto-create
@@ -385,26 +379,7 @@ function isCurrentFresh() {
   return true;
 }
 
-function freshSession(day) {
-  const safeKey = PLAN[day] ? day : 'custom';
-  return {
-    day: safeKey,
-    date: todayISO(),
-    cardio: PLAN[safeKey].cardio,
-    // Empty by default — user picks from the daily plan chips
-    entries: []
-  };
-}
 
-function startNewSession() {
-  state.current = freshSession(currentDay);
-  save();
-  renderWorkout();
-  setTimeout(() => {
-    const ci = document.getElementById('cardioNote');
-    if (ci) { ci.scrollIntoView({ behavior: 'smooth', block: 'center' }); ci.focus(); }
-  }, 100);
-}
 
 function renderWorkout() {
   const viewDate = workoutCurrentDate();
@@ -757,16 +732,6 @@ function computeMuscleHeatmap(session) {
   return totals;
 }
 
-function muscleColor(intensity, max) {
-  if (!intensity || !max) return '#d8d8dc';
-  const t = Math.min(1, intensity / max);
-  // Light pink (low) → strong red (high)
-  if (t < 0.05) return '#d8d8dc';
-  const r = Math.round(255);
-  const g = Math.round(220 - 180 * t);
-  const b = Math.round(220 - 180 * t);
-  return `rgb(${r},${g},${b})`;
-}
 
 // ─── Body Muscles library integration ──────────────────────────────────────
 // Maps our generic muscle keys (from MUSCLE_MAP) to specific IDs in body-muscles lib
@@ -1217,12 +1182,6 @@ function renderHistory() {
   }).join('');
 }
 
-function viewSavedSession(savedAt) {
-  const el = document.querySelector(`details[data-saved-at="${savedAt}"]`);
-  if (!el) return;
-  el.open = true;
-  setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-}
 
 function editSession(savedAt) {
   const s = state.sessions.find(x => x.savedAt === savedAt);
@@ -1314,18 +1273,6 @@ function renderBody() {
 }
 
 // ---------- STEPS ----------
-function addSteps() {
-  const v = parseInt(document.getElementById('stepsInput').value, 10);
-  const d = document.getElementById('stepsDate').value || todayISO();
-  if (isNaN(v) || v <= 0) return toast('Enter a number');
-  state.steps = state.steps || [];
-  state.steps = state.steps.filter(s => s.date !== d);
-  state.steps.push({ date: d, count: v });
-  save();
-  document.getElementById('stepsInput').value = '';
-  renderBody();
-  toast('Saved ✓');
-}
 function saveWorkoutSteps() {
   const v = parseInt(document.getElementById('workoutStepsInput').value, 10);
   const d = workoutCurrentDate();
@@ -2215,50 +2162,6 @@ async function computeDailyEnergy(date) {
   };
 }
 
-async function renderEnergy() {
-  const today = todayISO();
-  const e = await computeDailyEnergy(today);
-  await drawEnergyChart();
-  document.getElementById('eatenValue').textContent = e.eaten ? e.eaten.toLocaleString() : '—';
-  document.getElementById('eatenSubtext').textContent = e.mealCount === 0
-    ? 'No meals logged'
-    : (e.estimatedCount === e.mealCount
-        ? `${e.mealCount} meal${e.mealCount > 1 ? 's' : ''} · ${DAILY_CAL_GOAL} goal`
-        : `${e.estimatedCount} of ${e.mealCount} estimated`);
-  document.getElementById('burnedValue').textContent = e.burned.toLocaleString();
-  document.getElementById('burnedSubtext').textContent =
-    `BMR ${e.bmr}` +
-    (e.stepsBurn ? ` · steps +${e.stepsBurn}` : '') +
-    (e.sessionBurn ? ` · activity +${e.sessionBurn}` : '');
-
-  const status = document.getElementById('energyStatus');
-  if (e.eaten === 0) {
-    status.style.background = 'var(--panel2)';
-    status.innerHTML = '<span class="muted small">Log meals (with photos) so Claude can estimate calories.</span>';
-    return;
-  }
-  const net = Math.round(e.eaten - e.burned);
-  const goalGap = e.eaten - DAILY_CAL_GOAL;
-  let bg, text;
-  if (net < -800) {
-    bg = 'rgba(255, 149, 0, 0.15)';
-    text = `<b>Net: ${net} cal</b> · big deficit. Eat more — especially protein.`;
-  } else if (net < -200) {
-    bg = 'rgba(16, 185, 129, 0.18)';
-    text = `<b>Net: ${net} cal</b> · ✓ on track for fat loss`;
-  } else if (net < 200) {
-    bg = 'rgba(59, 130, 246, 0.15)';
-    text = `<b>Net: ${net >= 0 ? '+' : ''}${net} cal</b> · maintenance — no fat change today`;
-  } else {
-    bg = 'rgba(255, 59, 48, 0.15)';
-    text = `<b>Net: +${net} cal</b> · surplus`;
-  }
-  if (e.estimatedCount < e.mealCount) {
-    text += ` <span class="muted small">(estimate may be low — ${e.mealCount - e.estimatedCount} meal(s) not yet analysed)</span>`;
-  }
-  status.style.background = bg;
-  status.innerHTML = text;
-}
 
 let trendMode = 'week'; // 'day' | 'week' | 'month'
 function setTrendMode(m) {
@@ -3227,14 +3130,6 @@ let _pendingSessionRefine = null;
 let _refiningSessionAt = null;
 let _sessionChatHistory = [];
 
-function resetSessionChat() {
-  _pendingSessionRefine = null;
-  _sessionChatHistory = [];
-  const r = document.getElementById('sessionRefineResult');
-  if (r) { r.style.display = 'none'; r.innerHTML = ''; }
-  const i = document.getElementById('sessionRefineInput');
-  if (i) i.value = '';
-}
 
 function openSessionRefine(savedAt) {
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
@@ -3545,11 +3440,6 @@ async function dayFingerprint(date) {
   return [mealSig, sessionSig, stepSig].join('§');
 }
 
-function dayHasData(date) {
-  const hasSessions = (state.sessions || []).some(s => s.date === date);
-  const hasSteps = (state.steps || []).some(s => s.date === date);
-  return hasSessions || hasSteps; // meals checked async, but if sessions/steps exist that's enough
-}
 
 async function smartUpdateSummaries() {
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
@@ -3612,31 +3502,6 @@ async function smartUpdateSummaries() {
   renderAnalysis();
 }
 
-async function confirmDailyRegenerate() {
-  const viewDate = analysisViewDate || todayISO();
-  const notes = state.dailyNotes || [];
-  const existing = notes.find(n => n.date === viewDate);
-  const isPartial = existing && existing.note.includes('(Partial');
-
-  if (existing && !isPartial) {
-    if (!confirm('Summary already exists. Regenerate?')) return;
-  }
-  await runDailyAnalysis({ date: viewDate });
-
-  // Also fill any missing or partial summaries for past 7 days
-  const today = todayISO();
-  for (let i = 1; i <= 7; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const date = d.toISOString().slice(0, 10);
-    const note = notes.find(n => n.date === date);
-    const missing = !note;
-    const partial = note && note.note.includes('(Partial');
-    if (missing || partial) {
-      await runDailyAnalysis({ date, silent: true });
-    }
-  }
-}
 
 async function autoGenerateMissingSummaries() {
   if (!getGeminiKey()) return;
@@ -3776,40 +3641,6 @@ Generated ${new Date().toLocaleString([], {month:'short', day:'numeric', hour:'2
   }
 }
 
-async function analyzeAllMissing() {
-  if (!getGeminiKey()) return toast('Set up Gemini API key first');
-  const meals = await getAllMeals();
-  // Meals with no calories OR meals that have calories but no protein yet
-  const mealsToAnalyze = meals.filter(m => !m.calories || !(typeof m.protein === 'number' && m.protein > 0));
-  const missingSessions = (state.sessions || []).filter(s => !s.caloriesBurned);
-  const total = mealsToAnalyze.length + missingSessions.length;
-  if (total === 0) {
-    if (!confirm('All meals already have estimates.\nRe-analyze everything to refresh protein?')) return;
-    const allMeals = meals;
-    let done = 0, ok = 0;
-    for (const m of allMeals) {
-      toast(`Analyzing ${++done}/${allMeals.length}…`, { persistent: true });
-      if (await autoAnalyzeMeal(m.id, { silent: true })) ok++;
-    }
-    hideToast();
-    toast(`Refreshed ${ok}/${allMeals.length} ✓`);
-    renderAnalysis(); renderMeals();
-    return;
-  }
-  let done = 0, ok = 0;
-  for (const m of mealsToAnalyze) {
-    toast(`Analyzing ${++done}/${total}…`, { persistent: true });
-    if (await autoAnalyzeMeal(m.id, { silent: true })) ok++;
-  }
-  for (const s of missingSessions) {
-    toast(`Analyzing ${++done}/${total}…`, { persistent: true });
-    if (await autoAnalyzeSession(s.savedAt, { silent: true })) ok++;
-  }
-  hideToast();
-  toast(`Updated ${ok}/${total} ✓`);
-  if (typeof renderAnalysis === 'function') renderAnalysis();
-  if (typeof renderMeals === 'function') renderMeals();
-}
 
 async function callGemini(messages) {
   const key = getGeminiKey();
@@ -3934,15 +3765,6 @@ function renderAiAttachPreview() {
   ).join('');
 }
 
-function insertNewline(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const s = el.selectionStart, e = el.selectionEnd;
-  el.value = el.value.slice(0, s) + '\n' + el.value.slice(e);
-  el.selectionStart = el.selectionEnd = s + 1;
-  autoResizeTA(el);
-  el.focus();
-}
 
 async function sendAIMessage() {
   const input = document.getElementById('aiInput');
@@ -4302,51 +4124,8 @@ function buildAppsScript(secret) {
 const SECRET = '${secret}';
 const FIT_FOLDER_ID = '${folderId}';
 
-function doPost(e) {
-  let data;
-  try { data = JSON.parse(e.postData.contents); }
-  catch (err) { return _json({ ok: false, error: 'invalid json' }); }
-  if (data.secret !== SECRET) return _json({ ok: false, error: 'unauthorized' });
-  if (data.ping) return _json({ ok: true, pong: true });
-  try {
-    const folder = DriveApp.getFolderById(FIT_FOLDER_ID);
-    const filename = data.filename || ('fit-data-' + new Date().toISOString().slice(0,10) + '.json');
-    const json = JSON.stringify(data.payload, null, 2);
-    const existing = folder.getFilesByName(filename);
-    while (existing.hasNext()) existing.next().setTrashed(true);
-    const file = folder.createFile(filename, json, 'application/json');
-    return _json({ ok: true, fileId: file.getId(), filename: filename });
-  } catch (err) { return _json({ ok: false, error: err.toString() }); }
-}
 
-function doGet(e) {
-  const secret = e.parameter.secret;
-  if (secret !== SECRET) return _json({ ok: false, error: 'unauthorized' });
-  try {
-    const folder = DriveApp.getFolderById(FIT_FOLDER_ID);
-    const files = folder.getFiles();
-    let latest = null;
-    while (files.hasNext()) {
-      const f = files.next();
-      const n = f.getName();
-      if (n.indexOf('fit-data-') === 0 || n.indexOf('fit-full-') === 0) {
-        if (!latest || f.getLastUpdated() > latest.getLastUpdated()) latest = f;
-      }
-    }
-    if (!latest) return _json({ ok: false, error: 'no backup found' });
-    return _json({
-      ok: true,
-      filename: latest.getName(),
-      updatedAt: latest.getLastUpdated().toISOString(),
-      payload: JSON.parse(latest.getBlob().getDataAsString())
-    });
-  } catch (err) { return _json({ ok: false, error: err.toString() }); }
-}
-
-function _json(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
-}`;
+`;
 }
 
 function openSyncSetup() {
