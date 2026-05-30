@@ -54,7 +54,18 @@ for (const f of files) {
   }
 }
 
-// ── 4. raw Gemini URLs outside integrations/gemini.js ──────────────────────
+// ── 4. Drive webhook fetches outside integrations/drive-sync.js ───────────
+const drivePattern = /state\.sync\??\.\s*webhookUrl.*fetch|fetch\(.*webhookUrl/g;
+for (const f of files) {
+  if (relative(ROOT, f) === 'integrations/drive-sync.js') continue;
+  const src = readFileSync(f, 'utf8');
+  const hits = src.match(drivePattern);
+  if (hits) {
+    findings.push(`${hits.length} raw Drive webhook fetch(es) in ${relative(ROOT, f)} — use integrations/drive-sync.js`);
+  }
+}
+
+// ── 5. raw Gemini URLs outside integrations/gemini.js ──────────────────────
 const geminiPattern = /generativelanguage\.googleapis\.com/g;
 for (const f of files) {
   if (relative(ROOT, f) === 'integrations/gemini.js') continue;
