@@ -3,10 +3,12 @@ import { _isoDate, todayISO, formatDate } from './core/time.js';
 import { escapeHtml, blobToDataUrl, parseJSONResponse } from './core/format.js';
 import { autoResizeTA, toast, hideToast } from './core/dom.js';
 import { DEFAULT_PROFILE, calcBMR, calcStepsPerKcal } from './core/profile.js';
+import { state, save, load } from './data/state.js';
+import { putPhoto, getAllPhotos, deletePhoto, clearPhotos } from './data/photo-store.js';
+import { putMeal, getMeal, getAllMeals, deleteMeal, clearMeals } from './data/meals-store.js';
+import { putTemplate, getAllTemplates, getTemplate, deleteTemplate } from './data/template-store.js';
 
 // ---------- DATA ----------
-const STORE_KEY = 'fit.v1';
-const PHOTO_DB = 'fit-photos';
 
 const PLAN = {
   tue: {
@@ -58,9 +60,6 @@ const WEEKLY_PLAN = [
   { day: 'Saturday', plan: 'Rest day', rest: true, key: 'sat' }
 ];
 
-const state = load() || { sessions: [], measurements: [], current: null, steps: [], dailyNotes: [] };
-state.steps = state.steps || [];
-state.dailyNotes = state.dailyNotes || [];
 // Personal parameters live on state.profile. Eventually written by the
 // Coach/Trainer/Dietitian agents (see AGENT_PLAN.md); seeded from defaults
 // on first load.
@@ -181,132 +180,6 @@ let analysisViewDate = null; // null = today
 let currentSetCtx = null; // {exerciseIdx}
 let currentReps = 8;
 
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
-function load() { try { return JSON.parse(localStorage.getItem(STORE_KEY)); } catch(e) { return null; } }
-
-// ---------- INDEXED DB ----------
-function openPhotoDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(PHOTO_DB, 3);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains('photos')) db.createObjectStore('photos', { keyPath: 'id', autoIncrement: true });
-      if (!db.objectStoreNames.contains('meals')) db.createObjectStore('meals', { keyPath: 'id', autoIncrement: true });
-      if (!db.objectStoreNames.contains('templates')) db.createObjectStore('templates', { keyPath: 'id', autoIncrement: true });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function putPhoto(blob, date) {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('photos', 'readwrite');
-    const req = tx.objectStore('photos').add({ blob, date, created: Date.now() });
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function getAllPhotos() {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('photos').objectStore('photos').getAll();
-    req.onsuccess = () => resolve(req.result.sort((a,b) => a.created - b.created));
-    req.onerror = () => reject(req.error);
-  });
-}
-async function deletePhoto(id) {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('photos', 'readwrite').objectStore('photos').delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-async function clearPhotos() {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('photos', 'readwrite').objectStore('photos').clear();
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-async function putMeal(record) {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const value = record.id ? record : { ...record, created: record.created || Date.now() };
-    const req = db.transaction('meals', 'readwrite').objectStore('meals').put(value);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function getMeal(id) {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('meals').objectStore('meals').get(id);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function getAllMeals() {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('meals').objectStore('meals').getAll();
-    req.onsuccess = () => resolve(req.result.sort((a,b) => b.created - a.created));
-    req.onerror = () => reject(req.error);
-  });
-}
-async function deleteMeal(id) {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('meals', 'readwrite').objectStore('meals').delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-async function clearMeals() {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('meals', 'readwrite').objectStore('meals').clear();
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-
-// ── Meal templates ─────────────────────────────────────────────────────────
-async function putTemplate(record) {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const value = record.id ? record : { ...record, created: record.created || Date.now() };
-    const req = db.transaction('templates', 'readwrite').objectStore('templates').put(value);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function getAllTemplates() {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('templates').objectStore('templates').getAll();
-    req.onsuccess = () => resolve((req.result || []).sort((a, b) => (b.lastUsed || b.created || 0) - (a.lastUsed || a.created || 0)));
-    req.onerror = () => reject(req.error);
-  });
-}
-async function getTemplate(id) {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('templates').objectStore('templates').get(id);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-async function deleteTemplate(id) {
-  const db = await openPhotoDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction('templates', 'readwrite').objectStore('templates').delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
 
 // ---------- TABS ----------
 function switchTab(name) {

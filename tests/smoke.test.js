@@ -40,7 +40,7 @@ function flattenModules(entryPath) {
       return '';
     });
     src = src
-      .replace(/^\s*export\s+(function|class|const|let|var)\s+/gm, '$1 ')
+      .replace(/^\s*export\s+(async\s+function|function|class|const|let|var)\s+/gm, '$1 ')
       .replace(/^\s*export\s*\{[^}]*\}\s*;?\s*$/gm, '');
     for (const d of deps) visit(d);
     chunks.push(`// ---- inlined: ${absPath.replace(repoRoot + '/', '')} ----\n${src}`);
