@@ -43,7 +43,18 @@ for (const f of files) {
   }
 }
 
-// ── 3. raw Gemini URLs outside integrations/gemini.js ──────────────────────
+// ── 3. raw Fitness API URLs outside integrations/google-fit.js ────────────
+const fitPattern = /googleapis\.com\/fitness/g;
+for (const f of files) {
+  if (relative(ROOT, f) === 'integrations/google-fit.js') continue;
+  const src = readFileSync(f, 'utf8');
+  const hits = src.match(fitPattern);
+  if (hits) {
+    findings.push(`${hits.length} raw Fitness API URL(s) in ${relative(ROOT, f)} — use integrations/google-fit.js`);
+  }
+}
+
+// ── 4. raw Gemini URLs outside integrations/gemini.js ──────────────────────
 const geminiPattern = /generativelanguage\.googleapis\.com/g;
 for (const f of files) {
   if (relative(ROOT, f) === 'integrations/gemini.js') continue;

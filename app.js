@@ -10,6 +10,11 @@ import { putTemplate, getAllTemplates, getTemplate, deleteTemplate } from './dat
 import {
   getGeminiKey, setGeminiKey, geminiGenerate, callGeminiAnalysis,
 } from './integrations/gemini.js';
+import {
+  loadCachedGfitToken, gfitGetToken, gfitDateRange,
+  gfitAggregate, gfitExtractInt, gfitExtractFloat,
+  silentSyncGoogleFit, autoSilentFitSync, clearCachedGfitToken,
+} from './integrations/google-fit.js';
 
 // ---------- DATA ----------
 
@@ -4309,136 +4314,11 @@ document.getElementById('todayLabel').textContent = new Date().toLocaleDateStrin
 selectDay(state.current?.day || suggestedDay());
 
 // ─── Google Fit Integration ───────────────────────────────────────────────
-const GFIT_CLIENT_ID = '702200125555-73etjk85h28n9a4ehsm8sio415tpivat.apps.googleusercontent.com';
-const GFIT_SCOPES = [
-  'https://www.googleapis.com/auth/fitness.activity.read',
-  'https://www.googleapis.com/auth/fitness.location.read'
-].join(' ');
+// Load any cached token on startup so silentSync works before the user taps Sync.
+loadCachedGfitToken();
 
-let _gfitToken = null;
-let _gfitTokenExpiry = 0;
 
-function _loadCachedGfitToken() {
-  try {
-    const raw = localStorage.getItem('fit.gfitToken');
-    if (!raw) return;
-    const { token, expiry } = JSON.parse(raw);
-    if (token && expiry && Date.now() < expiry) {
-      _gfitToken = token;
-      _gfitTokenExpiry = expiry;
-    }
-  } catch {}
-}
-_loadCachedGfitToken();
 
-function _saveCachedGfitToken(token, expiry) {
-  try { localStorage.setItem('fit.gfitToken', JSON.stringify({ token, expiry })); } catch {}
-}
-
-// silent: if true, never show OAuth popup — resolves null if no cached token
-function gfitGetToken(opts = {}) {
-  const silent = !!opts.silent;
-  return new Promise((resolve, reject) => {
-    if (_gfitToken && Date.now() < _gfitTokenExpiry) return resolve(_gfitToken);
-    if (silent) return resolve(null);
-    if (typeof google === 'undefined' || !google.accounts?.oauth2) return reject(new Error('Google Identity not loaded'));
-    const client = google.accounts.oauth2.initTokenClient({
-      client_id: GFIT_CLIENT_ID,
-      scope: GFIT_SCOPES,
-      callback: (resp) => {
-        if (resp.error) return reject(new Error(resp.error));
-        _gfitToken = resp.access_token;
-        _gfitTokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
-        _saveCachedGfitToken(_gfitToken, _gfitTokenExpiry);
-        resolve(_gfitToken);
-      }
-    });
-    client.requestAccessToken();
-  });
-}
-
-// Silently fetch Fit steps + distance for given date (default: today).
-// Returns true if updated, false otherwise. Never throws or shows popups.
-async function silentSyncGoogleFit(date) {
-  const targetDate = date || todayISO();
-  try {
-    const token = await gfitGetToken({ silent: true });
-    if (!token) return false;
-    const { startMs, endMs } = gfitDateRange(targetDate);
-    const [stepsData, distData] = await Promise.all([
-      gfitAggregate(token, startMs, endMs, 'com.google.step_count.delta'),
-      gfitAggregate(token, startMs, endMs, 'com.google.distance.delta')
-    ]);
-    const steps = gfitExtractInt(stepsData);
-    if (steps > 0) {
-      state.steps = state.steps || [];
-      state.steps = state.steps.filter(s => s.date !== targetDate);
-      state.steps.push({ date: targetDate, count: steps, source: 'gfit' });
-      save();
-    }
-    return steps > 0;
-  } catch (e) {
-    // Token likely expired/revoked — clear cache so user can re-auth on next manual tap
-    if (String(e.message || '').match(/401|invalid|expired/i)) {
-      _gfitToken = null;
-      _gfitTokenExpiry = 0;
-      try { localStorage.removeItem('fit.gfitToken'); } catch {}
-    }
-    return false;
-  }
-}
-
-// Returns {startMs, endMs} for a given ISO date (local midnight to midnight)
-function gfitDateRange(isoDate) {
-  const start = new Date(isoDate + 'T00:00:00');
-  const end   = new Date(isoDate + 'T23:59:59');
-  return { startMs: start.getTime(), endMs: end.getTime() };
-}
-
-// Derived data sources that match what the Google Fit app UI shows.
-// First we try the merged/estimated source; if empty we fall back to the raw data type.
-const GFIT_DERIVED_SOURCES = {
-  'com.google.step_count.delta': 'derived:com.google.step_count.delta:com.google.android.gms:estimated_steps',
-  'com.google.distance.delta':   'derived:com.google.distance.delta:com.google.android.gms:merge_distance_delta'
-};
-
-async function gfitAggregateOnce(token, startMs, endMs, aggBy) {
-  const body = {
-    aggregateBy: [aggBy],
-    bucketByTime: { durationMillis: endMs - startMs },
-    startTimeMillis: startMs,
-    endTimeMillis: endMs
-  };
-  const r = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (!r.ok) throw new Error(`Fit API ${r.status}`);
-  return r.json();
-}
-
-async function gfitAggregate(token, startMs, endMs, dataTypeName) {
-  const derived = GFIT_DERIVED_SOURCES[dataTypeName];
-  if (derived) {
-    const r1 = await gfitAggregateOnce(token, startMs, endMs, { dataTypeName, dataSourceId: derived });
-    const hasData = r1?.bucket?.[0]?.dataset?.[0]?.point?.length > 0;
-    if (hasData) return r1;
-  }
-  return gfitAggregateOnce(token, startMs, endMs, { dataTypeName });
-}
-
-function gfitExtractInt(data) {
-  try {
-    return data.bucket[0].dataset[0].point.reduce((s, p) => s + p.value[0].intVal, 0);
-  } catch { return 0; }
-}
-
-function gfitExtractFloat(data) {
-  try {
-    return data.bucket[0].dataset[0].point.reduce((s, p) => s + p.value[0].fpVal, 0);
-  } catch { return 0; }
-}
 
 async function syncGoogleFit() {
   const btn = document.getElementById('fitSyncBtn');
@@ -4505,25 +4385,6 @@ async function syncGoogleFit() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Silent Google Fit sync — today + missing days in last 7 (no popup; quiet if no token)
-async function autoSilentFitSync() {
-  const updated = [];
-  const today = todayISO();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const iso = d.toISOString().slice(0, 10);
-    const existing = (state.steps || []).find(s => s.date === iso);
-    // Always refresh today; for past days only fill in if missing
-    if (iso === today || !existing) {
-      const ok = await silentSyncGoogleFit(iso);
-      if (ok) updated.push(iso);
-    }
-  }
-  if (updated.length) {
-    renderWorkout?.();
-    renderBody?.();
-    renderAnalysis?.();
-  }
-}
 
 // Auto-pull from Drive on startup, then silent Fit sync, then auto-gen summaries
 if (state.sync?.webhookUrl) {
@@ -4554,12 +4415,14 @@ if (state.sync?.webhookUrl) {
       const r = await pullFromDrive({ silent: true });
       if (r.applied) toast('Auto-synced from Drive ✓');
     }
-    await autoSilentFitSync();
+    const fitUpdated = await autoSilentFitSync();
+    if (fitUpdated.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
     autoGenerateMissingSummaries();
   }, 1500);
 } else {
   setTimeout(async () => {
-    await autoSilentFitSync();
+    const fitUpdated = await autoSilentFitSync();
+    if (fitUpdated.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
     autoGenerateMissingSummaries();
   }, 1500);
 }
@@ -4587,11 +4450,15 @@ document.addEventListener('visibilitychange', () => {
     if (state.sync?.webhookUrl) {
       pullFromDrive({ silent: true }).then(async r => {
         if (r.applied) toast('Auto-synced ✓');
-        await autoSilentFitSync();
+        const u = await autoSilentFitSync();
+        if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
         autoGenerateMissingSummaries();
       });
     } else {
-      autoSilentFitSync().then(() => autoGenerateMissingSummaries());
+      autoSilentFitSync().then(u => {
+        if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+        autoGenerateMissingSummaries();
+      });
     }
   }
 });
