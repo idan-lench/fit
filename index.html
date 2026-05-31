@@ -5831,7 +5831,7 @@ async function silentSyncGoogleFit(date) {
     return steps > 0;
   } catch (e) {
     // Token likely expired/revoked — clear cache so user can re-auth on next manual tap
-    if (String(e.message || '').match(/401|invalid|expired/i)) {
+    if (String(e.message || '').match(/40[13]|invalid|expired|forbidden/i)) {
       _gfitToken = null;
       _gfitTokenExpiry = 0;
       try { localStorage.removeItem('fit.gfitToken'); } catch {}
@@ -5947,7 +5947,16 @@ async function syncGoogleFit() {
     toast(`✓ ${steps.toLocaleString()} steps${distKm > 0 ? ` · ${distKm} km` : ''}`);
   } catch (e) {
     console.error('Google Fit sync error:', e);
-    status.textContent = e.message.includes('popup') ? 'Popup blocked — allow popups for this site' : `Error: ${e.message}`;
+    // A 401/403 means our cached token is stale/invalid (e.g. the GCP project changed) —
+    // drop it so the next tap re-authenticates cleanly instead of reusing the bad token.
+    if (/\b40[13]\b/.test(String(e.message))) {
+      _gfitToken = null;
+      _gfitTokenExpiry = 0;
+      try { localStorage.removeItem('fit.gfitToken'); } catch {}
+      status.textContent = 'Session expired — tap Sync again to reconnect';
+    } else {
+      status.textContent = e.message.includes('popup') ? 'Popup blocked — allow popups for this site' : `Error: ${e.message}`;
+    }
     toast('Google Fit sync failed', 3000);
   } finally {
     btn.disabled = false;
