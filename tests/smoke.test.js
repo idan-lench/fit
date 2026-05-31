@@ -55,10 +55,10 @@ test('index.html boots in jsdom without throwing', async () => {
   // jsdom doesn't fetch `<script type="module" src="...">` via our loader.
   // Flatten the app's module graph into a single classic-script blob for the
   // test. External scripts (GIS, body-muscles) stay blocked by LocalOnlyLoader.
-  const promptsJs = readFileSync(join(repoRoot, 'prompts.js'), 'utf8');
+  // Prompts are now ES modules pulled in through app.js's import graph, so the
+  // flattener bundles them automatically — no separate prompts.js injection.
   const appBundle = flattenModules(join(repoRoot, 'app.js'));
   html = html
-    .replace('<script src="prompts.js"></script>', `<script>\n${promptsJs}\n</script>`)
     .replace('<script type="module" src="./app.js"></script>', `<script>\n${appBundle}\n</script>`);
 
   const errors = [];

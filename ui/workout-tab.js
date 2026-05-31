@@ -10,6 +10,7 @@ import { isCurrentFresh, autoAnalyzeSession } from '../domain/workouts.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { openHeatmap } from './shared/heatmap.js';
 import { attachFilesTo, renderAttachPreview } from './shared/chat-input.js';
+import { PROMPTS } from '../prompts/index.js';
 
 // ---------- MODULE STATE ----------
 let currentDay = 'tue';
@@ -582,7 +583,6 @@ export function closeSessionRefine() {
 }
 
 function buildSessionSystemInstruction(session) {
-  const PROMPTS = window.PROMPTS || {};
   const exLines = (session.entries || []).filter(e => e.sets?.length).map(e =>
     `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`
   ).join('\n') || '  (none)';
@@ -644,7 +644,6 @@ export async function requestSessionEstimateUpdate() {
   if (_sessionChatHistory.length === 0) return toast('Chat with AI first');
   const session = state.sessions.find(s => s.savedAt === _refiningSessionAt);
   if (!session) return;
-  const PROMPTS = window.PROMPTS || {};
   toast('Updating estimate…', { persistent: true });
   try {
     const systemInstruction = buildSessionSystemInstruction(session);

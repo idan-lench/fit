@@ -6,6 +6,7 @@ import { calcBMR } from '../core/profile.js';
 import { getAllMeals } from '../data/meals-store.js';
 import { getGeminiKey, setGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { attachFilesTo, renderAttachPreview } from './shared/chat-input.js';
+import { PROMPTS } from '../prompts/index.js';
 
 // ---------- MODULE STATE ----------
 let _aiAttachedImages = []; // [{dataUrl, mimeType}]
@@ -49,7 +50,6 @@ async function buildAIContext() {
 }
 
 async function callGemini(messages) {
-  const PROMPTS = window.PROMPTS || {};
   const ctx = await buildAIContext();
   const systemInstruction = PROMPTS.chatSystem
     .replace('{today}', ctx.today)

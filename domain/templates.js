@@ -1,7 +1,7 @@
 import { geminiGenerate } from '../integrations/gemini.js';
+import { PROMPTS } from '../prompts/index.js';
 
 export async function applyTemplateDelta(template, userChange) {
-  const PROMPTS = window.PROMPTS || {};
   const breakdownLines = (template.breakdown || []).map(b =>
     `  - ${b.name} (${b.portion || ''}): ${b.calories} kcal${b.protein != null ? `, ${b.protein}g protein` : ''}`
   ).join('\n') || '  (no items)';

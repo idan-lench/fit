@@ -1,4 +1,5 @@
 import { state, save } from '../data/state.js';
+import { PROMPTS } from '../prompts/index.js';
 import { getGeminiKey, callGeminiAnalysis } from '../integrations/gemini.js';
 import { parseJSONResponse } from '../core/format.js';
 import { toast, hideToast } from '../core/dom.js';
@@ -18,7 +19,6 @@ export function isCurrentFresh(current) {
 
 // Returns true on success. Callers are responsible for calling renderHistory().
 export async function autoAnalyzeSession(savedAt, opts = {}) {
-  const PROMPTS = window.PROMPTS || {};
   if (!getGeminiKey()) return false;
   const session = state.sessions.find(s => s.savedAt === savedAt);
   if (!session) return false;

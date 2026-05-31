@@ -1,4 +1,5 @@
 import { getAllMeals, getMeal, putMeal } from '../data/meals-store.js';
+import { PROMPTS } from '../prompts/index.js';
 import { getGeminiKey, callGeminiAnalysis } from '../integrations/gemini.js';
 import { parseJSONResponse } from '../core/format.js';
 import { toast, hideToast } from '../core/dom.js';
@@ -51,7 +52,6 @@ export async function reconcileMealTotals() {
 
 // Returns true on success. Callers are responsible for calling renderMeals() / renderAnalysis().
 export async function autoAnalyzeMeal(mealId, opts = {}) {
-  const PROMPTS = window.PROMPTS || {};
   if (!getGeminiKey()) return false;
   const meal = await getMeal(mealId);
   if (!meal) return false;

@@ -586,7 +586,6 @@ function resetMealChat() {
 }
 
 export async function refineMealEstimate() {
-  const PROMPTS = window.PROMPTS || {};
   const text = document.getElementById('refineInput').value.trim();
   if (!text && _mealAttachedImages.length === 0) return toast('Type a message first');
   if (!editingMealId) return toast('Open a meal first');
@@ -675,7 +674,6 @@ export async function refineMealEstimate() {
 }
 
 export async function requestMealEstimateUpdate() {
-  const PROMPTS = window.PROMPTS || {};
   if (!editingMealId) return;
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
   if (_mealChatHistory.length === 0) return toast('Chat with AI first to provide context');

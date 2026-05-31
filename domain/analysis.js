@@ -1,4 +1,5 @@
 import { getAllMeals } from '../data/meals-store.js';
+import { PROMPTS } from '../prompts/index.js';
 import { state, save } from '../data/state.js';
 import { calcBMR, calcStepsPerKcal } from '../core/profile.js';
 import { getGeminiKey, callGeminiAnalysis } from '../integrations/gemini.js';
@@ -89,7 +90,6 @@ export async function weeklyFingerprint(weekStartISO) {
 
 // Returns the parsed result or null. Callers are responsible for renderAnalysis().
 export async function runDailyAnalysis(opts = {}) {
-  const PROMPTS = window.PROMPTS || {};
   if (!getGeminiKey()) return null;
   const targetDate = opts.date || todayISO();
   const isToday = targetDate === todayISO();
@@ -171,7 +171,6 @@ ${parsed.isFinal ? '(Final summary)' : '(Partial — day in progress)'} · Gener
 
 // Returns the parsed result or null. Callers are responsible for renderAnalysis().
 export async function runWeeklyAnalysis(opts = {}) {
-  const PROMPTS = window.PROMPTS || {};
   if (!getGeminiKey()) return null;
   const weekStart = opts.weekStart || weekStartFor(todayISO());
   const days = weekDates(weekStart);
