@@ -2,7 +2,7 @@ import { state, save } from '../data/state.js';
 import { toast } from '../core/dom.js';
 import { getGeminiKey } from '../integrations/gemini.js';
 import { ensureSecret, buildAppsScript, pingSync } from '../integrations/drive-sync.js';
-import { gfitGetToken, gfitDateRange, gfitAggregate, gfitExtractInt, gfitExtractFloat } from '../integrations/google-fit.js';
+import { gfitGetToken, gfitDateRange, gfitAggregate, gfitExtractInt, gfitExtractFloat, clearCachedGfitToken } from '../integrations/google-fit.js';
 import { clearPhotos, putPhoto } from '../data/photo-store.js';
 import { clearMeals, putMeal } from '../data/meals-store.js';
 import { selectDay, renderWorkout, workoutCurrentDate } from './workout-tab.js';
@@ -252,7 +252,14 @@ export async function syncGoogleFit() {
     toast(`✓ ${steps.toLocaleString()} steps${distKm > 0 ? ` · ${distKm} km` : ''}`);
   } catch (e) {
     console.error('Google Fit sync error:', e);
-    status.textContent = e.message.includes('popup') ? 'Popup blocked — allow popups for this site' : `Error: ${e.message}`;
+    // Self-heal: a 401/403 means the cached token is dead (expired, revoked, or
+    // project changed). Clear it so the next Sync re-runs the OAuth popup.
+    if (String(e.message || '').match(/40[13]|invalid|expired|forbidden/i)) {
+      clearCachedGfitToken();
+      status.textContent = 'Session expired — tap Sync again to reconnect';
+    } else {
+      status.textContent = e.message.includes('popup') ? 'Popup blocked — allow popups for this site' : `Error: ${e.message}`;
+    }
     toast('Google Fit sync failed', 3000);
   } finally {
     btn.disabled = false;

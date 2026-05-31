@@ -134,7 +134,7 @@ export async function silentSyncGoogleFit(date) {
     }
     return steps > 0;
   } catch (e) {
-    if (String(e.message || '').match(/401|invalid|expired/i)) clearCachedGfitToken();
+    if (String(e.message || '').match(/40[13]|invalid|expired|forbidden/i)) clearCachedGfitToken();
     return false;
   }
 }
