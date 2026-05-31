@@ -19,7 +19,7 @@ import { isCurrentFresh, autoAnalyzeSession } from './domain/workouts.js';
 import { weekStartFor, dayFingerprint, runDailyAnalysis, maybeGenerateWeekly, autoGenerateMissingSummaries } from './domain/analysis.js';
 import { openHeatmap, closeHeatmap } from './ui/shared/heatmap.js';
 import { renderAnalysis, setTrendMode, setAnalysisMode, shiftAnalysisDate, generateWeeklyAnalysis } from './ui/insights-tab.js';
-import { saveGeminiKey, renderAI, aiAttachFiles, _removeAiAttach, renderAiAttachPreview, sendAIMessage, askAI } from './ui/chat-tab.js';
+import { saveGeminiKey, renderAI, aiAttachFiles, _removeAiAttach, sendAIMessage, askAI } from './ui/chat-tab.js';
 import {
   openSettings, closeSettings, openSyncSetup, closeSyncSetup, closeSyncQR, showSyncQR,
   copySecret, copyScript, saveAndTestSync, testSync, importData, wipeAll, syncGoogleFit,
@@ -36,7 +36,7 @@ import {
   openTemplatePicker, closeTemplatePicker, confirmDeleteTemplate, openTemplateEdit, closeTemplateEdit, saveTemplateEdit, useTemplate,
   removePendingMealPhoto, onMealPhotoSelected,
   reanalyzeMeal, reanalyzeMealInPlace,
-  refineMealEstimate, requestMealEstimateUpdate, renderMealRefineChat, applyRefineResult, discardMealRefine,
+  refineMealEstimate, requestMealEstimateUpdate, applyRefineResult, discardMealRefine,
   mealAttachFiles, renderMealAttachPreview, _removeMealAttach,
 } from './ui/meals-tab.js';
 import {
@@ -47,7 +47,7 @@ import {
   removeCardio, openCardioPicker, closeCardioPicker, addCardioActivity, removeCardioActivity, updateCardioField,
   renderExerciseList, addPlanExercise, addCustomExercise, closeExercisePicker, pickExercise, addCustomExerciseText,
   finishSession, cancelSession, editSession, setSessionTime, deleteSession, updateSessionDate, updateSessionTime,
-  openSessionRefine, closeSessionRefine, refineSessionEstimate, requestSessionEstimateUpdate, applySessionRefine, discardSessionRefine, renderSessionRefineChat,
+  openSessionRefine, closeSessionRefine, refineSessionEstimate, requestSessionEstimateUpdate, applySessionRefine, discardSessionRefine,
   sessionAttachFiles, renderSessionAttachPreview, _removeSessionAttach,
   openPlanModal, closePlanModal,
 } from './ui/workout-tab.js';
@@ -304,8 +304,8 @@ Object.assign(window, {
   reanalyzeMeal, reanalyzeMealInPlace, refineMealEstimate, refineSessionEstimate,
   removeCardio, removeCardioActivity, removeExercise, removeMeal,
   removePendingMealPhoto, removePhoto, removeSet, removeSteps, removeWaist,
-  renderAiAttachPreview, renderAnalysis, renderCompareByDate, renderExerciseList, renderSteps,
-  renderMeals, renderMealRefineChat, renderSessionRefineChat, requestMealEstimateUpdate,
+  renderAnalysis, renderCompareByDate, renderExerciseList, renderSteps,
+  requestMealEstimateUpdate,
   requestSessionEstimateUpdate, resetWorkoutTimer, restorePhotosFromDrive,
   saveAndTestSync, saveCurrentMealAsTemplate, saveGeminiKey, saveMeal,
   saveTemplateEdit, saveWorkoutSteps, sendAIMessage, sessionAttachFiles,
