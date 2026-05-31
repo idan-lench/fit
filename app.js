@@ -24,6 +24,8 @@ import { PLAN, WEEKLY_PLAN, getPlanKeyForDate, suggestedDay } from './domain/pla
 import { EXERCISE_LIBRARY, getPrevSets as getPrevSetsInSessions } from './domain/exercises.js';
 import { CARDIO_TYPES, formatCardioActivitiesForAI } from './domain/cardio.js';
 import { MUSCLE_MAP, computeMuscleHeatmap, renderMuscleHeatmapSvg } from './domain/muscle-map.js';
+import { mealBlobs, recomputeMealTotals, reconcileMealTotals, autoAnalyzeMeal } from './domain/meals.js';
+import { applyTemplateDelta } from './domain/templates.js';
 
 // ---------- DATA ----------
 
@@ -1703,21 +1705,6 @@ async function useTemplate(id) {
 
 let _pendingTemplate = null;
 
-async function applyTemplateDelta(template, userChange) {
-  const breakdownLines = (template.breakdown || []).map(b =>
-    `  - ${b.name} (${b.portion || ''}): ${b.calories} kcal${b.protein != null ? `, ${b.protein}g protein` : ''}`
-  ).join('\n') || '  (no items)';
-  const prompt = PROMPTS.mealTemplateDelta
-    .replace('{originalDescription}', template.description || template.name || '')
-    .replace('{originalBreakdown}', breakdownLines)
-    .replace('{originalTotalCal}', String(template.calories || 0))
-    .replace('{originalTotalProtein}', String(template.protein || 0))
-    .replace('{userChange}', userChange);
-  let text = await geminiGenerate({ contents: [{ parts: [{ text: prompt }] }] });
-  text = text.replace(/^```(json)?/i, '').replace(/```$/i, '').trim();
-  try { return JSON.parse(text); } catch { return null; }
-}
-
 function renderMealPreview() {
   const preview = document.getElementById('mealPreview');
   preview.innerHTML = pendingMealBlobs.map((blob, i) => {
@@ -1784,7 +1771,7 @@ async function saveMeal() {
             const items = adjusted.items || existing.breakdown;
             updates.breakdown = items;
             // Always recompute from items — the AI's stated total/totalProtein is unreliable
-            const totals = _recomputeMealTotals(items);
+            const totals = recomputeMealTotals(items);
             if (totals.total != null) updates.calories = totals.total;
             if (totals.protein != null) updates.protein = totals.protein;
             updates.aiSaw = adjusted.changeNote ? `${existing.aiSaw || ''}\nChange: ${adjusted.changeNote}`.trim() : existing.aiSaw;
@@ -1821,7 +1808,7 @@ async function saveMeal() {
           if (adjusted) {
             useBreakdown = adjusted.items || useBreakdown;
             // Always recompute from items — the AI's stated total is unreliable
-            const totals = _recomputeMealTotals(useBreakdown);
+            const totals = recomputeMealTotals(useBreakdown);
             if (totals.total != null) useCalories = totals.total;
             if (totals.protein != null) useProtein = totals.protein;
             useAiSaw = adjusted.changeNote
@@ -1853,15 +1840,8 @@ async function saveMeal() {
   // Only auto-analyze if there's no estimate yet AND not from a template
   if (getGeminiKey() && savedId && !usedTemplate) {
     const meal = await getMeal(savedId);
-    if (meal && !meal.calories) setTimeout(() => autoAnalyzeMeal(savedId), 800);
+    if (meal && !meal.calories) setTimeout(async () => { const ok = await autoAnalyzeMeal(savedId); if (ok) { renderMeals(); renderAnalysis(); } }, 800);
   }
-}
-
-function mealBlobs(m) {
-  // Backwards compat: old records had `blob`, new ones have `blobs[]`
-  if (Array.isArray(m.blobs)) return m.blobs;
-  if (m.blob) return [m.blob];
-  return [];
 }
 
 async function computeDailyEnergy(date) {
@@ -1907,22 +1887,6 @@ function setTrendMode(m) {
 }
 
 
-// Always trust the itemized breakdown over the AI's claimed totals — LLMs
-// frequently get the addition wrong (e.g. removes an item but forgets to
-// subtract its calories from the total). Returns recomputed { total, protein }.
-function _recomputeMealTotals(items) {
-  if (!Array.isArray(items)) return { total: null, protein: null };
-  let cal = 0, prot = 0;
-  let hasCal = false, hasProt = false;
-  for (const it of items) {
-    if (typeof it.calories === 'number') { cal += it.calories; hasCal = true; }
-    if (typeof it.protein === 'number') { prot += it.protein; hasProt = true; }
-  }
-  return {
-    total: hasCal ? Math.round(cal) : null,
-    protein: hasProt ? Math.round(prot) : null
-  };
-}
 
 // Build the dual-axis nutrition trend chart (Day = cumulative hourly; Week/Month = daily totals).
 async function drawEnergyChart(elementId = 'analysisChart') {
@@ -2260,30 +2224,9 @@ async function renderAnalysis() {
   }
 }
 
-// One-time per-load reconciliation: fix any meals where stored calories/protein
-// don't match the sum of their breakdown items (legacy bug fixed in app, but
-// existing records still hold the old wrong total).
-let _mealTotalsReconciled = false;
-async function _reconcileMealTotals() {
-  if (_mealTotalsReconciled) return;
-  _mealTotalsReconciled = true;
-  const meals = await getAllMeals();
-  for (const m of meals) {
-    if (!Array.isArray(m.breakdown) || m.breakdown.length === 0) continue;
-    const totals = _recomputeMealTotals(m.breakdown);
-    if (totals.total == null) continue;
-    const calMismatch = typeof m.calories === 'number' && Math.abs(m.calories - totals.total) > 1;
-    const protMismatch = totals.protein != null && typeof m.protein === 'number' && Math.abs(m.protein - totals.protein) > 1;
-    if (calMismatch || protMismatch) {
-      m.calories = totals.total;
-      if (totals.protein != null) m.protein = totals.protein;
-      await putMeal(m);
-    }
-  }
-}
 
 async function renderMeals() {
-  await _reconcileMealTotals();
+  await reconcileMealTotals();
   const meals = await getAllMeals();
   const list = document.getElementById('mealList');
   const empty = document.getElementById('mealEmpty');
@@ -2472,6 +2415,8 @@ async function reanalyzeMeal() {
   if (ok) {
     const m = await getMeal(editingMealId);
     if (m) toast(`Updated: ~${m.calories} kcal${m.protein ? ' · ' + m.protein + 'g protein' : ''}`);
+    renderMeals();
+    renderAnalysis();
   }
 }
 
@@ -2497,55 +2442,6 @@ async function reanalyzeMealInPlace(mealId) {
   toast(calDelta + protDelta);
   renderMeals();
   renderAnalysis();
-}
-
-async function autoAnalyzeMeal(mealId, opts = {}) {
-  if (!getGeminiKey()) return false;
-  const meal = await getMeal(mealId);
-  if (!meal) return false;
-  if (!opts.silent) toast('Analyzing meal…', { persistent: true });
-  try {
-    const blobs = mealBlobs(meal);
-    const hasPhotos = blobs && blobs.length > 0;
-    const photosBlock = hasPhotos
-      ? PROMPTS.mealAnalysisPhotosBlock_withPhotos
-      : PROMPTS.mealAnalysisPhotosBlock_noPhotos;
-    const sawInstruction = hasPhotos
-      ? PROMPTS.mealAnalysisSaw_withPhotos
-      : PROMPTS.mealAnalysisSaw_noPhotos;
-    const prompt = PROMPTS.mealAnalysis
-      .replace('{description}', meal.description || '(none)')
-      .replace('{photosBlock}', photosBlock)
-      .replace('{sawInstruction}', sawInstruction);
-    const result = await callGeminiAnalysis(prompt, blobs);
-    const parsed = parseJSONResponse(result);
-    if (parsed && typeof parsed.total === 'number' && parsed.total > 0 && parsed.total < 5000) {
-      const fresh = await getMeal(mealId);
-      if (fresh) {
-        const items = parsed.items || [];
-        // Always recompute totals from items so they're never out-of-sync with the breakdown
-        const totals = _recomputeMealTotals(items);
-        fresh.calories = totals.total != null ? totals.total : Math.round(parsed.total);
-        fresh.protein  = totals.protein != null ? totals.protein
-                       : (typeof parsed.totalProtein === 'number' ? Math.round(parsed.totalProtein) : null);
-        fresh.breakdown = items;
-        fresh.confidence = parsed.confidence || null;
-        fresh.aiSaw = parsed.saw || null;
-        fresh.questions = (parsed.questions || []).filter(q => q && q.trim());
-        await putMeal(fresh);
-      }
-      const finalCal = (await getMeal(mealId))?.calories || parsed.total;
-      if (!opts.silent) { hideToast(); toast(`Meal: ~${finalCal} kcal ✓`); }
-      if (typeof renderMeals === 'function') renderMeals();
-      if (typeof renderAnalysis === 'function') renderAnalysis();
-      return true;
-    }
-    if (!opts.silent) { hideToast(); toast('Could not parse estimate'); }
-    return false;
-  } catch (e) {
-    if (!opts.silent) { hideToast(); toast('Analysis failed'); }
-    return false;
-  }
 }
 
 async function autoAnalyzeSession(savedAt, opts = {}) {
@@ -2743,7 +2639,7 @@ async function requestMealEstimateUpdate() {
     if (!parsed || typeof parsed.total !== 'number') { toast('Could not parse proposal'); return; }
     // Override AI's claimed total/totalProtein with the sum of items so the
     // displayed proposal always equals the breakdown (no math mismatch).
-    const totals = _recomputeMealTotals(parsed.items);
+    const totals = recomputeMealTotals(parsed.items);
     if (totals.total != null) parsed.total = totals.total;
     if (totals.protein != null) parsed.totalProtein = totals.protein;
     _pendingRefine = parsed;
@@ -3126,6 +3022,7 @@ async function smartUpdateSummaries() {
     if (btn) btn.textContent = `Analyzing meals… ${++done}/${totalItems}`;
     await autoAnalyzeMeal(m.id, { silent: true });
   }
+  if (mealsToAnalyze.length) { renderMeals(); renderAnalysis(); }
   for (const s of missingSessions) {
     if (btn) btn.textContent = `Analyzing sessions… ${++done}/${totalItems}`;
     await autoAnalyzeSession(s.savedAt, { silent: true });
