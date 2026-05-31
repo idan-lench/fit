@@ -26,6 +26,9 @@ import { CARDIO_TYPES, formatCardioActivitiesForAI } from './domain/cardio.js';
 import { MUSCLE_MAP, computeMuscleHeatmap, renderMuscleHeatmapSvg } from './domain/muscle-map.js';
 import { mealBlobs, recomputeMealTotals, reconcileMealTotals, autoAnalyzeMeal } from './domain/meals.js';
 import { applyTemplateDelta } from './domain/templates.js';
+import { isCurrentFresh, autoAnalyzeSession } from './domain/workouts.js';
+import { upsertStep, removeStep } from './domain/steps.js';
+import { upsertMeasurement, removeMeasurement } from './domain/body.js';
 
 // ---------- DATA ----------
 
@@ -332,14 +335,6 @@ function formatWorkoutDateLabel(dateISO) {
   return date.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
-function isCurrentFresh() {
-  if (!state.current) return true;
-  if (state.current.entries.some(e => e.sets.length)) return false;
-  if (state.current.cardioNote && state.current.cardioNote.trim()) return false;
-  if ((state.current.cardioActivities || []).length > 0) return false;
-  if (state.current.entries.length > 0) return false; // any picked exercise
-  return true;
-}
 
 
 
@@ -479,7 +474,7 @@ function renderWorkout() {
   if (timeInput && state.current) timeInput.value = state.current.time || '';
   const dateInput = document.getElementById('sessionDate');
   if (dateInput && state.current) dateInput.value = state.current.date || todayISO();
-  if (saveRow) saveRow.style.display = (editing || !isCurrentFresh()) ? 'flex' : 'none';
+  if (saveRow) saveRow.style.display = (editing || !isCurrentFresh(state.current)) ? 'flex' : 'none';
   list.innerHTML = '';
   currentDay = state.current.day; // sync
 
@@ -509,7 +504,7 @@ function renderWorkout() {
         state.current.cardioNote = e.target.value;
         save();
         const sr = document.getElementById('saveRow');
-        if (sr) sr.style.display = isCurrentFresh() ? 'none' : 'flex';
+        if (sr) sr.style.display = isCurrentFresh(state.current) ? 'none' : 'flex';
       });
     }, 0);
   }
@@ -826,13 +821,13 @@ function finishSession() {
   // Only auto-analyze if no estimate exists yet
   if (getGeminiKey() && savedAt) {
     const s = state.sessions.find(x => x.savedAt === savedAt);
-    if (s && s.caloriesBurned == null) setTimeout(() => autoAnalyzeSession(savedAt), 800);
+    if (s && s.caloriesBurned == null) setTimeout(async () => { const ok = await autoAnalyzeSession(savedAt); if (ok) renderHistory(); }, 800);
   }
 }
 function cancelSession() {
   if (!state.current) return;
   const wasEditing = !!state.current._editingId;
-  const isFresh = isCurrentFresh();
+  const isFresh = isCurrentFresh(state.current);
   if (!isFresh) {
     const msg = wasEditing
       ? 'Discard your edits? The original saved session is unchanged.'
@@ -1024,16 +1019,14 @@ function saveWorkoutSteps() {
   const v = parseInt(document.getElementById('workoutStepsInput').value, 10);
   const d = workoutCurrentDate();
   if (isNaN(v) || v <= 0) return toast('Enter a number');
-  state.steps = state.steps || [];
-  state.steps = state.steps.filter(s => s.date !== d);
-  state.steps.push({ date: d, count: v });
+  state.steps = upsertStep(state.steps, d, v);
   save();
   renderWorkout();
   toast('Steps saved ✓');
 }
 function removeSteps(date) {
   if (!confirm('Remove this entry?')) return;
-  state.steps = state.steps.filter(s => s.date !== date);
+  state.steps = removeStep(state.steps, date);
   save();
   renderBody();
 }
@@ -1179,8 +1172,7 @@ function addWaist() {
   const v = parseFloat(document.getElementById('waistInput').value);
   const d = document.getElementById('waistDate').value || todayISO();
   if (isNaN(v) || v <= 0) return toast('Enter a number');
-  state.measurements = state.measurements.filter(m => m.date !== d);
-  state.measurements.push({ date: d, cm: v });
+  state.measurements = upsertMeasurement(state.measurements, d, v);
   save();
   document.getElementById('waistInput').value = '';
   renderBody();
@@ -1188,7 +1180,7 @@ function addWaist() {
 }
 function removeWaist(date) {
   if (!confirm('Remove this measurement?')) return;
-  state.measurements = state.measurements.filter(m => m.date !== date);
+  state.measurements = removeMeasurement(state.measurements, date);
   save();
   renderBody();
 }
@@ -2444,39 +2436,6 @@ async function reanalyzeMealInPlace(mealId) {
   renderAnalysis();
 }
 
-async function autoAnalyzeSession(savedAt, opts = {}) {
-  if (!getGeminiKey()) return false;
-  const session = state.sessions.find(s => s.savedAt === savedAt);
-  if (!session) return false;
-  if (!opts.silent) toast('Analyzing workout…', { persistent: true });
-  try {
-    const exLines = (session.entries || []).filter(e => e.sets?.length).map(e => `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`).join('\n') || '  (none)';
-    const duration = session.durationMin ? `${session.durationMin} min` : '(NOT LOGGED — must ask user)';
-    const prompt = PROMPTS.sessionAnalysis
-      .replace('{type}', PLAN[session.day]?.label || session.day)
-      .replace('{date}', session.date)
-      .replace('{cardioNote}', session.cardioNote || '(none)').replace('{cardioActivities}', formatCardioActivitiesForAI(session.cardioActivities))
-      .replace('{exercises}', exLines)
-      .replace('{duration}', duration);
-    const result = await callGeminiAnalysis(prompt);
-    const parsed = parseJSONResponse(result);
-    if (parsed && typeof parsed.total === 'number' && parsed.total > 0 && parsed.total < 5000) {
-      session.caloriesBurned = Math.round(parsed.total);
-      session.burnBreakdown = parsed.breakdown || [];
-      session.burnNotes = parsed.notes || null;
-      session.burnQuestions = (parsed.questions || []).filter(q => q && q.trim());
-      save();
-      if (!opts.silent) { hideToast(); toast(`Workout: ~${Math.round(parsed.total)} kcal ✓`); }
-      renderHistory();
-      return true;
-    }
-    if (!opts.silent) hideToast();
-    return false;
-  } catch (e) {
-    if (!opts.silent) { hideToast(); toast('Analysis failed'); }
-    return false;
-  }
-}
 
 let _pendingRefine = null;
 let _mealChatHistory = []; // [{role: 'user'|'model', text}]
@@ -3027,6 +2986,7 @@ async function smartUpdateSummaries() {
     if (btn) btn.textContent = `Analyzing sessions… ${++done}/${totalItems}`;
     await autoAnalyzeSession(s.savedAt, { silent: true });
   }
+  if (missingSessions.length) renderHistory();
 
   // Step 2: re-generate daily summaries for days that changed
   const today = todayISO();
