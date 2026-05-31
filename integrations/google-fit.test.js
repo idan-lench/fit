@@ -15,7 +15,7 @@ globalThis.fetch = async (url, init) => { lastFetch = { url, init }; return next
 const {
   gfitDateRange, gfitExtractInt, gfitExtractFloat,
   loadCachedGfitToken, saveCachedGfitToken, clearCachedGfitToken,
-  gfitAggregateOnce,
+  gfitAggregateOnce, silentSyncGoogleFit,
 } = await import('./google-fit.js');
 
 beforeEach(() => { ls.clear(); lastFetch = null; nextFetch = null; });
@@ -101,4 +101,25 @@ test('gfitAggregateOnce throws on non-ok response', async () => {
     () => gfitAggregateOnce('tok', 1000, 2000, { dataTypeName: 'x' }),
     /Fit API 401/
   );
+});
+
+// ── silent sync self-heal (ported from main, commit 9af9046) ────────────────
+
+test('silentSyncGoogleFit clears the cached token on a 403', async () => {
+  saveCachedGfitToken('tok', Date.now() + 3600_000);
+  loadCachedGfitToken(); // populate in-memory token so silent get returns it
+  assert.ok(ls.has('fit.gfitToken'));
+  nextFetch = { ok: false, status: 403 }; // CONSUMER_INVALID-style outage
+  const ok = await silentSyncGoogleFit('2026-05-30');
+  assert.equal(ok, false);
+  assert.ok(!ls.has('fit.gfitToken'), 'a 403 should clear the dead token so the next Sync re-auths');
+});
+
+test('silentSyncGoogleFit keeps the token on a non-auth error (500)', async () => {
+  saveCachedGfitToken('tok', Date.now() + 3600_000);
+  loadCachedGfitToken();
+  nextFetch = { ok: false, status: 500 };
+  const ok = await silentSyncGoogleFit('2026-05-30');
+  assert.equal(ok, false);
+  assert.ok(ls.has('fit.gfitToken'), 'a transient 500 must not nuke a still-valid token');
 });
