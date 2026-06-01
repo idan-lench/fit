@@ -49,14 +49,12 @@ function flattenModules(entryPath) {
   return chunks.join('\n');
 }
 
-test('index.html boots in jsdom without throwing', async () => {
+async function bootApp() {
   let html = readFileSync(join(repoRoot, 'index.html'), 'utf8');
 
   // jsdom doesn't fetch `<script type="module" src="...">` via our loader.
   // Flatten the app's module graph into a single classic-script blob for the
   // test. External scripts (GIS, body-muscles) stay blocked by LocalOnlyLoader.
-  // Prompts are now ES modules pulled in through app.js's import graph, so the
-  // flattener bundles them automatically — no separate prompts.js injection.
   const appBundle = flattenModules(join(repoRoot, 'app.js'));
   html = html
     .replace('<script type="module" src="./app.js"></script>', `<script>\n${appBundle}\n</script>`);
@@ -68,11 +66,9 @@ test('index.html boots in jsdom without throwing', async () => {
     resources: new LocalOnlyLoader(),
     pretendToBeVisual: true,
     beforeParse(window) {
-      // Capture any thrown errors from inline scripts.
       window.addEventListener('error', (e) => {
         errors.push({ message: e.message, source: e.filename, line: e.lineno });
       });
-      // Inject fake-indexeddb — jsdom has no IDB by default.
       window.indexedDB = indexedDB;
       window.IDBKeyRange = IDBKeyRange;
       window.IDBDatabase = IDBDatabase;
@@ -81,8 +77,6 @@ test('index.html boots in jsdom without throwing', async () => {
       window.IDBRequest = IDBRequest;
       window.IDBCursor = IDBCursor;
       window.IDBIndex = IDBIndex;
-      // Some browser APIs the app uses but jsdom doesn't have — stub them
-      // so script execution doesn't crash on unrelated absent APIs.
       window.matchMedia = window.matchMedia || (() => ({
         matches: false, addListener() {}, removeListener() {},
         addEventListener() {}, removeEventListener() {}
@@ -91,12 +85,13 @@ test('index.html boots in jsdom without throwing', async () => {
     },
   });
 
-  // Give async-loaded scripts (defer/async) a moment to settle.
   await new Promise((r) => setTimeout(r, 250));
+  return { dom, errors };
+}
 
-  // Filter out errors that come purely from external script tags we
-  // intentionally blocked (e.g. body-muscles CDN, GIS). They're not
-  // app code regressions.
+test('index.html boots in jsdom without throwing', async () => {
+  const { dom, errors } = await bootApp();
+
   const appErrors = errors.filter((e) => {
     const src = (e.source || '').toLowerCase();
     if (src.includes('googleapis.com')) return false;
@@ -110,9 +105,51 @@ test('index.html boots in jsdom without throwing', async () => {
   }
   assert.equal(appErrors.length, 0, 'app should boot without throwing');
 
-  // The page should have rendered: at least the nav and one tab.
   const navButtons = dom.window.document.querySelectorAll('nav button');
   assert.ok(navButtons.length >= 4, 'expected at least 4 nav tab buttons');
+
+  dom.window.close();
+});
+
+test('click bindings: settings modal opens and closes', async () => {
+  const { dom } = await bootApp();
+  const doc = dom.window.document;
+
+  // Settings button opens the modal
+  const settingsBtn = doc.getElementById('headerSettingsBtn');
+  assert.ok(settingsBtn, 'headerSettingsBtn should exist');
+  settingsBtn.click();
+  await new Promise(r => setTimeout(r, 50));
+  const modal = doc.getElementById('settingsModal');
+  assert.ok(modal.classList.contains('show'), 'settings modal should open after clicking settings button');
+
+  // Close button hides the modal
+  const closeBtn = doc.getElementById('closeSettingsBtn');
+  assert.ok(closeBtn, 'closeSettingsBtn should exist');
+  closeBtn.click();
+  await new Promise(r => setTimeout(r, 50));
+  assert.ok(!modal.classList.contains('show'), 'settings modal should close after clicking close button');
+
+  dom.window.close();
+});
+
+test('click bindings: nav tabs switch active section', async () => {
+  const { dom } = await bootApp();
+  const doc = dom.window.document;
+
+  // Click the Workout nav tab
+  const workoutBtn = doc.querySelector('nav button[data-tab="workout"]');
+  assert.ok(workoutBtn, 'workout nav button should exist');
+  workoutBtn.click();
+  await new Promise(r => setTimeout(r, 50));
+  assert.ok(doc.getElementById('tab-workout').classList.contains('active'), 'workout tab should be active');
+  assert.ok(!doc.getElementById('tab-analysis').classList.contains('active'), 'analysis tab should be inactive');
+
+  // Click the Meals nav tab
+  const mealsBtn = doc.querySelector('nav button[data-tab="meals"]');
+  mealsBtn.click();
+  await new Promise(r => setTimeout(r, 50));
+  assert.ok(doc.getElementById('tab-meals').classList.contains('active'), 'meals tab should be active');
 
   dom.window.close();
 });

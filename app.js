@@ -18,6 +18,7 @@ import { autoAnalyzeMeal } from './domain/meals.js';
 import { isCurrentFresh, autoAnalyzeSession } from './domain/workouts.js';
 import { weekStartFor, dayFingerprint, runDailyAnalysis, maybeGenerateWeekly, autoGenerateMissingSummaries } from './domain/analysis.js';
 import { openHeatmap, closeHeatmap } from './ui/shared/heatmap.js';
+import { _setup } from './ui/bindings.js';
 import { renderAnalysis, setTrendMode, setAnalysisMode, shiftAnalysisDate, generateWeeklyAnalysis } from './ui/insights-tab.js';
 import { saveGeminiKey, renderAI, aiAttachFiles, _removeAiAttach, sendAIMessage, askAI } from './ui/chat-tab.js';
 import {
@@ -282,36 +283,35 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// ---------- LEGACY: expose HTML onclick targets on window ----------
-// Inline `onclick="foo()"` handlers in index.html can only see globals, but this
-// file is loaded as `<script type="module">` so top-level names are NOT global.
-// Bridge them onto `window` until handlers migrate to addEventListener (Step 19).
+// ---------- window bridge for dynamic handlers ----------
+// Functions called from innerHTML onClick strings in render functions (workout/meals/body tabs)
+// or cross-module window.X?.() calls cannot use direct imports — they need to be on window.
+// Static index.html handlers are wired by ui/bindings.js and do NOT appear here.
 Object.assign(window, {
-  addCardioActivity, addCustomExerciseText, addPlanExercise, addWaist,
-  aiAttachFiles, analyzePhotoComparison, applyRefineResult, applySessionRefine,
-  askAI, attachTimerTo, autoResizeTA, bumpReps, cancelSession,
-  closeCardioPicker, closeExercisePicker, closeHeatmap, closeMealModal,
-  closePlanModal, closeSessionRefine, closeSet, closeSettings, closeSyncQR,
-  closeSyncSetup, closeTemplateEdit, closeTemplatePicker, closeTimerAttach,
-  confirmDeleteTemplate, confirmSet, copyScript, copySecret, dedupePhotos,
+  // Dynamic innerHTML handlers (workout-tab.js render functions)
+  addCardioActivity, addPlanExercise, applySessionRefine,
+  attachTimerTo, autoResizeTA,
+  deleteSession, discardSessionRefine,
+  editSession, editStepsEntry, editWaist,
+  openSet, openSessionRefine, openTemplateEdit,
+  pickExercise,
+  removeCardio, removeCardioActivity, removeExercise, removeSet,
+  removeSteps, removeWaist, setSessionTime,
+  syncGoogleFit, updateCardioField, updateExerciseNote,
+
+  // Dynamic innerHTML handlers (meals-tab.js render functions)
+  applyRefineResult, confirmDeleteTemplate, discardMealRefine,
+  openMealModal, openTemplatePicker,
+  quickSaveMealAsTemplate, reanalyzeMealInPlace,
+  removeMeal, removePendingMealPhoto,
+  useTemplate,
+
+  // Dynamic innerHTML handlers (body-tab.js render functions)
+  deleteCompareAnalysis, removePhoto,
+
+  // Dynamic innerHTML handlers (chat-input.js)
   _removeAiAttach, _removeMealAttach, _removeSessionAttach,
-  deleteCompareAnalysis, deleteSession, discardMealRefine, discardSessionRefine, editSession, editStepsEntry, editWaist,
-  exportData, finishSession, finishWorkoutTimer, fullBackup, generateWeeklyAnalysis,
-  importData, loadWorkoutPlan, mealAttachFiles, onMealPhotoSelected,
-  onPhotoPicked, openCardioPicker, openMealModal, openPlanModal,
-  openSessionRefine, openSet, openSettings, openSyncSetup, openTemplateEdit,
-  openTemplatePicker, pickExercise, pullFromDrive, quickSaveMealAsTemplate,
-  reanalyzeMeal, reanalyzeMealInPlace, refineMealEstimate, refineSessionEstimate,
-  removeCardio, removeCardioActivity, removeExercise, removeMeal,
-  removePendingMealPhoto, removePhoto, removeSet, removeSteps, removeWaist,
-  renderAnalysis, renderCompareByDate, renderExerciseList, renderSteps,
-  requestMealEstimateUpdate,
-  requestSessionEstimateUpdate, resetWorkoutTimer, restorePhotosFromDrive,
-  saveAndTestSync, saveCurrentMealAsTemplate, saveGeminiKey, saveMeal,
-  saveTemplateEdit, saveWorkoutSteps, sendAIMessage, sessionAttachFiles,
-  setAnalysisMode, setSessionTime, setTrendMode, shiftAnalysisDate,
-  shiftWorkoutDate, showSyncQR, smartUpdateSummaries, startWorkout,
-  startWorkoutTimer, switchTab, syncGoogleFit, testSync, toggleStepsEdit,
-  toggleWaistEdit, updateCardioField, updateExerciseNote, updateSessionDate,
-  updateSessionTime, useTemplate, wipeAll,
+
+  // Cross-module window.X?.() calls (avoid circular imports)
+  renderAnalysis, renderSteps, switchTab, smartUpdateSummaries,
 });
