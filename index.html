@@ -399,7 +399,7 @@
     <div class="muted small" id="cloudBackupHint" style="margin: -2px 4px 10px;">Sessions + waist measurements. Auto-uploads to your Drive Fit folder.</div>
     <button style="width:100%; margin-bottom:8px;" onclick="exportData({local:true})">💾 Download local copy</button>
     <div class="muted small" style="margin: -2px 4px 10px;">Saves the JSON to your computer / phone Files.</div>
-    <button style="width:100%; margin-bottom:8px;" id="fullBackupBtn" onclick="exportData({cloud: !!state.sync?.webhookUrl, local: !state.sync?.webhookUrl, includePhotos:true})">📦 Full backup (with photos)</button>
+    <button style="width:100%; margin-bottom:8px;" id="fullBackupBtn" onclick="fullBackup()">📦 Full backup (with photos)</button>
     <button class="ghost" style="width:100%; margin-bottom:8px;" id="restorePhotosBtn" onclick="restorePhotosFromDrive()">📸 Restore photos from Drive (merge)</button>
     <button class="ghost" style="width:100%; margin-bottom:8px;" onclick="dedupePhotos()">🧹 Clean up duplicate photos</button>
     <div class="muted small" id="fullBackupHint" style="margin: -2px 4px 10px;">Includes photos as base64. Use occasionally.</div>

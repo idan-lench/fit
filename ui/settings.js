@@ -1,7 +1,7 @@
 import { state, save } from '../data/state.js';
 import { toast } from '../core/dom.js';
 import { getGeminiKey } from '../integrations/gemini.js';
-import { ensureSecret, buildAppsScript, pingSync } from '../integrations/drive-sync.js';
+import { ensureSecret, buildAppsScript, pingSync, exportData } from '../integrations/drive-sync.js';
 import { gfitGetToken, gfitDateRange, gfitAggregate, gfitExtractInt, gfitExtractFloat, clearCachedGfitToken } from '../integrations/google-fit.js';
 import { clearPhotos, putPhoto } from '../data/photo-store.js';
 import { clearMeals, putMeal } from '../data/meals-store.js';
@@ -19,6 +19,17 @@ export function openSettings() {
 
 export function closeSettings() {
   document.getElementById('settingsModal').classList.remove('show');
+}
+
+// Full backup (with photos): uploads to Drive if sync is configured, else
+// downloads locally. Reads state here (not in the inline onclick) since state
+// is module-scoped, not a global.
+export function fullBackup() {
+  return exportData({
+    cloud: !!state.sync?.webhookUrl,
+    local: !state.sync?.webhookUrl,
+    includePhotos: true,
+  });
 }
 
 // ---------- DRIVE SYNC (UI) ----------

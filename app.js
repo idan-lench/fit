@@ -22,7 +22,7 @@ import { renderAnalysis, setTrendMode, setAnalysisMode, shiftAnalysisDate, gener
 import { saveGeminiKey, renderAI, aiAttachFiles, _removeAiAttach, sendAIMessage, askAI } from './ui/chat-tab.js';
 import {
   openSettings, closeSettings, openSyncSetup, closeSyncSetup, closeSyncQR, showSyncQR,
-  copySecret, copyScript, saveAndTestSync, testSync, importData, wipeAll, syncGoogleFit,
+  copySecret, copyScript, saveAndTestSync, testSync, importData, wipeAll, syncGoogleFit, fullBackup,
 } from './ui/settings.js';
 import {
   renderBody, renderSteps, renderPhotos, renderCompareByDate,
@@ -296,7 +296,7 @@ Object.assign(window, {
   confirmDeleteTemplate, confirmSet, copyScript, copySecret, dedupePhotos,
   _removeAiAttach, _removeMealAttach, _removeSessionAttach,
   deleteCompareAnalysis, deleteSession, discardMealRefine, discardSessionRefine, editSession, editStepsEntry, editWaist,
-  exportData, finishSession, finishWorkoutTimer, generateWeeklyAnalysis,
+  exportData, finishSession, finishWorkoutTimer, fullBackup, generateWeeklyAnalysis,
   importData, loadWorkoutPlan, mealAttachFiles, onMealPhotoSelected,
   onPhotoPicked, openCardioPicker, openMealModal, openPlanModal,
   openSessionRefine, openSet, openSettings, openSyncSetup, openTemplateEdit,
