@@ -10,9 +10,11 @@
     "check:dead-code": "node scripts/check-dead-code.js",
     "check:duplication": "node scripts/check-duplication.js",
     "check:imports": "node scripts/check-imports.js",
+    "test:e2e": "playwright test",
     "ci": "npm run syntax && npm run check:dead-code && npm run check:duplication && npm run check:imports && npm test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^25.0.0"
   }
