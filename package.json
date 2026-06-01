@@ -1,0 +1,18 @@
+{
+  "name": "fit-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal fitness PWA — meals, workouts, body, AI coach.",
+  "scripts": {
+    "syntax": "node --check app.js 2>/dev/null || true; find . -name '*.js' -not -path './node_modules/*' -not -path './.git/*' -print -exec node --check {} \\;",
+    "test": "node --test --test-reporter=spec",
+    "check:dead-code": "node scripts/check-dead-code.js",
+    "check:duplication": "node scripts/check-duplication.js",
+    "ci": "npm run syntax && npm run check:dead-code && npm run check:duplication && npm test"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^25.0.0"
+  }
+}

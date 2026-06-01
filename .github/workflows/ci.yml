@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main, refactor/**]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dev dependencies
+        run: npm ci || npm install
+
+      - name: Syntax check all .js files
+        run: |
+          set -e
+          # Skip node_modules and any third-party libs
+          mapfile -t files < <(find . -type f -name '*.js' \
+            -not -path './node_modules/*' \
+            -not -path './.git/*')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No .js files to check yet."
+            exit 0
+          fi
+          for f in "${files[@]}"; do
+            echo "checking: $f"
+            node --check "$f"
+          done
+
+      - name: Dead-code scan
+        run: node scripts/check-dead-code.js
+
+      - name: Duplication scan
+        run: node scripts/check-duplication.js
+
+      - name: Run tests
+        run: node --test --test-reporter=spec
