@@ -6,6 +6,7 @@
 // see scripts/check-duplication.js.
 
 import { todayISO } from '../core/time.js';
+import { toast } from '../core/dom.js';
 import { blobToDataUrl } from '../core/format.js';
 import { state, save } from '../data/state.js';
 import { getAllMeals, putMeal, clearMeals } from '../data/meals-store.js';
