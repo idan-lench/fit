@@ -43,5 +43,8 @@ jobs:
       - name: Duplication scan
         run: node scripts/check-duplication.js
 
+      - name: Missing-import scan
+        run: node scripts/check-imports.js
+
       - name: Run tests
         run: node --test --test-reporter=spec

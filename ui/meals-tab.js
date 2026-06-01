@@ -9,6 +9,7 @@ import { applyTemplateDelta } from '../domain/templates.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { downscale } from './shared/image.js';
 import { attachFilesTo, renderAttachPreview } from './shared/chat-input.js';
+import { PROMPTS } from '../prompts/index.js';
 
 // Cross-tab render (insights tab lives in app.js for now).
 const refreshInsights = () => window.renderAnalysis?.();
