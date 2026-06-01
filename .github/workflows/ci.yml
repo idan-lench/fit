@@ -48,3 +48,9 @@ jobs:
 
       - name: Run tests
         run: node --test --test-reporter=spec
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
