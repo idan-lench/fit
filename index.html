@@ -19,7 +19,7 @@
     <h1 id="pageTitle">Insights</h1>
     <div class="sub" id="todayLabel">—</div>
   </div>
-  <button class="icon ghost" onclick="openSettings()" aria-label="Settings">⚙︎</button>
+  <button class="icon ghost" id="headerSettingsBtn" aria-label="Settings">⚙︎</button>
 </header>
 
 <main>
@@ -27,9 +27,9 @@
   <!-- WORKOUT TAB -->
   <section id="tab-workout">
     <div class="row between" style="align-items: center; padding: 4px 4px 0;">
-      <button class="icon ghost" onclick="shiftWorkoutDate(-1)" aria-label="Previous">‹</button>
+      <button class="icon ghost" id="workoutPrevBtn" aria-label="Previous">‹</button>
       <span id="workoutDateLabel" style="font-weight: 600; font-size: 16px;"></span>
-      <button class="icon ghost" id="workoutNextBtn" onclick="shiftWorkoutDate(1)" aria-label="Next">›</button>
+      <button class="icon ghost" id="workoutNextBtn" aria-label="Next">›</button>
     </div>
 
     <!-- Steps slot — always present in workout day view -->
@@ -45,8 +45,8 @@
       </div>
       <div class="row" style="gap: 8px;">
         <input type="number" id="workoutStepsInput" inputmode="numeric" placeholder="Log steps for this day" style="flex: 1;">
-        <button class="primary" onclick="saveWorkoutSteps()">Save</button>
-        <button class="ghost" id="fitSyncBtn" onclick="syncGoogleFit()" title="Sync from Google Fit" style="padding: 0 12px;">🏃 Sync</button>
+        <button class="primary" id="saveStepsBtn">Save</button>
+        <button class="ghost" id="fitSyncBtn" title="Sync from Google Fit" style="padding: 0 12px;">🏃 Sync</button>
       </div>
       <div id="fitSyncStatus" class="small muted" style="margin-top: 6px; display: none;"></div>
     </div>
@@ -56,26 +56,26 @@
       <div class="muted small">Today's plan</div>
       <div id="workoutPlanLabel" style="font-weight: 600; font-size: 17px; margin-top: 2px;"></div>
       <div class="row" style="gap: 8px; margin-top: 10px;">
-        <button class="primary grow" onclick="loadWorkoutPlan()">Load plan</button>
-        <button class="ghost" onclick="startWorkout('custom')">+ Custom</button>
+        <button class="primary grow" id="loadPlanBtn">Load plan</button>
+        <button class="ghost" id="startWorkoutFromPlanBtn">+ Custom</button>
       </div>
     </div>
 
     <!-- Empty state for non-plan days: just show the action buttons -->
     <div id="workoutEmptyState" class="card" style="display: none;">
       <div class="muted small" style="margin-bottom: 10px;">No workout for this day yet.</div>
-      <button class="primary" style="width:100%;" onclick="startWorkout('custom')">+ Add workout</button>
+      <button class="primary" id="startWorkoutEmptyBtn" style="width:100%;">+ Add workout</button>
     </div>
 
     <div class="row between" style="margin-top: 18px; align-items: center;" id="sessionHeaderRow">
       <h2 id="workoutTitle" style="margin: 0;">Workout</h2>
-      <button class="ghost" id="workoutCancelBtn" onclick="cancelSession()" style="display: none; padding: 6px 14px; font-size: 14px;">Cancel</button>
+      <button class="ghost" id="workoutCancelBtn" style="display: none; padding: 6px 14px; font-size: 14px;">Cancel</button>
     </div>
 
     <!-- Session timer / status -->
     <div id="sessionTimerCard" class="card" style="display: none; margin-top: 10px;">
       <div id="timerNotStarted" style="display: none;">
-        <button class="primary" style="width: 100%;" onclick="startWorkoutTimer()">Start workout</button>
+        <button class="primary" id="startTimerBtn" style="width: 100%;">Start workout</button>
       </div>
       <div id="timerInProgress" style="display: none;">
         <div class="row between" style="align-items: center;">
@@ -83,34 +83,34 @@
             <div class="muted small">In progress · <span id="timerStartLabel"></span></div>
             <div class="big" id="timerElapsed" style="font-size: 22px; margin-top: 2px;">0 min</div>
           </div>
-          <button class="primary" onclick="finishWorkoutTimer()">Finish</button>
+          <button class="primary" id="finishTimerBtn">Finish</button>
         </div>
       </div>
       <div id="timerFinished" style="display: none;">
         <div class="muted small">Workout duration</div>
         <div class="row between" style="align-items: baseline;">
           <div class="big" id="timerFinishedLabel" style="font-size: 22px;"></div>
-          <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="resetWorkoutTimer()">Reset timer</button>
+          <button class="ghost" id="resetTimerBtn" style="padding: 4px 10px; font-size: 13px;">Reset timer</button>
         </div>
       </div>
     </div>
 
     <div class="row" style="gap: 8px; align-items: center; padding: 8px 4px 0; flex-wrap: wrap;" id="sessionMetaRow">
       <label class="muted small" style="margin: 0;">Date:</label>
-      <input type="date" id="sessionDate" style="flex: 1; max-width: 150px;" onchange="updateSessionDate(this.value)">
+      <input type="date" id="sessionDate" style="flex: 1; max-width: 150px;">
       <label class="muted small" style="margin: 0;">Time:</label>
-      <input type="time" id="sessionTime" style="flex: 1; max-width: 120px;" onchange="updateSessionTime(this.value)">
-      <button class="ghost" style="padding: 8px 12px; font-size: 14px;" onclick="openPlanModal()">View plan</button>
+      <input type="time" id="sessionTime" style="flex: 1; max-width: 120px;">
+      <button class="ghost" id="viewPlanBtn" style="padding: 8px 12px; font-size: 14px;">View plan</button>
     </div>
     <!-- Cardio activities (multiple allowed) -->
     <div id="cardioList" style="margin-top: 8px;"></div>
-    <button class="ghost" id="addCardioBtn" style="width: 100%; margin-top: 6px; border-style: dashed; display: none;" onclick="openCardioPicker()">+ Add cardio activity</button>
+    <button class="ghost" id="addCardioBtn" style="width: 100%; margin-top: 6px; border-style: dashed; display: none;">+ Add cardio activity</button>
 
     <div id="exerciseList"></div>
 
     <div class="row" id="saveRow" style="margin-top: 8px; display: none;">
-      <button class="grow" onclick="finishSession()">Save session</button>
-      <button class="ghost" onclick="cancelSession()">Reset</button>
+      <button class="grow" id="finishSessionBtn">Save session</button>
+      <button class="ghost" id="resetSessionBtn">Reset</button>
     </div>
 
     <h2>History</h2>
@@ -145,14 +145,14 @@
           <input type="date" id="waistDate">
         </div>
       </div>
-      <button class="primary" style="width: 100%; margin-top: 12px;" onclick="addWaist()">Save</button>
+      <button class="primary" id="saveWaistBtn" style="width: 100%; margin-top: 12px;">Save</button>
     </div>
 
     <h2>Waist trend</h2>
     <div class="card">
       <div class="row between" style="margin-bottom: 8px; align-items: center;">
         <div class="muted small" id="waistChartSubtitle">&nbsp;</div>
-        <button class="ghost" id="waistEditBtn" onclick="toggleWaistEdit()" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
+        <button class="ghost" id="waistEditBtn" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
       </div>
       <div id="waistChart"></div>
       <div id="waistList" style="margin-top: 8px; display: none;"></div>
@@ -160,11 +160,11 @@
 
     <h2>Photos</h2>
     <div class="card">
-      <input type="file" accept="image/*" capture="environment" id="photoCameraInput" style="display:none" onchange="onPhotoPicked(event)">
-      <input type="file" accept="image/*" id="photoGalleryInput" multiple style="display:none" onchange="onPhotoPicked(event)">
+      <input type="file" accept="image/*" capture="environment" id="photoCameraInput" style="display:none">
+      <input type="file" accept="image/*" id="photoGalleryInput" multiple style="display:none">
       <div class="row" style="gap: 8px;">
-        <button class="primary grow" onclick="document.getElementById('photoCameraInput').click()">📷 Take photo</button>
-        <button class="grow" onclick="document.getElementById('photoGalleryInput').click()">🖼 From gallery</button>
+        <button class="primary grow" id="photoCameraBtn">📷 Take photo</button>
+        <button class="grow" id="photoGalleryBtn">🖼 From gallery</button>
       </div>
       <div class="small muted" style="margin-top: 8px;">Tip: same lighting, same pose, same time of day. Mornings work best.</div>
     </div>
@@ -174,16 +174,16 @@
       <div class="row" style="gap: 8px; flex-wrap: wrap;">
         <div style="flex: 1; min-width: 130px;">
           <label class="muted small">Earlier</label>
-          <input type="date" id="compareDateA" onchange="renderCompareByDate()">
+          <input type="date" id="compareDateA">
         </div>
         <div style="flex: 1; min-width: 130px;">
           <label class="muted small">Later</label>
-          <input type="date" id="compareDateB" onchange="renderCompareByDate()">
+          <input type="date" id="compareDateB">
         </div>
       </div>
       <div class="muted small" id="compareHint" style="margin-top: 10px;">Pick two dates to load all photos from each.</div>
       <div id="compareGrid" style="margin-top: 10px; display: none;"></div>
-      <button class="primary" id="compareAnalyzeBtn" style="width:100%; margin-top: 10px; display: none;" onclick="analyzePhotoComparison()">🔍 Analyze changes with AI</button>
+      <button class="primary" id="compareAnalyzeBtn" style="width:100%; margin-top: 10px; display: none;">🔍 Analyze changes with AI</button>
     </div>
 
     <h2 id="compareHistoryTitle" style="display: none;">Comparison history</h2>
@@ -198,8 +198,8 @@
     <h2>Log a meal</h2>
     <div class="card">
       <div class="row" style="gap: 8px;">
-        <button class="primary grow" onclick="openMealModal()">+ Add meal</button>
-        <button class="ghost" onclick="openTemplatePicker()" style="flex-shrink: 0;">📋 Templates</button>
+        <button class="primary grow" id="addMealBtn">+ Add meal</button>
+        <button class="ghost" id="openTemplateBtnMeals" style="flex-shrink: 0;">📋 Templates</button>
       </div>
       <div class="muted small" style="margin-top: 8px;">Optional. Photo + short note. Logs locally — Claude only sees them when you do "Full backup (with photos)" in Settings.</div>
     </div>
@@ -222,14 +222,14 @@
   <section id="tab-analysis" class="active">
     <div class="row" style="justify-content: center; padding: 4px 4px 8px;">
       <div class="segmented">
-        <button id="analysisModeDay" class="on" onclick="setAnalysisMode('day')">Day</button>
-        <button id="analysisModeWeek" onclick="setAnalysisMode('week')">Week</button>
+        <button id="analysisModeDay" class="on">Day</button>
+        <button id="analysisModeWeek">Week</button>
       </div>
     </div>
     <div class="row between" style="align-items: center; padding: 4px 4px 0;">
-      <button class="icon ghost" onclick="shiftAnalysisDate(-1)" aria-label="Previous">‹</button>
+      <button class="icon ghost" id="analysisPrevBtn" aria-label="Previous">‹</button>
       <span id="analysisDateLabel" style="font-weight: 600; font-size: 16px;"></span>
-      <button class="icon ghost" id="analysisNextBtn" onclick="shiftAnalysisDate(1)" aria-label="Next">›</button>
+      <button class="icon ghost" id="analysisNextBtn" aria-label="Next">›</button>
     </div>
 
     <!-- DAY VIEW -->
@@ -258,9 +258,9 @@
       <div class="row between" style="align-items: center; margin-top: 18px; margin-bottom: 6px;">
         <h2 style="margin: 0;">Nutrition trend</h2>
         <div class="segmented" style="display: inline-flex; gap: 0; background: var(--panel); border-radius: 10px; padding: 2px;">
-          <button class="ghost" id="trendModeDay"   onclick="setTrendMode('day')"   style="padding: 4px 10px; font-size: 12px; border-radius: 8px;">Day</button>
-          <button class="ghost" id="trendModeWeek"  onclick="setTrendMode('week')"  style="padding: 4px 10px; font-size: 12px; border-radius: 8px;">Week</button>
-          <button class="ghost" id="trendModeMonth" onclick="setTrendMode('month')" style="padding: 4px 10px; font-size: 12px; border-radius: 8px;">Month</button>
+          <button class="ghost" id="trendModeDay"   style="padding: 4px 10px; font-size: 12px; border-radius: 8px;">Day</button>
+          <button class="ghost" id="trendModeWeek"  style="padding: 4px 10px; font-size: 12px; border-radius: 8px;">Week</button>
+          <button class="ghost" id="trendModeMonth" style="padding: 4px 10px; font-size: 12px; border-radius: 8px;">Month</button>
         </div>
       </div>
       <div class="card">
@@ -287,7 +287,7 @@
       <div class="card">
         <div class="row between" style="margin-bottom: 10px; align-items: center;">
           <div style="font-weight: 600;">Daily steps</div>
-          <button class="ghost" id="stepsEditBtn" onclick="toggleStepsEdit()" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
+          <button class="ghost" id="stepsEditBtn" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
         </div>
         <div id="stepsChart"></div>
         <div id="stepsList" style="margin-top: 8px; display: none;"></div>
@@ -295,7 +295,7 @@
 
       <div id="analysisBanner" style="display: none; margin: 8px 0; padding: 10px 12px; border-radius: 10px; border-left: 3px solid var(--warn); background: rgba(255, 149, 0,0.12);"></div>
       <div class="row" style="gap: 8px; margin: 8px 0;">
-        <button class="primary grow" id="smartUpdateBtn" onclick="smartUpdateSummaries()">Generate Daily Analysis</button>
+        <button class="primary grow" id="smartUpdateBtn">Generate Daily Analysis</button>
       </div>
 
       <h2>AI notes</h2>
@@ -331,7 +331,7 @@
       </div>
 
       <div class="row" style="gap: 8px; margin: 12px 0;">
-        <button class="primary grow" id="weeklyUpdateBtn" onclick="generateWeeklyAnalysis()">Generate Weekly Analysis</button>
+        <button class="primary grow" id="weeklyUpdateBtn">Generate Weekly Analysis</button>
       </div>
 
       <h2>Weekly AI notes</h2>
@@ -344,26 +344,26 @@
     <h2>Ask AI</h2>
     <div class="card" id="aiSetup" style="display: none;">
       <div class="muted small" style="margin-bottom: 8px;">⚙️ Set up your Gemini API key first in Settings.</div>
-      <button class="primary" style="width:100%;" onclick="openSettings()">Open Settings</button>
+      <button class="primary" id="aiSetupSettingsBtn" style="width:100%;">Open Settings</button>
     </div>
     <div id="aiReady" style="display: none;">
       <div class="card" style="margin-bottom: 10px;">
         <div class="muted small" style="margin-bottom: 6px;">Quick questions:</div>
         <div class="row" style="gap: 6px; flex-wrap: wrap;">
-          <span class="chip" onclick="askAI('Review my day')" style="cursor: pointer;">Review my day</span>
-          <span class="chip" onclick="askAI('How is my protein this week?')" style="cursor: pointer;">Protein this week</span>
-          <span class="chip" onclick="askAI('What should I do tomorrow?')" style="cursor: pointer;">Plan tomorrow</span>
-          <span class="chip" onclick="askAI('Am I on track for my waist goal?')" style="cursor: pointer;">Goal progress</span>
+          <span class="chip" data-ask="Review my day" style="cursor: pointer;">Review my day</span>
+          <span class="chip" data-ask="How is my protein this week?" style="cursor: pointer;">Protein this week</span>
+          <span class="chip" data-ask="What should I do tomorrow?" style="cursor: pointer;">Plan tomorrow</span>
+          <span class="chip" data-ask="Am I on track for my waist goal?" style="cursor: pointer;">Goal progress</span>
         </div>
       </div>
       <div id="aiMessages" style="margin-bottom: 100px;"></div>
       <div style="position: fixed; bottom: calc(72px + env(safe-area-inset-bottom)); left: 0; right: 0; max-width: 720px; margin: 0 auto; padding: 8px 14px; background: var(--bg); border-top: 1px solid var(--line); z-index: 5;">
         <div id="aiAttachPreview" style="display:none; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;"></div>
         <div class="chat-input-row">
-          <button class="chat-icon-btn" onclick="document.getElementById('aiFileInput').click()" aria-label="Attach image"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
-          <input type="file" id="aiFileInput" accept="image/*" multiple style="display:none" onchange="aiAttachFiles(this)">
-          <textarea id="aiInput" placeholder="Ask anything…" rows="1" oninput="autoResizeTA(this)"></textarea>
-          <button class="chat-send-btn" onclick="sendAIMessage()" aria-label="Send"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+          <button class="chat-icon-btn" id="aiAttachBtn" aria-label="Attach image"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
+          <input type="file" id="aiFileInput" accept="image/*" multiple style="display:none">
+          <textarea id="aiInput" placeholder="Ask anything…" rows="1"></textarea>
+          <button class="chat-send-btn" id="aiSendBtn" aria-label="Send"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
         </div>
       </div>
     </div>
@@ -374,81 +374,81 @@
 
 <!-- BOTTOM NAV -->
 <nav class="nav">
-  <button data-tab="workout" onclick="switchTab('workout')">
+  <button data-tab="workout">
     <span class="ic">🏋︎</span>Workout
   </button>
-  <button data-tab="meals" onclick="switchTab('meals')">
+  <button data-tab="meals">
     <span class="ic">🍽</span>Meals
   </button>
-  <button class="active" data-tab="analysis" onclick="switchTab('analysis')">
+  <button class="active" data-tab="analysis">
     <span class="ic">💡</span>Insights
   </button>
-  <button data-tab="body" onclick="switchTab('body')">
+  <button data-tab="body">
     <span class="ic">📏</span>Body
   </button>
-  <button data-tab="ai" onclick="switchTab('ai')">
+  <button data-tab="ai">
     <span class="ic">✨</span>Chat
   </button>
 </nav>
 
 <!-- SETTINGS MODAL -->
-<div class="modal" id="settingsModal" onclick="if(event.target===this)closeSettings()">
+<div class="modal" id="settingsModal">
   <div class="body">
     <h2 style="margin-top:0">Settings</h2>
-    <button class="primary" id="cloudBackupBtn" style="width:100%; margin-bottom:8px;" onclick="exportData({cloud:true})">☁️ Backup to Drive</button>
+    <button class="primary" id="cloudBackupBtn" style="width:100%; margin-bottom:8px;">☁️ Backup to Drive</button>
     <div class="muted small" id="cloudBackupHint" style="margin: -2px 4px 10px;">Sessions + waist measurements. Auto-uploads to your Drive Fit folder.</div>
-    <button style="width:100%; margin-bottom:8px;" onclick="exportData({local:true})">💾 Download local copy</button>
+    <button id="localBackupBtn" style="width:100%; margin-bottom:8px;">💾 Download local copy</button>
     <div class="muted small" style="margin: -2px 4px 10px;">Saves the JSON to your computer / phone Files.</div>
-    <button style="width:100%; margin-bottom:8px;" id="fullBackupBtn" onclick="fullBackup()">📦 Full backup (with photos)</button>
-    <button class="ghost" style="width:100%; margin-bottom:8px;" id="restorePhotosBtn" onclick="restorePhotosFromDrive()">📸 Restore photos from Drive (merge)</button>
-    <button class="ghost" style="width:100%; margin-bottom:8px;" onclick="dedupePhotos()">🧹 Clean up duplicate photos</button>
+    <button style="width:100%; margin-bottom:8px;" id="fullBackupBtn">📦 Full backup (with photos)</button>
+    <button class="ghost" style="width:100%; margin-bottom:8px;" id="restorePhotosBtn">📸 Restore photos from Drive (merge)</button>
+    <button class="ghost" id="dedupePhotosBtn" style="width:100%; margin-bottom:8px;">🧹 Clean up duplicate photos</button>
     <div class="muted small" id="fullBackupHint" style="margin: -2px 4px 10px;">Includes photos as base64. Use occasionally.</div>
     <hr class="div">
     <div style="font-weight:600; margin-bottom:6px;">Cloud sync (Google Drive)</div>
     <div class="small" id="syncStatus" style="margin-bottom:8px;">Not configured</div>
-    <button style="width:100%; margin-bottom:6px;" onclick="openSyncSetup()">⚙ Set up sync</button>
-    <button class="primary" style="width:100%; margin-bottom:6px;" id="syncPullBtn" onclick="pullFromDrive({silent:false})" disabled>⬇ Pull latest from Drive</button>
-    <button style="width:100%; margin-bottom:8px;" id="syncTestBtn" onclick="testSync()" disabled>Test connection</button>
+    <button id="openSyncSetupBtn" style="width:100%; margin-bottom:6px;">⚙ Set up sync</button>
+    <button class="primary" id="syncPullBtn" style="width:100%; margin-bottom:6px;" disabled>⬇ Pull latest from Drive</button>
+    <button id="syncTestBtn" style="width:100%; margin-bottom:8px;" disabled>Test connection</button>
     <hr class="div">
     <div style="font-weight:600; margin-bottom:6px;">AI features (Gemini)</div>
     <label>Gemini API key</label>
-    <input type="text" id="geminiKeyInput" placeholder="AIzaSy…" style="font-family: ui-monospace, monospace; font-size: 12px;" oninput="saveGeminiKey(this.value)">
+    <input type="text" id="geminiKeyInput" placeholder="AIzaSy…" style="font-family: ui-monospace, monospace; font-size: 12px;">
     <div class="muted small" style="margin: 4px 0 8px;">Free at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color: var(--accent);">aistudio.google.com/app/apikey</a>. Stored on this device only. Your meal/workout data is sent to Google when AI features run.</div>
     <hr class="div">
-    <button style="width:100%; margin-bottom:8px;" onclick="document.getElementById('importInput').click()">Import / Restore</button>
-    <input type="file" accept=".json,application/json" id="importInput" style="display:none" onchange="importData(event)">
+    <button id="importTriggerBtn" style="width:100%; margin-bottom:8px;">Import / Restore</button>
+    <input type="file" accept=".json,application/json" id="importInput" style="display:none">
     <hr class="div">
-    <button class="danger" style="width:100%;" onclick="if(confirm('Erase ALL data? This cannot be undone.')) wipeAll();">Erase all data</button>
+    <button class="danger" id="wipeAllBtn" style="width:100%;">Erase all data</button>
     <hr class="div">
-    <button class="ghost" style="width:100%; margin-top:8px;" onclick="closeSettings()">Close</button>
+    <button class="ghost" id="closeSettingsBtn" style="width:100%; margin-top:8px;">Close</button>
   </div>
 </div>
 
 <!-- PLAN MODAL -->
-<div class="modal" id="planModal" onclick="if(event.target===this)closePlanModal()">
+<div class="modal" id="planModal">
   <div class="body">
     <h2 style="margin-top:0">Weekly plan</h2>
     <div id="planList"></div>
     <hr class="div">
     <div class="muted small">Use this as a reference. You can log to any day, regardless of plan.</div>
-    <button class="ghost" style="width:100%; margin-top: 12px;" onclick="closePlanModal()">Close</button>
+    <button class="ghost" id="closePlanBtn" style="width:100%; margin-top: 12px;">Close</button>
   </div>
 </div>
 
 <!-- MEAL MODAL -->
-<div class="modal" id="mealModal" onclick="if(event.target===this)closeMealModal()">
+<div class="modal" id="mealModal">
   <div class="body">
     <h2 style="margin-top:0">New meal</h2>
-    <input type="file" accept="image/*" capture="environment" id="mealCameraInput" style="display:none" onchange="onMealPhotoSelected(event)">
-    <input type="file" accept="image/*" id="mealGalleryInput" multiple style="display:none" onchange="onMealPhotoSelected(event)">
+    <input type="file" accept="image/*" capture="environment" id="mealCameraInput" style="display:none">
+    <input type="file" accept="image/*" id="mealGalleryInput" multiple style="display:none">
     <div id="mealPreview" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 10px 0;"></div>
     <div class="row" style="gap: 8px;">
-      <button class="primary grow" onclick="document.getElementById('mealCameraInput').click()">📷 Take photo</button>
-      <button class="grow" onclick="document.getElementById('mealGalleryInput').click()">🖼 From gallery</button>
+      <button class="primary grow" id="mealCameraBtn">📷 Take photo</button>
+      <button class="grow" id="mealGalleryBtn">🖼 From gallery</button>
     </div>
-    <button class="ghost" style="width: 100%; margin-top: 6px;" onclick="openTemplatePicker()">📋 From template</button>
+    <button class="ghost" id="mealFromTemplateBtn" style="width: 100%; margin-top: 6px;">📋 From template</button>
     <div class="muted small" style="margin-top: 4px;">Take photos one at a time, or pick several from gallery.</div>
-    <textarea id="mealDescInput" placeholder="Optional: lunch, chicken &amp; rice…" rows="1" style="margin-top: 12px; resize: none; overflow-y: auto; max-height: 160px; min-height: 47px; line-height: 1.4;" oninput="autoResizeTA(this)"></textarea>
+    <textarea id="mealDescInput" placeholder="Optional: lunch, chicken &amp; rice…" rows="1" style="margin-top: 12px; resize: none; overflow-y: auto; max-height: 160px; min-height: 47px; line-height: 1.4;"></textarea>
     <div class="row" style="gap: 8px; margin-top: 10px;">
       <div style="flex: 1;">
         <label>Date</label>
@@ -481,25 +481,25 @@
       <div id="refineResult" style="display:none; margin-bottom: 8px;"></div>
       <div id="mealAttachPreview" style="display:none; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;"></div>
       <div class="chat-input-row">
-        <button class="chat-icon-btn" onclick="document.getElementById('mealFileInput').click()" aria-label="Attach image"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
-        <input type="file" id="mealFileInput" accept="image/*" multiple style="display:none" onchange="mealAttachFiles(this)">
-        <textarea id="refineInput" placeholder="Message…" rows="1" oninput="autoResizeTA(this)"></textarea>
-        <button class="chat-send-btn" onclick="refineMealEstimate()" aria-label="Send"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+        <button class="chat-icon-btn" id="mealAttachBtn" aria-label="Attach image"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
+        <input type="file" id="mealFileInput" accept="image/*" multiple style="display:none">
+        <textarea id="refineInput" placeholder="Message…" rows="1"></textarea>
+        <button class="chat-send-btn" id="mealRefineSendBtn" aria-label="Send"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
       </div>
-      <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestMealEstimateUpdate()">🔄 Update calorie estimate from this chat</button>
+      <button class="ghost" id="updateMealEstimateBtn" style="width:100%; margin-top: 8px; display: none;">🔄 Update calorie estimate from this chat</button>
     </div>
 
-    <button id="reanalyzeMealBtn" style="display:none; width:100%; margin-top: 12px;" onclick="reanalyzeMeal()">Re-analyze this meal</button>
-    <button id="saveAsTemplateBtn" style="display:none; width:100%; margin-top: 8px;" onclick="saveCurrentMealAsTemplate()">💾 Save as template</button>
+    <button id="reanalyzeMealBtn" style="display:none; width:100%; margin-top: 12px;">Re-analyze this meal</button>
+    <button id="saveAsTemplateBtn" style="display:none; width:100%; margin-top: 8px;">💾 Save as template</button>
     <div class="row" style="margin-top: 10px; gap: 10px;">
-      <button class="grow primary" onclick="saveMeal()">Save</button>
-      <button class="ghost" onclick="closeMealModal()">Cancel</button>
+      <button class="grow primary" id="saveMealBtn">Save</button>
+      <button class="ghost" id="cancelMealBtn">Cancel</button>
     </div>
   </div>
 </div>
 
 <!-- SYNC SETUP MODAL -->
-<div class="modal" id="syncModal" onclick="if(event.target===this)closeSyncSetup()">
+<div class="modal" id="syncModal">
   <div class="body" style="max-width: 560px; max-height: 90vh; display: flex; flex-direction: column;">
     <h2 style="margin-top:0">Set up Google Drive sync</h2>
     <div style="overflow-y:auto; padding-right: 4px;">
@@ -514,7 +514,7 @@
       <div class="card" style="background: var(--panel2); margin-bottom: 12px;">
         <b>Step 2.</b> Delete any code in the editor and paste this whole block:
         <textarea id="appsScriptCode" readonly style="width:100%; height: 220px; margin-top: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font-family: ui-monospace, monospace; font-size: 11px; resize: vertical;"></textarea>
-        <button class="primary" style="width:100%; margin-top: 6px;" onclick="copyScript()">📋 Copy code</button>
+        <button class="primary" id="copyScriptBtn" style="width:100%; margin-top: 6px;">📋 Copy code</button>
       </div>
 
       <div class="card" style="background: var(--panel2); margin-bottom: 12px;">
@@ -544,18 +544,18 @@
           Must match the <code>SECRET</code> in your Apps Script.
           <b>Setting up a 2nd device?</b> Paste the secret from your 1st device here.
         </div>
-        <button class="ghost" style="width:100%; margin-top: 6px;" onclick="copySecret()">📋 Copy secret to share with another device</button>
-        <button class="ghost" style="width:100%; margin-top: 6px;" onclick="showSyncQR()">📱 Show QR for new device</button>
+        <button class="ghost" id="copySecretBtn" style="width:100%; margin-top: 6px;">📋 Copy secret to share with another device</button>
+        <button class="ghost" id="showSyncQrBtn" style="width:100%; margin-top: 6px;">📱 Show QR for new device</button>
       </div>
     </div>
     <hr class="div" style="margin: 8px 0 0;">
-    <button class="primary" style="width:100%; margin-top: 8px;" onclick="saveAndTestSync()">Save & test</button>
-    <button class="ghost" style="width:100%; margin-top:6px;" onclick="closeSyncSetup()">Close</button>
+    <button class="primary" id="saveTestSyncBtn" style="width:100%; margin-top: 8px;">Save & test</button>
+    <button class="ghost" id="closeSyncSetupBtn" style="width:100%; margin-top:6px;">Close</button>
   </div>
 </div>
 
 <!-- SESSION REFINE MODAL -->
-<div class="modal" id="sessionRefineModal" onclick="if(event.target===this)closeSessionRefine()">
+<div class="modal" id="sessionRefineModal">
   <div class="body">
     <div class="muted small" id="sessionRefineTitle" style="margin-bottom: 4px;"></div>
     <div class="small" id="sessionRefineCurrent" style="margin-bottom: 12px;"></div>
@@ -565,80 +565,80 @@
       <div id="sessionRefineResult" style="display:none; margin-bottom: 8px;"></div>
       <div id="sessionAttachPreview" style="display:none; flex-wrap: wrap; gap: 6px; margin-bottom: 6px;"></div>
       <div class="chat-input-row">
-        <button class="chat-icon-btn" onclick="document.getElementById('sessionFileInput').click()" aria-label="Attach image"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
-        <input type="file" id="sessionFileInput" accept="image/*" multiple style="display:none" onchange="sessionAttachFiles(this)">
-        <textarea id="sessionRefineInput" placeholder="Message…" rows="1" oninput="autoResizeTA(this)"></textarea>
-        <button class="chat-send-btn" onclick="refineSessionEstimate()" aria-label="Send"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+        <button class="chat-icon-btn" id="sessionAttachBtn" aria-label="Attach image"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
+        <input type="file" id="sessionFileInput" accept="image/*" multiple style="display:none">
+        <textarea id="sessionRefineInput" placeholder="Message…" rows="1"></textarea>
+        <button class="chat-send-btn" id="sessionRefineSendBtn" aria-label="Send"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
       </div>
-      <button class="ghost" id="updateSessionEstimateBtn" style="width:100%; margin-top: 8px; display: none;" onclick="requestSessionEstimateUpdate()">🔄 Update burn estimate from this chat</button>
+      <button class="ghost" id="updateSessionEstimateBtn" style="width:100%; margin-top: 8px; display: none;">🔄 Update burn estimate from this chat</button>
     </div>
 
-    <button class="ghost" style="width:100%; margin-top: 14px;" onclick="closeSessionRefine()">Close</button>
+    <button class="ghost" id="closeSessionRefineBtn" style="width:100%; margin-top: 14px;">Close</button>
   </div>
 </div>
 
 <!-- ADD-EXERCISE MODAL -->
-<div class="modal" id="exerciseModal" onclick="if(event.target===this)closeExercisePicker()">
+<div class="modal" id="exerciseModal">
   <div class="body" style="max-width: 460px; max-height: 85vh; display: flex; flex-direction: column;">
     <h2 style="margin-top:0">Add exercise</h2>
-    <input type="text" id="exerciseSearch" placeholder="🔍 Search…" oninput="renderExerciseList(this.value)" style="margin-bottom: 10px;">
+    <input type="text" id="exerciseSearch" placeholder="🔍 Search…" style="margin-bottom: 10px;">
     <div style="overflow-y: auto; margin: 0 -4px; padding: 0 4px;" id="exerciseListBody"></div>
     <hr class="div">
-    <button class="ghost" style="width:100%;" onclick="addCustomExerciseText()">+ Custom name…</button>
-    <button class="ghost" style="width:100%; margin-top:6px;" onclick="closeExercisePicker()">Cancel</button>
+    <button class="ghost" id="addCustomExerciseBtn" style="width:100%;">+ Custom name…</button>
+    <button class="ghost" id="cancelExerciseBtn" style="width:100%; margin-top:6px;">Cancel</button>
   </div>
 </div>
 
 <!-- ADD-SET MODAL -->
-<div class="modal" id="setModal" onclick="if(event.target===this)closeSet()">
+<div class="modal" id="setModal">
   <div class="body">
     <h2 style="margin-top:0" id="setModalTitle">Add set</h2>
     <label>Reps</label>
     <div class="stepper" style="justify-content: center; margin: 14px 0;">
-      <button onclick="bumpReps(-1)">−</button>
+      <button id="repsBumpDownBtn">−</button>
       <span class="val" id="setRepsVal">8</span>
-      <button onclick="bumpReps(1)">+</button>
+      <button id="repsBumpUpBtn">+</button>
     </div>
     <div class="row">
-      <button class="grow primary" onclick="confirmSet()">Add set</button>
-      <button class="ghost" onclick="closeSet()">Cancel</button>
+      <button class="grow primary" id="confirmSetBtn">Add set</button>
+      <button class="ghost" id="cancelSetBtn">Cancel</button>
     </div>
   </div>
 </div>
 
 <!-- TIMER ATTACH-TO PICKER MODAL -->
-<div class="modal" id="timerAttachModal" onclick="if(event.target===this)closeTimerAttach()">
+<div class="modal" id="timerAttachModal">
   <div class="body" style="max-width: 440px;">
     <h2 style="margin-top:0">⏱ Attach <span id="timerAttachDurLabel"></span> to:</h2>
     <div class="muted small" style="margin-bottom: 10px;">Pick the activity this time covers. The duration is also kept on the whole session for AI burn estimation.</div>
     <div id="timerAttachList"></div>
-    <button class="ghost" style="width:100%; margin-top: 10px;" onclick="closeTimerAttach()">Skip — keep on whole session</button>
+    <button class="ghost" id="closeTimerAttachBtn" style="width:100%; margin-top: 10px;">Skip — keep on whole session</button>
   </div>
 </div>
 
 <!-- CARDIO ACTIVITY PICKER MODAL -->
-<div class="modal" id="cardioPickerModal" onclick="if(event.target===this)closeCardioPicker()">
+<div class="modal" id="cardioPickerModal">
   <div class="body" style="max-width: 460px;">
     <h2 style="margin-top:0">Add cardio activity</h2>
     <div class="muted small" style="margin-bottom: 10px;">Pick a type. You can fill optional distance, duration and notes after.</div>
     <div id="cardioPickerList"></div>
     <hr class="div" style="margin: 12px 0;">
-    <button class="ghost" style="width:100%;" onclick="closeCardioPicker()">Cancel</button>
+    <button class="ghost" id="cancelCardioPickerBtn" style="width:100%;">Cancel</button>
   </div>
 </div>
 
 <!-- MEAL TEMPLATE PICKER MODAL -->
-<div class="modal" id="templatePickerModal" onclick="if(event.target===this)closeTemplatePicker()">
+<div class="modal" id="templatePickerModal">
   <div class="body" style="max-width: 480px; max-height: 85vh; display: flex; flex-direction: column;">
     <h2 style="margin-top:0">📋 Meal templates</h2>
     <div class="muted small" style="margin-bottom: 10px;">Tap a template to use it for this meal. Changes can be added after.</div>
     <div id="templatePickerList" style="overflow-y: auto; flex: 1;"></div>
-    <button class="ghost" style="width:100%; margin-top: 10px;" onclick="closeTemplatePicker()">Close</button>
+    <button class="ghost" id="closeTemplatePickerBtn" style="width:100%; margin-top: 10px;">Close</button>
   </div>
 </div>
 
 <!-- MEAL TEMPLATE EDIT MODAL -->
-<div class="modal" id="templateEditModal" onclick="if(event.target===this)closeTemplateEdit()">
+<div class="modal" id="templateEditModal">
   <div class="body" style="max-width: 480px;">
     <h2 style="margin-top:0">Edit template</h2>
     <input type="hidden" id="tplEditId">
@@ -658,31 +658,31 @@
     </div>
     <div class="muted small" style="margin-top: 8px;">Item breakdown is preserved as-is when calories are edited manually.</div>
     <div class="row" style="margin-top: 14px; gap: 10px;">
-      <button class="grow primary" onclick="saveTemplateEdit()">Save</button>
-      <button class="ghost" onclick="closeTemplateEdit()">Cancel</button>
+      <button class="grow primary" id="saveTemplateEditBtn">Save</button>
+      <button class="ghost" id="cancelTemplateEditBtn">Cancel</button>
     </div>
   </div>
 </div>
 
 <!-- SYNC QR MODAL -->
-<div class="modal" id="syncQrModal" onclick="if(event.target===this)closeSyncQR()">
+<div class="modal" id="syncQrModal">
   <div class="body" style="max-width: 360px; text-align: center;">
     <h2 style="margin-top:0">📱 Scan from new device</h2>
     <div class="muted small" style="margin-bottom: 12px;">Open your other device's camera, point it at the QR. Tap the link that appears, then tap Confirm.</div>
     <img id="syncQrImg" style="max-width: 100%; height: auto; background: #fff; padding: 12px; border-radius: 12px;" alt="QR code">
     <canvas id="syncQrCanvas" style="display: none;"></canvas>
     <div class="muted small" style="margin-top: 10px; word-break: break-all; font-family: ui-monospace, monospace; font-size: 10px;" id="syncQrUrl"></div>
-    <button class="primary" style="width:100%; margin-top: 12px;" onclick="closeSyncQR()">Close</button>
+    <button class="primary" id="closeSyncQrBtn" style="width:100%; margin-top: 12px;">Close</button>
   </div>
 </div>
 
 <!-- MUSCLE HEATMAP MODAL (post-save celebration) -->
-<div class="modal" id="heatmapModal" onclick="if(event.target===this)closeHeatmap()">
+<div class="modal" id="heatmapModal">
   <div class="body" style="max-width: 420px; text-align: center;">
     <h2 style="margin-top:0">💪 Nice work!</h2>
     <div class="muted small" id="heatmapSubtitle" style="margin-bottom: 10px;"></div>
     <div id="heatmapBody"></div>
-    <button class="primary" style="width:100%; margin-top: 12px;" onclick="closeHeatmap()">Close</button>
+    <button class="primary" id="closeHeatmapBtn" style="width:100%; margin-top: 12px;">Close</button>
   </div>
 </div>
 
