@@ -15,7 +15,6 @@ export function load() {
 }
 
 export const state = load() || {
-  sessions: [], measurements: [], current: null, steps: [], dailyNotes: [],
+  sessions: [], measurements: [], current: null, steps: [],
 };
 state.steps = state.steps || [];
-state.dailyNotes = state.dailyNotes || [];

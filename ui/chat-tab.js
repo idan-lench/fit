@@ -1,4 +1,5 @@
 import { state } from '../data/state.js';
+import { getRecentDailyNotes } from '../data/daily-notes-store.js';
 import { todayISO } from '../core/time.js';
 import { escapeHtml } from '../core/format.js';
 import { autoResizeTA } from '../core/dom.js';
@@ -43,7 +44,7 @@ async function buildAIContext() {
       notes: s.notes || null
     })),
     meals: mealSummary,
-    recentNotes: (state.dailyNotes || []).slice(-7),
+    recentNotes: await getRecentDailyNotes(7),
     today: todayISO()
   };
   return ctx;

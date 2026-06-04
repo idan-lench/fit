@@ -1,4 +1,5 @@
 import { state } from '../data/state.js';
+import { getDailyNote } from '../data/daily-notes-store.js';
 import { todayISO, formatDate, _isoDate } from '../core/time.js';
 import { escapeHtml } from '../core/format.js';
 import { toast } from '../core/dom.js';
@@ -318,8 +319,7 @@ export async function renderAnalysis() {
 
   await drawEnergyChart('analysisChart');
 
-  const notesArr = state.dailyNotes || [];
-  const viewNote = notesArr.find(n => n.date === viewDate);
+  const viewNote = await getDailyNote(viewDate);
 
   const notesEl = document.getElementById('analysisNotes');
   if (viewNote) {
