@@ -114,6 +114,35 @@
 
     <div id="exerciseList"></div>
 
+    <div id="sessionFeedbackCard" style="display: none; margin-top: 12px; padding: 14px 16px; background: var(--panel2); border-radius: 12px;">
+      <div class="muted small" style="font-weight: 500; margin-bottom: 12px;">How did it go?</div>
+      <div style="margin-bottom: 12px;">
+        <div class="row between" style="margin-bottom: 4px;">
+          <label class="muted small">Effort (RPE)</label>
+          <span id="rpeLabel" style="font-weight: 600; font-size: 15px;">5</span>
+        </div>
+        <input type="range" id="rpeInput" min="1" max="10" value="5" style="width: 100%;">
+        <div class="row between" style="margin-top: 2px;">
+          <span class="muted small">Easy</span><span class="muted small">Max effort</span>
+        </div>
+      </div>
+      <div style="margin-bottom: 12px;">
+        <label class="muted small" style="display: block; margin-bottom: 6px;">Feel</label>
+        <div class="row" style="gap: 8px;">
+          <button class="feel-btn ghost" data-feel="strong"    style="flex: 1; font-size: 13px;">💪 Strong</button>
+          <button class="feel-btn ghost" data-feel="normal"    style="flex: 1; font-size: 13px; background: var(--line);">😐 Normal</button>
+          <button class="feel-btn ghost" data-feel="exhausted" style="flex: 1; font-size: 13px;">😓 Exhausted</button>
+        </div>
+      </div>
+      <div>
+        <label class="muted small" style="display: block; margin-bottom: 6px;">Location</label>
+        <div class="row" style="gap: 8px;">
+          <button class="loc-btn ghost" data-loc="indoor"  style="flex: 1; font-size: 13px; background: var(--line);">🏠 Indoor</button>
+          <button class="loc-btn ghost" data-loc="outdoor" style="flex: 1; font-size: 13px;">🌤️ Outdoor</button>
+        </div>
+      </div>
+    </div>
+
     <div class="row" id="saveRow" style="margin-top: 8px; display: none;">
       <button class="grow" id="finishSessionBtn">Save session</button>
       <button class="ghost" id="resetSessionBtn">Reset</button>

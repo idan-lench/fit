@@ -7,6 +7,7 @@ import { EXERCISE_LIBRARY, lastSetsFor } from '../domain/exercises.js';
 import { CARDIO_TYPES, formatCardioActivitiesForAI } from '../domain/cardio.js';
 import { renderMuscleHeatmapSvg } from '../domain/muscle-map.js';
 import { isCurrentFresh, autoAnalyzeSession } from '../domain/workouts.js';
+import { runTrainer } from '../agents/trainer.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { downscale } from './shared/image.js';
 import { openHeatmap } from './shared/heatmap.js';
@@ -565,8 +566,37 @@ export function finishSession() {
     }
   }
   if (getGeminiKey() && savedAt) {
+    const rpe     = parseInt(document.getElementById('rpeInput')?.value || '5', 10);
+    const feelEl  = document.querySelector('.feel-btn[style*="var(--line)"]');
+    const feel    = feelEl?.dataset?.feel || 'normal';
+    const locEl   = document.querySelector('.loc-btn[style*="var(--line)"]');
+    const outdoor = locEl?.dataset?.loc === 'outdoor';
     const s = state.sessions.find(x => x.savedAt === savedAt);
-    if (s && s.caloriesBurned == null) setTimeout(async () => { const ok = await autoAnalyzeSession(savedAt); if (ok) renderHistory(); }, 800);
+    if (s) {
+      setTimeout(async () => {
+        try {
+          const result = await runTrainer(s, { rpe, feel, outdoor });
+          if (result) {
+            s.caloriesBurned  = result.caloriesBurned;
+            s.epocToday       = result.epocToday;
+            s.epocTomorrow    = result.epocTomorrow;
+            s.stepsFromCardio = result.stepsFromCardio;
+            s.consistency     = result.consistency;
+            s.trainerFeedback = result.feedback;
+            s.rpe             = rpe;
+            s.feel            = feel;
+            s.outdoor         = outdoor;
+            if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
+            save();
+            renderHistory();
+          }
+        } catch {
+          // fall back to legacy analysis
+          const ok = await autoAnalyzeSession(savedAt);
+          if (ok) renderHistory();
+        }
+      }, 800);
+    }
   }
 }
 
@@ -634,6 +664,13 @@ export function renderHistory() {
         </div>` : ''}
         ${burnQs.length ? `<div class="small" style="margin-top: 6px; color: var(--warn);">❓ ${burnQs.length} question${burnQs.length > 1 ? 's' : ''}: ${burnQs.map(escapeHtml).join(' · ')}</div>` : ''}
         ${notes ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
+        ${s.trainerFeedback ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px; border-left: 3px solid var(--accent2);">
+          <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">🏋️ Trainer</div>
+          ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 4px;">RPE ${s.rpe}/10 · ${s.feel || ''}${s.consistency ? ` · ${s.consistency}` : ''}</div>` : ''}
+          <div class="small" style="white-space: pre-wrap;">${escapeHtml(s.trainerFeedback)}</div>
+          ${s.epocTomorrow > 0 ? `<div class="small muted" style="margin-top: 4px;">+${s.epocTomorrow} kcal afterburn carries to tomorrow</div>` : ''}
+          ${s.planNote ? `<div class="small" style="margin-top: 6px; color: var(--accent);">📋 ${escapeHtml(s.planNote)}</div>` : ''}
+        </div>` : ''}
         <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
           <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="editSession(${s.savedAt})">Edit</button>
           <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="openSessionRefine(${s.savedAt})">💬 Chat</button>
@@ -939,6 +976,7 @@ export function renderWorkout() {
   const title = document.getElementById('workoutTitle');
   const cancelBtn = document.getElementById('workoutCancelBtn');
   const saveRow = document.getElementById('saveRow');
+  const feedbackCard = document.getElementById('sessionFeedbackCard');
   const hasCurrentForViewDate = state.current && state.current.date === viewDate;
 
   if (!hasCurrentForViewDate) {
@@ -1030,7 +1068,9 @@ export function renderWorkout() {
   if (timeInput && state.current) timeInput.value = state.current.time || '';
   const dateInput = document.getElementById('sessionDate');
   if (dateInput && state.current) dateInput.value = state.current.date || todayISO();
-  if (saveRow) saveRow.style.display = (editing || !isCurrentFresh(state.current)) ? 'flex' : 'none';
+  const showSave = editing || !isCurrentFresh(state.current);
+  if (saveRow) saveRow.style.display = showSave ? 'flex' : 'none';
+  if (feedbackCard) feedbackCard.style.display = (showSave && !editing) ? 'block' : 'none';
   list.innerHTML = '';
   currentDay = state.current.day;
 

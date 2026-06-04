@@ -77,6 +77,15 @@ on('addCardioBtn',          'click', openCardioPicker);
 on('cardioPhotoInput',      'change', e => onCardioPhotoSelected(e));
 on('finishSessionBtn',      'click', finishSession);
 on('resetSessionBtn',       'click', cancelSession);
+on('rpeInput', 'input', e => { document.getElementById('rpeLabel').textContent = e.target.value; });
+document.querySelectorAll('.feel-btn').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.feel-btn').forEach(b => b.style.background = '');
+  btn.style.background = 'var(--line)';
+}));
+document.querySelectorAll('.loc-btn').forEach(btn => btn.addEventListener('click', () => {
+  document.querySelectorAll('.loc-btn').forEach(b => b.style.background = '');
+  btn.style.background = 'var(--line)';
+}));
 
 // ── BODY TAB ──────────────────────────────────────────────────────────────────
 on('saveWaistBtn',     'click',  addWaist);
