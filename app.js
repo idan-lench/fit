@@ -43,11 +43,12 @@ import {
 } from './ui/meals-tab.js';
 import {
   selectDay, getCurrentDay, renderWorkout, renderHistory, workoutCurrentDate,
-  shiftWorkoutDate, loadWorkoutPlan, startWorkout,
+  shiftWorkoutDate, loadWorkoutPlan, startWorkout, addCardioPlan,
   startWorkoutTimer, finishWorkoutTimer, openTimerAttachPicker, closeTimerAttach, attachTimerTo, resetWorkoutTimer,
-  openSet, closeSet, bumpReps, confirmSet, removeSet, removeExercise, updateExerciseNote,
+  openSet, editSet, closeSet, bumpReps, confirmSet, deleteCurrentSet, removeSet, removeExercise, updateExerciseNote, openExercisePhotoAnalyze,
   removeCardio, openCardioPicker, closeCardioPicker, addCardioActivity, removeCardioActivity, updateCardioField,
-  renderExerciseList, addPlanExercise, addCustomExercise, closeExercisePicker, pickExercise, addCustomExerciseText,
+  renderExerciseList, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, addCustomExercise, closeExercisePicker, pickExercise, addCustomExerciseText,
+  openCardioPhotoAnalyze,
   finishSession, cancelSession, editSession, setSessionTime, deleteSession, updateSessionDate, updateSessionTime,
   openSessionRefine, closeSessionRefine, refineSessionEstimate, requestSessionEstimateUpdate, applySessionRefine, discardSessionRefine,
   sessionAttachFiles, renderSessionAttachPreview, _removeSessionAttach,
@@ -298,13 +299,13 @@ document.addEventListener('visibilitychange', () => {
 // Static index.html handlers are wired by ui/bindings.js and do NOT appear here.
 Object.assign(window, {
   // Dynamic innerHTML handlers (workout-tab.js render functions)
-  addCardioActivity, addPlanExercise, applySessionRefine,
+  addCardioActivity, addCardioPlan, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, openCardioPhotoAnalyze, applySessionRefine,
   attachTimerTo, autoResizeTA,
   deleteSession, discardSessionRefine,
   editSession, editStepsEntry, editWaist,
-  openSet, openSessionRefine, openTemplateEdit,
+  openSet, editSet, deleteCurrentSet, openSessionRefine, openTemplateEdit,
   pickExercise,
-  removeCardio, removeCardioActivity, removeExercise, removeSet,
+  openExercisePhotoAnalyze, removeCardio, removeCardioActivity, removeExercise, removeSet,
   removeSteps, removeWaist, setSessionTime,
   syncGoogleFit, updateCardioField, updateExerciseNote,
 

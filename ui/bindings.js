@@ -25,13 +25,14 @@ import {
 import {
   shiftWorkoutDate, loadWorkoutPlan, startWorkout,
   startWorkoutTimer, finishWorkoutTimer, resetWorkoutTimer,
+  pauseWorkoutTimer, resumeWorkoutTimer,
   cancelSession, finishSession, openPlanModal, closePlanModal,
   openCardioPicker, closeCardioPicker,
-  closeSet, bumpReps, confirmSet,
+  closeSet, bumpReps, confirmSet, editSet, deleteCurrentSet,
   closeExercisePicker, addCustomExerciseText, closeTimerAttach,
   updateSessionDate, updateSessionTime, renderExerciseList,
   refineSessionEstimate, requestSessionEstimateUpdate, closeSessionRefine,
-  sessionAttachFiles,
+  sessionAttachFiles, onCardioPhotoSelected,
 } from './workout-tab.js';
 
 export const _setup = true; // dummy export so flattenModules includes this file
@@ -66,12 +67,14 @@ on('startWorkoutFromPlanBtn','click', () => startWorkout('custom'));
 on('startWorkoutEmptyBtn',  'click', () => startWorkout('custom'));
 on('workoutCancelBtn',      'click', cancelSession);
 on('startTimerBtn',         'click', startWorkoutTimer);
+on('pauseTimerBtn',         'click', () => document.getElementById('pauseTimerBtn')?.textContent === 'Resume' ? resumeWorkoutTimer() : pauseWorkoutTimer());
 on('finishTimerBtn',        'click', finishWorkoutTimer);
 on('resetTimerBtn',         'click', resetWorkoutTimer);
 on('sessionDate',           'change', e => updateSessionDate(e.target.value));
 on('sessionTime',           'change', e => updateSessionTime(e.target.value));
 on('viewPlanBtn',           'click', openPlanModal);
 on('addCardioBtn',          'click', openCardioPicker);
+on('cardioPhotoInput',      'change', e => onCardioPhotoSelected(e));
 on('finishSessionBtn',      'click', finishSession);
 on('resetSessionBtn',       'click', cancelSession);
 
@@ -179,6 +182,7 @@ backdropClose('setModal', closeSet);
 on('repsBumpDownBtn','click', () => bumpReps(-1));
 on('repsBumpUpBtn',  'click', () => bumpReps(1));
 on('confirmSetBtn',  'click', confirmSet);
+on('deleteSetBtn',   'click', deleteCurrentSet);
 on('cancelSetBtn',   'click', closeSet);
 
 // ── TIMER ATTACH MODAL ────────────────────────────────────────────────────────

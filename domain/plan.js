@@ -6,16 +6,19 @@ export const PLAN = {
   tue: {
     label: 'Tuesday — 8k run + upper',
     cardio: '8k easy run',
+    cardioType: 'long-run',
     exercises: ['Push-ups', 'Pull-ups', 'Plank (sec)']
   },
   wed: {
     label: 'Wednesday — Movement',
     cardio: 'Movement training (1 hr)',
+    cardioType: 'movement',
     exercises: []
   },
   thu: {
     label: 'Thursday — Intervals + upper',
     cardio: '20–30 min intervals',
+    cardioType: 'interval',
     exercises: ['Push-ups', 'Pull-ups', 'Plank (sec)']
   },
   sun: {
@@ -26,12 +29,14 @@ export const PLAN = {
   hike: {
     label: 'Hike / Trek',
     cardio: 'Trail / route · distance · elevation · time',
+    cardioType: 'hike',
     cardioPlaceholder: 'נחל צאלים · 13km · 700m elev · 8h',
     exercises: []
   },
   bike: {
     label: 'Bike ride',
     cardio: 'Route · distance · elevation · time · pace',
+    cardioType: 'bike',
     cardioPlaceholder: 'Tel Aviv loop · 30km · 200m · 1h 15m',
     exercises: []
   },

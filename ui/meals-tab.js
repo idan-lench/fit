@@ -19,6 +19,10 @@ let pendingMealBlobs = [];
 let editingMealId = null;
 let _pendingTemplate = null;
 let _pendingRefine = null;
+let _reanalyzeRunning = false;
+let _reanalyzeAborted = false;
+const _reanalyzeInProgress = new Set();
+const _reanalyzeAbortedIds = new Set();
 let _mealChatHistory = []; // [{role: 'user'|'model', text}]
 let _mealChatId = null;
 let _mealAttachedImages = [];
@@ -49,19 +53,14 @@ export async function openMealModal(mealId = null, triggerReanalyze = false) {
     document.getElementById('mealProteinInput').value = '';
   }
   document.querySelector('#mealModal h2').textContent = editingMealId ? 'Edit meal' : 'New meal';
-  document.getElementById('refineSection').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
-  document.getElementById('reanalyzeMealBtn').style.display = (editingMealId && getGeminiKey()) ? 'block' : 'none';
+  document.getElementById('refineSection').style.display = editingMealId ? 'block' : 'none';
+  document.getElementById('reanalyzeMealBtn').style.display = editingMealId ? 'block' : 'none';
   const deltaSec = document.getElementById('templateDeltaSection');
   if (deltaSec) {
     const deltaInput = document.getElementById('templateDeltaInput');
     if (deltaInput) deltaInput.value = '';
-    if (editingMealId && getGeminiKey()) {
-      getMeal(editingMealId).then(m => {
-        const hasBreakdown = m && Array.isArray(m.breakdown) && m.breakdown.length > 0;
-        deltaSec.style.display = hasBreakdown ? 'block' : 'none';
-      });
-    } else {
-      deltaSec.style.display = 'none';
+    deltaSec.style.display = 'none';
+    if (false) { // kept for reference — delta section removed from UI
     }
   }
   const tplBtn = document.getElementById('saveAsTemplateBtn');
@@ -257,9 +256,8 @@ export async function useTemplate(id) {
   };
   tpl.lastUsed = Date.now();
   await putTemplate(tpl);
-  document.getElementById('templateDeltaSection').style.display = 'block';
   document.getElementById('templateDeltaInput').value = '';
-  toast(`Template "${tpl.name}" loaded — describe changes (if any) then Save`);
+  toast(`Template "${tpl.name}" loaded`);
 }
 
 // ---------- PHOTO PREVIEW ----------
@@ -500,14 +498,10 @@ export async function renderMeals() {
             <div class="small muted" style="margin-top: 6px;">Tap the meal to answer via "Refine".</div>
           </div>`
         : '';
-      const reanalyzeBtn = getGeminiKey()
-        ? `<button class="ghost" id="reanalyzeCard-${m.id}" style="padding: 4px 10px; font-size: 12px;" onclick="event.stopPropagation(); reanalyzeMealInPlace(${m.id})">Re-analyze</button>`
-        : '';
+      const reanalyzeBtn = `<button class="ghost" id="reanalyzeCard-${m.id}" style="padding: 4px 10px; font-size: 12px;" onclick="event.stopPropagation(); reanalyzeMealInPlace(${m.id})">Re-analyze</button>`;
       const isTemplated = !!m.templateId;
       const tplBtn = `<button class="ghost" style="padding: 4px 10px; font-size: 12px; ${isTemplated ? 'color: var(--accent2);' : ''}" onclick="event.stopPropagation(); ${isTemplated ? 'openTemplatePicker()' : `quickSaveMealAsTemplate(${m.id})`}" title="${isTemplated ? 'Saved as template' : 'Save as template'}">${isTemplated ? '✓ Templated' : '💾 Save template'}</button>`;
-      const chatBtn = getGeminiKey()
-        ? `<button class="ghost" style="padding: 4px 10px; font-size: 12px;" onclick="event.stopPropagation(); openMealModal(${m.id}); setTimeout(() => document.getElementById('refineInput')?.focus(), 300);" title="Chat about this meal">💬 Chat</button>`
-        : '';
+      const chatBtn = `<button class="ghost" style="padding: 4px 10px; font-size: 12px;" onclick="event.stopPropagation(); openMealModal(${m.id}); setTimeout(() => document.getElementById('refineInput')?.focus(), 300);" title="Chat about this meal">💬 Chat</button>`;
       const cardActions = (chatBtn || reanalyzeBtn || tplBtn)
         ? `<div class="row" style="gap: 6px; flex-wrap: wrap; margin-top: 8px;">${chatBtn}${reanalyzeBtn}${tplBtn}</div>`
         : '';
@@ -539,11 +533,18 @@ export async function removeMeal(id) {
 export async function reanalyzeMeal() {
   if (!editingMealId) return;
   const btn = document.getElementById('reanalyzeMealBtn');
-  btn.disabled = true;
-  btn.textContent = '⟳ Analyzing…';
+  if (_reanalyzeRunning) {
+    _reanalyzeAborted = true;
+    btn.textContent = 'Re-analyze (calories + protein)';
+    return;
+  }
+  _reanalyzeRunning = true;
+  _reanalyzeAborted = false;
+  btn.textContent = '✕ Stop';
   const ok = await autoAnalyzeMeal(editingMealId, { force: true });
-  btn.disabled = false;
+  _reanalyzeRunning = false;
   btn.textContent = 'Re-analyze (calories + protein)';
+  if (_reanalyzeAborted) return;
   if (ok) {
     const m = await getMeal(editingMealId);
     if (m) toast(`Updated: ~${m.calories} kcal${m.protein ? ' · ' + m.protein + 'g protein' : ''}`);
@@ -554,14 +555,23 @@ export async function reanalyzeMeal() {
 
 export async function reanalyzeMealInPlace(mealId) {
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  const btn = document.getElementById(`reanalyzeCard-${mealId}`);
+  if (_reanalyzeInProgress.has(mealId)) {
+    _reanalyzeAbortedIds.add(mealId);
+    if (btn) btn.textContent = '🔄 Re-analyze';
+    return;
+  }
   const before = await getMeal(mealId);
   if (!before) return;
   const oldCal = before.calories || 0;
   const oldProt = before.protein || 0;
-  const btn = document.getElementById(`reanalyzeCard-${mealId}`);
-  if (btn) { btn.disabled = true; btn.textContent = '⟳ Analyzing…'; }
+  _reanalyzeInProgress.add(mealId);
+  _reanalyzeAbortedIds.delete(mealId);
+  if (btn) btn.textContent = '✕ Stop';
   const ok = await autoAnalyzeMeal(mealId, { silent: true, force: true });
-  if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-analyze'; }
+  _reanalyzeInProgress.delete(mealId);
+  if (btn) btn.textContent = '🔄 Re-analyze';
+  if (_reanalyzeAbortedIds.has(mealId)) { _reanalyzeAbortedIds.delete(mealId); return; }
   if (!ok) return toast('Re-analyze failed');
   const after = await getMeal(mealId);
   const newCal = after.calories || 0;
@@ -775,23 +785,28 @@ export function discardMealRefine() {
 
 export async function applyRefineResult() {
   if (!_pendingRefine || !editingMealId) return;
-  const meal = await getMeal(editingMealId);
-  if (!meal) return;
-  meal.calories = _pendingRefine.total;
-  if (_pendingRefine.totalProtein != null) meal.protein = _pendingRefine.totalProtein;
-  meal.breakdown = _pendingRefine.items || [];
-  meal.aiSaw = _pendingRefine.saw || meal.aiSaw;
-  meal.confidence = _pendingRefine.confidence || meal.confidence;
-  meal.questions = [];
-  await putMeal(meal);
-  const calInput = document.getElementById('mealCalInput');
-  const protInput = document.getElementById('mealProteinInput');
-  if (calInput) calInput.value = meal.calories ?? '';
-  if (protInput) protInput.value = meal.protein ?? '';
-  toast('Updated ✓');
-  _pendingRefine = null;
-  renderMealRefineChat();
-  renderMeals();
+  try {
+    const meal = await getMeal(editingMealId);
+    if (!meal) { toast('Meal not found — was it deleted?'); return; }
+    meal.calories = _pendingRefine.total;
+    if (_pendingRefine.totalProtein != null) meal.protein = _pendingRefine.totalProtein;
+    meal.breakdown = _pendingRefine.items || [];
+    meal.aiSaw = _pendingRefine.saw || meal.aiSaw;
+    meal.confidence = _pendingRefine.confidence || meal.confidence;
+    meal.questions = [];
+    await putMeal(meal);
+    const calInput = document.getElementById('mealCalInput');
+    const protInput = document.getElementById('mealProteinInput');
+    if (calInput) calInput.value = meal.calories ?? '';
+    if (protInput) protInput.value = meal.protein ?? '';
+    toast('Updated ✓');
+    _pendingRefine = null;
+    renderMealRefineChat();
+    renderMeals();
+  } catch (e) {
+    console.error('applyRefineResult failed:', e);
+    toast('Failed to save: ' + (e.message || 'unknown error'));
+  }
 }
 
 // ---------- ATTACHMENTS ----------

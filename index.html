@@ -80,10 +80,13 @@
       <div id="timerInProgress" style="display: none;">
         <div class="row between" style="align-items: center;">
           <div>
-            <div class="muted small">In progress · <span id="timerStartLabel"></span></div>
+            <div class="muted small"><span id="timerStatusLabel">In progress</span> · <span id="timerStartLabel"></span></div>
             <div class="big" id="timerElapsed" style="font-size: 22px; margin-top: 2px;">0 min</div>
           </div>
-          <button class="primary" id="finishTimerBtn">Finish</button>
+          <div class="row" style="gap: 8px;">
+            <button class="ghost" id="pauseTimerBtn" style="padding: 6px 14px;">Pause</button>
+            <button class="primary" id="finishTimerBtn">Finish</button>
+          </div>
         </div>
       </div>
       <div id="timerFinished" style="display: none;">
@@ -102,9 +105,12 @@
       <input type="time" id="sessionTime" style="flex: 1; max-width: 120px;">
       <button class="ghost" id="viewPlanBtn" style="padding: 8px 12px; font-size: 14px;">View plan</button>
     </div>
+    <div id="planChips"></div>
+
     <!-- Cardio activities (multiple allowed) -->
     <div id="cardioList" style="margin-top: 8px;"></div>
     <button class="ghost" id="addCardioBtn" style="width: 100%; margin-top: 6px; border-style: dashed; display: none;">+ Add cardio activity</button>
+    <input type="file" id="cardioPhotoInput" accept="image/*" style="display:none">
 
     <div id="exerciseList"></div>
 
@@ -593,7 +599,7 @@
 <div class="modal" id="setModal">
   <div class="body">
     <h2 style="margin-top:0" id="setModalTitle">Add set</h2>
-    <label>Reps</label>
+    <label id="setModalLabel">Reps</label>
     <div class="stepper" style="justify-content: center; margin: 14px 0;">
       <button id="repsBumpDownBtn">−</button>
       <span class="val" id="setRepsVal">8</span>
@@ -601,6 +607,7 @@
     </div>
     <div class="row">
       <button class="grow primary" id="confirmSetBtn">Add set</button>
+      <button class="ghost danger" id="deleteSetBtn" style="display:none">Delete</button>
       <button class="ghost" id="cancelSetBtn">Cancel</button>
     </div>
   </div>
