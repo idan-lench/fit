@@ -3,6 +3,7 @@ import { todayISO } from './core/time.js';
 import { autoResizeTA, toast, hideToast } from './core/dom.js';
 import { DEFAULT_PROFILE, calcBMR, calcStepsPerKcal } from './core/profile.js';
 import { state, save, load } from './data/state.js';
+import { getDailyNote, upsertDailyNote } from './data/daily-notes-store.js';
 import { getAllMeals } from './data/meals-store.js';
 import { getGeminiKey } from './integrations/gemini.js';
 import { loadCachedGfitToken, autoSilentFitSync } from './integrations/google-fit.js';
@@ -78,6 +79,15 @@ function refreshProfile() {
 refreshProfile();
 window.refreshProfile = refreshProfile; // agents/tools will call this after writes
 
+// One-time migration: move dailyNotes out of localStorage into IndexedDB.
+// Runs silently on first boot after this update; no-op on subsequent boots.
+if (Array.isArray(state.dailyNotes) && state.dailyNotes.length > 0) {
+  Promise.all(state.dailyNotes.map(n => upsertDailyNote(n))).then(() => {
+    delete state.dailyNotes;
+    save();
+  });
+}
+
 
 // ---------- TABS ----------
 function switchTab(name) {
@@ -130,7 +140,6 @@ async function smartUpdateSummaries() {
     daysToCheck.push([dt.getFullYear(), String(dt.getMonth()+1).padStart(2,'0'), String(dt.getDate()).padStart(2,'0')].join('-'));
   }
 
-  const notesArr = state.dailyNotes || [];
   const currentHour = new Date().getHours();
   const daysNeedingUpdate = [];
   for (const date of daysToCheck) {
@@ -139,7 +148,7 @@ async function smartUpdateSummaries() {
     const fp = await dayFingerprint(date);
     const isEmpty = fp === '§§'; // no meals, sessions, or steps
     if (isEmpty) continue;
-    const existing = notesArr.find(n => n.date === date);
+    const existing = await getDailyNote(date);
     if (!existing || existing.fingerprint !== fp) {
       daysNeedingUpdate.push({ date, fp });
     }
@@ -178,7 +187,7 @@ function scheduleMidnightGen() {
       const stepsToday = (state.steps || []).find(s => s.date === today);
       if (stepsToday) {
         const fp = await dayFingerprint(today);
-        const existing = (state.dailyNotes || []).find(n => n.date === today);
+        const existing = await getDailyNote(today);
         if (!existing || existing.fingerprint !== fp) {
           await runDailyAnalysis({ date: today, silent: true, fingerprint: fp });
         }

@@ -12,6 +12,7 @@ import { state, save } from '../data/state.js';
 import { getAllMeals, putMeal, clearMeals } from '../data/meals-store.js';
 import { getAllPhotos, putPhoto, clearPhotos } from '../data/photo-store.js';
 import { getAllTemplates, putTemplate } from '../data/template-store.js';
+import { getAllDailyNotes, upsertDailyNote } from '../data/daily-notes-store.js';
 
 // Returns the shared secret, generating one if not set yet.
 export function ensureSecret() {
@@ -124,7 +125,9 @@ export async function applyDrivePayload(payload, updatedAt) {
   state.sessions    = payload.sessions    || [];
   state.measurements = payload.measurements || [];
   state.steps       = payload.steps       || [];
-  state.dailyNotes  = payload.dailyNotes  || [];
+  if (Array.isArray(payload.dailyNotes)) {
+    for (const n of payload.dailyNotes) await upsertDailyNote(n);
+  }
   if (payload.current !== undefined) state.current = payload.current;
   state.exportedAt  = payload.exportedAt;
   state.lastSyncAt  = updatedAt || new Date().toISOString();
@@ -191,6 +194,7 @@ export async function exportData(opts = {}) {
   if (!cloud && !local) return;
 
   let payload = { ...state, exportedAt: new Date().toISOString() };
+  payload.dailyNotes = await getAllDailyNotes();
   const allMeals = await getAllMeals();
   const mealMeta = m => ({
     date: m.date, time: m.time, description: m.description,

@@ -16,7 +16,6 @@ test('state has the expected default shape', () => {
   assert.ok(Array.isArray(state.sessions));
   assert.ok(Array.isArray(state.measurements));
   assert.ok(Array.isArray(state.steps));
-  assert.ok(Array.isArray(state.dailyNotes));
   assert.equal(state.current, null);
 });
 

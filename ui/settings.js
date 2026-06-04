@@ -1,4 +1,5 @@
 import { state, save } from '../data/state.js';
+import { upsertDailyNote, clearDailyNotes } from '../data/daily-notes-store.js';
 import { toast } from '../core/dom.js';
 import { getGeminiKey } from '../integrations/gemini.js';
 import { ensureSecret, buildAppsScript, pingSync, exportData } from '../integrations/drive-sync.js';
@@ -163,7 +164,10 @@ export async function importData(e) {
     state.measurements = data.measurements || [];
     state.current = data.current || null;
     state.steps = data.steps || [];
-    state.dailyNotes = data.dailyNotes || [];
+    if (data.dailyNotes?.length) {
+      await clearDailyNotes();
+      for (const n of data.dailyNotes) await upsertDailyNote(n);
+    }
     save();
     if (data.photos?.length) {
       await clearPhotos();

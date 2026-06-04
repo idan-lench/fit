@@ -1,4 +1,5 @@
 import { getAllMeals } from '../data/meals-store.js';
+import { getDailyNote, upsertDailyNote, getAllDailyNotes } from '../data/daily-notes-store.js';
 import { PROMPTS } from '../prompts/index.js';
 import { state, save } from '../data/state.js';
 import { calcBMR, calcStepsPerKcal } from '../core/profile.js';
@@ -119,7 +120,7 @@ export async function runDailyAnalysis(opts = {}) {
     const [y, m, d] = targetDate.split('-').map(Number);
     const dt = new Date(y, m - 1, d - i);
     const pastDate = [dt.getFullYear(), String(dt.getMonth()+1).padStart(2,'0'), String(dt.getDate()).padStart(2,'0')].join('-');
-    const pastNote = (state.dailyNotes || []).find(n => n.date === pastDate);
+    const pastNote = await getDailyNote(pastDate);
     const pastE = await computeDailyEnergy(pastDate);
     recentContext.push({
       date: pastDate,
@@ -148,19 +149,17 @@ export async function runDailyAnalysis(opts = {}) {
       if (!opts.silent) { hideToast(); toast('Daily analysis failed'); }
       return null;
     }
-    state.dailyNotes = (state.dailyNotes || []).filter(n => n.date !== targetDate);
     const noteText = `${parsed.verdict || ''}
 
 ${(parsed.wins || []).length ? '💪 Wins\n' + parsed.wins.map(w => '• ' + w).join('\n') + '\n\n' : ''}${(parsed.watch || []).length ? '⚠️ Watch\n' + parsed.watch.map(w => '• ' + w).join('\n') + '\n\n' : ''}${parsed.pattern ? '📈 ' + parsed.pattern + '\n\n' : ''}${(parsed.missing || []).length ? '❗ Missing: ' + parsed.missing.join(', ') + '\n\n' : ''}${parsed.tomorrow ? '📝 ' + parsed.tomorrow : ''}
 
 ${parsed.isFinal ? '(Final summary)' : '(Partial — day in progress)'} · Generated ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
-    state.dailyNotes.push({
+    await upsertDailyNote({
       date: targetDate,
       note: noteText.trim(),
       fingerprint: opts.fingerprint || null,
       addedAt: new Date().toISOString()
     });
-    save();
     if (!opts.silent) { hideToast(); toast('Daily analysis updated ✓'); }
     return parsed;
   } catch (err) {
@@ -241,9 +240,7 @@ export async function autoGenerateMissingSummaries() {
   if (!getGeminiKey()) return;
   const today = todayISO();
   const yesterday = yesterdayISO();
-  const notes = state.dailyNotes || [];
-
-  const hasYesterday = notes.some(n => n.date === yesterday);
+  const hasYesterday = !!(await getDailyNote(yesterday));
   const stepsYesterday = (state.steps || []).find(s => s.date === yesterday);
   if (!hasYesterday && stepsYesterday) {
     await runDailyAnalysis({ date: yesterday, silent: true });
@@ -251,7 +248,7 @@ export async function autoGenerateMissingSummaries() {
 
   const hour = new Date().getHours();
   if (hour >= 21) {
-    const hasToday = notes.some(n => n.date === today);
+    const hasToday = !!(await getDailyNote(today));
     const stepsToday = (state.steps || []).find(s => s.date === today);
     if (!hasToday && stepsToday) {
       await runDailyAnalysis({ date: today, silent: true });
