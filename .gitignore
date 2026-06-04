@@ -2,3 +2,6 @@
 *.log
 .env*
 node_modules/
+.claude/
+test-results/
+playwright-report/
