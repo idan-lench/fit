@@ -1,6 +1,6 @@
 import { state, save } from '../data/state.js';
 import { todayISO, formatDate } from '../core/time.js';
-import { escapeHtml } from '../core/format.js';
+import { escapeHtml, blobToDataUrl, parseJSONResponse } from '../core/format.js';
 import { toast, hideToast, autoResizeTA } from '../core/dom.js';
 import { PLAN, WEEKLY_PLAN, getPlanKeyForDate } from '../domain/plan.js';
 import { EXERCISE_LIBRARY, lastSetsFor } from '../domain/exercises.js';
@@ -8,6 +8,7 @@ import { CARDIO_TYPES, formatCardioActivitiesForAI } from '../domain/cardio.js';
 import { renderMuscleHeatmapSvg } from '../domain/muscle-map.js';
 import { isCurrentFresh, autoAnalyzeSession } from '../domain/workouts.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
+import { downscale } from './shared/image.js';
 import { openHeatmap } from './shared/heatmap.js';
 import { attachFilesTo, renderAttachPreview } from './shared/chat-input.js';
 import { PROMPTS } from '../prompts/index.js';
@@ -21,6 +22,7 @@ let _timerInterval = null;
 let _pendingSessionRefine = null;
 let _refiningSessionAt = null;
 let _sessionChatHistory = [];
+let _cardioPhotoIdx = null; // null = idle, 'note' = main cardio note, number = activity index
 let _sessionAttachedImages = [];
 
 export const getCurrentDay = () => currentDay;
@@ -90,10 +92,27 @@ export function startWorkoutTimer() {
   renderWorkout();
 }
 
+export function pauseWorkoutTimer() {
+  if (!state.current?.startedAt || state.current.endedAt || state.current.pausedAt) return;
+  state.current.pausedAt = new Date().toISOString();
+  save();
+  renderWorkout();
+}
+
+export function resumeWorkoutTimer() {
+  if (!state.current?.pausedAt) return;
+  state.current.pausedMs = (state.current.pausedMs || 0) + (Date.now() - new Date(state.current.pausedAt).getTime());
+  delete state.current.pausedAt;
+  save();
+  renderWorkout();
+}
+
 export function finishWorkoutTimer() {
   if (!state.current || !state.current.startedAt) return;
+  if (state.current.pausedAt) resumeWorkoutTimer();
   state.current.endedAt = new Date().toISOString();
-  const ms = new Date(state.current.endedAt) - new Date(state.current.startedAt);
+  const rawMs = new Date(state.current.endedAt) - new Date(state.current.startedAt);
+  const ms = rawMs - (state.current.pausedMs || 0);
   state.current.durationMin = Math.max(1, Math.round(ms / 60000));
   save();
   renderWorkout();
@@ -145,6 +164,8 @@ export function resetWorkoutTimer() {
   delete state.current.startedAt;
   delete state.current.endedAt;
   delete state.current.durationMin;
+  delete state.current.pausedAt;
+  delete state.current.pausedMs;
   save();
   renderWorkout();
 }
@@ -155,7 +176,8 @@ function tickTimer() {
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     return;
   }
-  const ms = Date.now() - new Date(state.current.startedAt).getTime();
+  const refTime = state.current.pausedAt ? new Date(state.current.pausedAt).getTime() : Date.now();
+  const ms = refTime - new Date(state.current.startedAt).getTime() - (state.current.pausedMs || 0);
   const totalMin = Math.floor(ms / 60000);
   const sec = Math.floor((ms % 60000) / 1000);
   if (totalMin >= 60) {
@@ -170,13 +192,26 @@ function tickTimer() {
 // ---------- SET MODAL ----------
 function getPrevSets(name) { return lastSetsFor(state.sessions, name); }
 
-export function openSet(exerciseIdx) {
-  currentSetCtx = { exerciseIdx };
-  const last = state.current.entries[exerciseIdx].sets.slice(-1)[0];
-  currentReps = last ? last.reps : (getPrevSets(state.current.entries[exerciseIdx].name)?.[0] || 8);
+function _openSetModal({ exerciseIdx, setIdx = null }) {
+  currentSetCtx = { exerciseIdx, setIdx };
+  const entry = state.current.entries[exerciseIdx];
+  const isEdit = setIdx !== null;
+  currentReps = isEdit ? entry.sets[setIdx].reps : (entry.sets.slice(-1)[0]?.reps ?? getPrevSets(entry.name)?.[0] ?? 8);
+  const isTime = /plank|hold|sec|hang/i.test(entry.name);
   document.getElementById('setRepsVal').textContent = currentReps;
-  document.getElementById('setModalTitle').textContent = state.current.entries[exerciseIdx].name;
+  document.getElementById('setModalTitle').textContent = entry.name;
+  document.getElementById('setModalLabel').textContent = isTime ? 'Seconds' : 'Reps';
+  document.getElementById('confirmSetBtn').textContent = isEdit ? 'Save' : 'Add set';
+  document.getElementById('deleteSetBtn').style.display = isEdit ? '' : 'none';
   document.getElementById('setModal').classList.add('show');
+}
+
+export function openSet(exerciseIdx) {
+  _openSetModal({ exerciseIdx });
+}
+
+export function editSet(exerciseIdx, setIdx) {
+  _openSetModal({ exerciseIdx, setIdx });
 }
 
 export function closeSet() {
@@ -191,7 +226,20 @@ export function bumpReps(d) {
 
 export function confirmSet() {
   if (!currentSetCtx) return;
-  state.current.entries[currentSetCtx.exerciseIdx].sets.push({ reps: currentReps });
+  const { exerciseIdx, setIdx } = currentSetCtx;
+  if (setIdx !== null) {
+    state.current.entries[exerciseIdx].sets[setIdx].reps = currentReps;
+  } else {
+    state.current.entries[exerciseIdx].sets.push({ reps: currentReps });
+  }
+  save();
+  closeSet();
+  renderWorkout();
+}
+
+export function deleteCurrentSet() {
+  if (!currentSetCtx || currentSetCtx.setIdx === null) return;
+  state.current.entries[currentSetCtx.exerciseIdx].sets.splice(currentSetCtx.setIdx, 1);
   save();
   closeSet();
   renderWorkout();
@@ -224,6 +272,15 @@ export function removeCardio() {
   state.current.cardioNote = '';
   save();
   renderWorkout();
+}
+
+export function addCardioPlan() {
+  const planCardioType = PLAN[state.current?.day]?.cardioType;
+  if (planCardioType) {
+    addCardioActivity(planCardioType);
+  } else {
+    openCardioPicker();
+  }
 }
 
 export function openCardioPicker() {
@@ -264,6 +321,85 @@ export function updateCardioField(idx, field, value) {
   save();
 }
 
+export function openCardioPhotoAnalyze(idx) {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  _cardioPhotoIdx = idx; // number = activity card
+  document.getElementById('cardioPhotoInput').click();
+}
+
+export function openCardioNotePhotoAnalyze() {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  _cardioPhotoIdx = 'note';
+  document.getElementById('cardioPhotoInput').click();
+}
+
+export function openExercisePhotoAnalyze(idx) {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  _cardioPhotoIdx = { exercise: idx };
+  document.getElementById('cardioPhotoInput').click();
+}
+
+export async function onCardioPhotoSelected(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file || _cardioPhotoIdx === null) return;
+  const mode = _cardioPhotoIdx;
+  _cardioPhotoIdx = null;
+  toast('Analyzing…', { persistent: true });
+  try {
+    const blob = await downscale(file, 1280);
+    const dataUrl = await blobToDataUrl(blob);
+    const base64 = dataUrl.split(',')[1];
+
+    const isExercise = typeof mode === 'object' && mode.exercise !== undefined;
+    const promptText = isExercise ? PROMPTS.exercisePhoto : PROMPTS.cardioPhoto;
+    const reply = await geminiGenerate({
+      contents: [{ role: 'user', parts: [
+        { text: promptText },
+        { inline_data: { mime_type: blob.type || 'image/jpeg', data: base64 } }
+      ]}]
+    });
+    const parsed = parseJSONResponse(reply);
+    hideToast();
+    if (!parsed) { toast('Could not read photo'); return; }
+
+    if (isExercise) {
+      const entry = state.current?.entries?.[mode.exercise];
+      if (!entry) return;
+      if (parsed.notes) {
+        entry.note = parsed.notes;
+        save();
+        renderWorkout();
+        toast('Filled in ✓');
+      } else {
+        toast('Nothing detected in photo');
+      }
+    } else if (mode === 'note') {
+      const parts = [parsed.distance, parsed.duration, parsed.notes].filter(Boolean);
+      if (parts.length) {
+        if (state.current) state.current.cardioNote = parts.join(' · ');
+        save();
+        renderWorkout();
+        toast('Filled in ✓');
+      } else {
+        toast('Nothing detected in photo');
+      }
+    } else {
+      const a = state.current?.cardioActivities?.[mode];
+      if (!a) return;
+      if (parsed.distance) a.distance = parsed.distance;
+      if (parsed.duration) a.duration = parsed.duration;
+      if (parsed.notes)    a.notes    = parsed.notes;
+      save();
+      renderWorkout();
+      toast('Filled in ✓');
+    }
+  } catch (err) {
+    hideToast();
+    toast('Failed: ' + (err.message || 'unknown'));
+  }
+}
+
 function renderCardioActivities() {
   const list = document.getElementById('cardioList');
   const btn = document.getElementById('addCardioBtn');
@@ -284,8 +420,11 @@ function renderCardioActivities() {
           ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label><input type="text" placeholder="e.g. 45 min" value="${escapeHtml(a.duration || '')}" oninput="updateCardioField(${i}, 'duration', this.value)"></div>` : ''}
         </div>
         <div style="margin-top: 8px;">
-          <label class="muted small">Notes</label>
-          <textarea placeholder="pace, RPE, terrain…" rows="1" enterkeyhint="enter" oninput="updateCardioField(${i}, 'notes', this.value); autoResizeTA(this)" style="resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(a.notes || '')}</textarea>
+          <label class="muted small" style="display: block; margin-bottom: 4px;">Notes</label>
+          <div class="row" style="gap: 6px; align-items: stretch;">
+            <button class="chat-icon-btn" onclick="openCardioPhotoAnalyze(${i})" aria-label="Attach photo" title="Attach a screenshot to auto-fill fields"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
+            <textarea placeholder="pace, RPE, terrain…" rows="1" enterkeyhint="enter" oninput="updateCardioField(${i}, 'notes', this.value); autoResizeTA(this)" style="flex: 1; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(a.notes || '')}</textarea>
+          </div>
         </div>
       </div>
     `;
@@ -336,7 +475,24 @@ export function renderExerciseList(filter = '') {
 
 export function addPlanExercise(name) {
   if (!state.current) return;
-  state.current.entries.push({ name, sets: [] });
+  if (!state.current.entries.find(e => e.name.toLowerCase() === name.toLowerCase())) {
+    state.current.entries.push({ name, sets: [] });
+    save();
+  }
+  renderWorkout();
+}
+
+export function dismissPlanExercise(name) {
+  if (!state.current) return;
+  state.current.dismissedPlanExercises = state.current.dismissedPlanExercises || [];
+  if (!state.current.dismissedPlanExercises.includes(name)) state.current.dismissedPlanExercises.push(name);
+  save();
+  renderWorkout();
+}
+
+export function clearAllPlanExercises() {
+  if (!state.current) return;
+  state.current.dismissedPlanExercises = (PLAN[state.current.day]?.exercises || []).slice();
   save();
   renderWorkout();
 }
@@ -587,7 +743,6 @@ function buildSessionSystemInstruction(session) {
     `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`
   ).join('\n') || '  (none)';
   return PROMPTS.sessionChatSystem
-    .replace('{type}', PLAN[session.day]?.label || session.day)
     .replace('{date}', session.date)
     .replace('{cardioNote}', session.cardioNote || '(none)')
     .replace('{cardioActivities}', formatCardioActivitiesForAI(session.cardioActivities))
@@ -673,11 +828,16 @@ export async function applySessionRefine() {
   state.sessions[idx].burnBreakdown = _pendingSessionRefine.breakdown || [];
   state.sessions[idx].burnNotes = _pendingSessionRefine.notes || state.sessions[idx].burnNotes;
   state.sessions[idx].burnQuestions = [];
-  save();
-  toast('Updated ✓');
   _pendingSessionRefine = null;
   renderSessionRefineChat();
   renderHistory();
+  try {
+    save();
+    toast('Updated ✓');
+  } catch (e) {
+    console.error('applySessionRefine save failed:', e);
+    toast('Applied (save failed: ' + (e.message || 'storage full?') + ')');
+  }
 }
 
 export function discardSessionRefine() {
@@ -773,6 +933,7 @@ export function renderWorkout() {
   const banner = document.getElementById('workoutPlanBanner');
   const empty = document.getElementById('workoutEmptyState');
   const list = document.getElementById('exerciseList');
+  const planChips = document.getElementById('planChips');
   const metaRow = document.getElementById('sessionMetaRow');
   const headerRow = document.getElementById('sessionHeaderRow');
   const title = document.getElementById('workoutTitle');
@@ -790,6 +951,7 @@ export function renderWorkout() {
     if (timerCard) timerCard.style.display = 'none';
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     if (list) list.innerHTML = '';
+    if (planChips) planChips.innerHTML = '';
     const cardioList = document.getElementById('cardioList');
     const addCardioBtn = document.getElementById('addCardioBtn');
     if (cardioList) cardioList.innerHTML = '';
@@ -847,10 +1009,15 @@ export function renderWorkout() {
       const mins = state.current.durationMin || Math.max(1, Math.round((new Date(state.current.endedAt) - new Date(state.current.startedAt)) / 60000));
       document.getElementById('timerFinishedLabel').textContent = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} min`;
     }
+    const paused = !!(state.current.startedAt && !state.current.endedAt && state.current.pausedAt);
+    const pauseBtn = document.getElementById('pauseTimerBtn');
+    const statusLabel = document.getElementById('timerStatusLabel');
+    if (pauseBtn) pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+    if (statusLabel) statusLabel.textContent = paused ? 'Paused' : 'In progress';
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     if (state.current.startedAt && !state.current.endedAt) {
       tickTimer();
-      _timerInterval = setInterval(tickTimer, 1000);
+      if (!paused) _timerInterval = setInterval(tickTimer, 1000);
     }
   }
 
@@ -867,7 +1034,7 @@ export function renderWorkout() {
   list.innerHTML = '';
   currentDay = state.current.day;
 
-  if (PLAN[currentDay].cardio && !state.current.cardioRemoved) {
+  if (PLAN[currentDay].cardio && state.current.cardioNote && !state.current.cardioRemoved) {
     const c = document.createElement('div');
     c.className = 'ex';
     c.innerHTML = `
@@ -879,6 +1046,7 @@ export function renderWorkout() {
         <button class="icon ghost" onclick="removeCardio()" aria-label="Remove cardio">✕</button>
       </div>
       <div class="row" style="margin-top: 10px; gap: 6px; align-items: stretch;">
+        <button class="chat-icon-btn" onclick="openCardioNotePhotoAnalyze()" aria-label="Attach photo" title="Attach a screenshot to auto-fill fields"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
         <textarea id="cardioNote" placeholder="${escapeHtml(PLAN[currentDay].cardioPlaceholder || 'Distance / time / notes')}" rows="1" enterkeyhint="enter" oninput="autoResizeTA(this)" style="flex: 1; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(state.current?.cardioNote || '')}</textarea>
         <button class="ghost" onclick="syncGoogleFit()" title="Auto-fill distance from Google Fit" style="padding: 6px 10px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1; min-width: 56px;">
           <span style="font-size: 16px;">🏃</span>
@@ -899,16 +1067,43 @@ export function renderWorkout() {
   }
 
   const planExercises = (PLAN[state.current.day]?.exercises || []);
-  const pickedNames = new Set(state.current.entries.map(e => e.name.toLowerCase()));
-  const remainingPlan = planExercises.filter(name => !pickedNames.has(name.toLowerCase()));
-  if (remainingPlan.length > 0) {
+  const sessionDate = state.current.date || todayISO();
+  const doneTodayNames = (state.sessions || [])
+    .filter(s => s.date === sessionDate)
+    .flatMap(s => (s.entries || []).map(e => e.name.toLowerCase()));
+  const pickedNames = new Set([
+    ...state.current.entries.map(e => e.name.toLowerCase()),
+    ...doneTodayNames,
+  ]);
+  const dismissedNames = new Set((state.current.dismissedPlanExercises || []).map(n => n.toLowerCase()));
+  const remainingPlan = planExercises.filter(name => !pickedNames.has(name.toLowerCase()) && !dismissedNames.has(name.toLowerCase()));
+  const showCardioChip = !!(PLAN[currentDay]?.cardio && !state.current.cardioNote && !(state.current.cardioActivities?.length) && !state.current.cardioRemoved);
+  if (planChips) planChips.innerHTML = '';
+  if ((remainingPlan.length > 0 || showCardioChip) && planChips) {
     const planMenu = document.createElement('div');
     planMenu.style.cssText = 'margin: 8px 0; padding: 10px 12px; background: var(--panel2); border-radius: 10px;';
-    planMenu.innerHTML = `<div class="muted small" style="margin-bottom: 8px; font-weight: 500;">Today's plan — tap to add</div>
+    planMenu.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div class="muted small" style="font-weight: 500;">Today's plan — tap to add</div>
+        <button class="ghost" onclick="clearAllPlanExercises()" style="padding: 2px 8px; font-size: 12px; color: var(--muted);">✕ Clear all</button>
+      </div>
       <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-        ${remainingPlan.map(name => `<button class="chip" onclick="addPlanExercise('${name.replace(/'/g, "\\'")}')" style="padding: 6px 12px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); cursor: pointer; font-size: 13px;">+ ${escapeHtml(name)}</button>`).join('')}
+        ${showCardioChip ? (() => {
+          const cardioIcon = (CARDIO_TYPES.find(c => c.key === PLAN[currentDay].cardioType) || {}).icon || '🏃';
+          return `<span style="display: inline-flex; align-items: center; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; overflow: hidden;">
+            <button onclick="addCardioPlan()" style="padding: 6px 6px 6px 12px; border: none; background: transparent; cursor: pointer;">${cardioIcon} + Cardio <span style="color: var(--muted); font-size: 11px;">${escapeHtml(PLAN[currentDay].cardio)}</span></button>
+            <button onclick="removeCardio()" style="padding: 6px 10px 6px 4px; border: none; background: transparent; cursor: pointer; color: var(--muted); font-size: 15px; line-height: 1;">×</button>
+          </span>`;
+        })() : ''}
+        ${remainingPlan.map(name => {
+          const safe = name.replace(/'/g, "\\'");
+          return `<span style="display: inline-flex; align-items: center; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; overflow: hidden;">
+            <button onclick="addPlanExercise('${safe}')" style="padding: 6px 6px 6px 12px; border: none; background: transparent; cursor: pointer;">+ ${escapeHtml(name)}</button>
+            <button onclick="dismissPlanExercise('${safe}')" style="padding: 6px 10px 6px 4px; border: none; background: transparent; cursor: pointer; color: var(--muted); font-size: 15px; line-height: 1;">×</button>
+          </span>`;
+        }).join('')}
       </div>`;
-    list.appendChild(planMenu);
+    planChips.appendChild(planMenu);
   }
 
   state.current.entries.forEach((e, idx) => {
@@ -926,9 +1121,12 @@ export function renderWorkout() {
         <button class="icon" onclick="openSet(${idx})">+</button>
       </div>
       <div class="sets">
-        ${e.sets.length === 0 ? '<span class="set-pill empty">No sets yet</span>' : e.sets.map((s, si) => `<span class="set-pill" onclick="removeSet(${idx},${si})">${s.reps}</span>`).join('')}
+        ${e.sets.length === 0 ? '<span class="set-pill empty">No sets yet</span>' : e.sets.map((s, si) => `<span class="set-pill" onclick="editSet(${idx},${si})">${s.reps}</span>`).join('')}
       </div>
-      <textarea placeholder="Notes (weight, form, RPE…)" rows="1" enterkeyhint="enter" oninput="updateExerciseNote(${idx}, this.value); autoResizeTA(this)" style="margin-top: 8px; background: var(--panel2); font-size: 13px; padding: 8px 10px; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(e.note || '')}</textarea>
+      <div class="row" style="gap: 6px; align-items: stretch; margin-top: 8px;">
+        <button class="chat-icon-btn" onclick="openExercisePhotoAnalyze(${idx})" aria-label="Attach photo" title="Attach a screenshot to auto-fill notes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
+        <textarea placeholder="Notes (weight, form, RPE…)" rows="1" enterkeyhint="enter" oninput="updateExerciseNote(${idx}, this.value); autoResizeTA(this)" style="flex: 1; background: var(--panel2); font-size: 13px; padding: 8px 10px; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(e.note || '')}</textarea>
+      </div>
     `;
     list.appendChild(ex);
   });

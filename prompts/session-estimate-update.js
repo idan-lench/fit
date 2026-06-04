@@ -1,7 +1,6 @@
 export const sessionEstimateUpdate = `Based on our conversation above, produce your FINAL revised burn estimate for this workout.
 
 ORIGINAL SESSION:
-- Type: {type}
 - Date: {date}
 - Cardio/activity: {cardioNote}
 - Exercises:
