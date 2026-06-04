@@ -7,7 +7,7 @@ import { EXERCISE_LIBRARY, lastSetsFor } from '../domain/exercises.js';
 import { CARDIO_TYPES, formatCardioActivitiesForAI } from '../domain/cardio.js';
 import { renderMuscleHeatmapSvg } from '../domain/muscle-map.js';
 import { isCurrentFresh, autoAnalyzeSession } from '../domain/workouts.js';
-import { runTrainer } from '../agents/trainer.js';
+import { runTrainer, getSimilarSessions } from '../agents/trainer.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { downscale } from './shared/image.js';
 import { openHeatmap } from './shared/heatmap.js';
@@ -775,17 +775,41 @@ export function closeSessionRefine() {
   document.getElementById('sessionRefineModal').classList.remove('show');
 }
 
+function buildHistoryBlock(session) {
+  const similar = getSimilarSessions(session);
+  if (!Object.keys(similar).length) return '(no prior sessions with the same exercises/cardio)';
+  const lines = [];
+  for (const [name, sessions] of Object.entries(similar)) {
+    lines.push(`${name}:`);
+    sessions.forEach(s => {
+      const detail = s.sets
+        ? s.sets.map(x => x.reps).join(', ') + ' reps'
+        : [s.distance, s.duration].filter(Boolean).join(', ');
+      const rpeTag = s.rpe ? ` · RPE ${s.rpe}` : '';
+      const feelTag = s.feel ? ` · ${s.feel}` : '';
+      const burnTag = s.caloriesBurned ? ` · ${s.caloriesBurned} kcal` : '';
+      lines.push(`  ${s.date}: ${detail}${rpeTag}${feelTag}${burnTag}${s.note ? ` — ${s.note}` : ''}${s.notes ? ` — ${s.notes}` : ''}`);
+    });
+  }
+  return lines.join('\n');
+}
+
 function buildSessionSystemInstruction(session) {
   const exLines = (session.entries || []).filter(e => e.sets?.length).map(e =>
     `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`
   ).join('\n') || '  (none)';
   return PROMPTS.sessionChatSystem
     .replace('{date}', session.date)
-    .replace('{cardioNote}', session.cardioNote || '(none)')
+    .replace('{rpe}', String(session.rpe ?? '?'))
+    .replace('{feel}', session.feel || '?')
+    .replace('{location}', session.outdoor ? 'outdoor' : 'indoor')
     .replace('{cardioActivities}', formatCardioActivitiesForAI(session.cardioActivities))
     .replace('{exercises}', exLines)
     .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
-    .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []));
+    .replace('{consistency}', session.consistency || 'unknown')
+    .replace('{trainerFeedback}', session.trainerFeedback || 'not available')
+    .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []))
+    .replace('{history}', buildHistoryBlock(session));
 }
 
 export async function refineSessionEstimate() {

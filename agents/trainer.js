@@ -28,7 +28,7 @@ function buildSessionSummary(session) {
   ].filter(Boolean).join('\n\n');
 }
 
-function getSimilarSessions(session) {
+export function getSimilarSessions(session) {
   const allSessions = (state.sessions || []).filter(s => s.savedAt !== session.savedAt);
   const result = {};
 
@@ -40,7 +40,7 @@ function getSimilarSessions(session) {
       .slice(-SIMILAR_SESSION_LIMIT)
       .map(s => {
         const e = s.entries.find(e => e.name.toLowerCase() === name);
-        return { date: s.date, sets: e.sets, note: e.note };
+        return { date: s.date, sets: e.sets, note: e.note, rpe: s.rpe, feel: s.feel, caloriesBurned: s.caloriesBurned };
       });
     if (matches.length) result[entry.name] = matches;
   }
@@ -53,7 +53,7 @@ function getSimilarSessions(session) {
       .slice(-SIMILAR_SESSION_LIMIT)
       .map(s => {
         const a = s.cardioActivities.find(a => a.type === key);
-        return { date: s.date, distance: a.distance, duration: a.duration, notes: a.notes };
+        return { date: s.date, distance: a.distance, duration: a.duration, notes: a.notes, rpe: s.rpe, feel: s.feel, caloriesBurned: s.caloriesBurned };
       });
     if (matches.length) {
       const def = CARDIO_TYPES.find(c => c.key === key) || { label: key };
