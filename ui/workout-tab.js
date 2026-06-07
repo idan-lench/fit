@@ -6,8 +6,8 @@ import { PLAN, WEEKLY_PLAN, getPlanKeyForDate } from '../domain/plan.js';
 import { EXERCISE_LIBRARY, lastSetsFor } from '../domain/exercises.js';
 import { CARDIO_TYPES, formatCardioActivitiesForAI } from '../domain/cardio.js';
 import { renderMuscleHeatmapSvg } from '../domain/muscle-map.js';
-import { isCurrentFresh, autoAnalyzeSession } from '../domain/workouts.js';
-import { runTrainer, getSimilarSessions } from '../agents/trainer.js';
+import { isCurrentFresh, autoAnalyzeSession, updateWorkoutHistory, buildWorkoutHistoryContext } from '../domain/workouts.js';
+import { runTrainer } from '../agents/trainer.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { downscale } from './shared/image.js';
 import { openHeatmap } from './shared/heatmap.js';
@@ -25,6 +25,7 @@ let _refiningSessionAt = null;
 let _sessionChatHistory = [];
 let _cardioPhotoIdx = null; // null = idle, 'note' = main cardio note, number = activity index
 let _sessionAttachedImages = [];
+let _cachedHistoryContext = null;
 
 export const getCurrentDay = () => currentDay;
 
@@ -558,6 +559,7 @@ export function finishSession() {
     const savedSession = { ...state.current, savedAt };
     state.sessions.push(savedSession);
     state.current = null;
+    updateWorkoutHistory(savedSession);
     save();
     selectDay(currentDay);
     toast('Saved ✓');
@@ -587,6 +589,7 @@ export function finishSession() {
             s.feel            = feel;
             s.outdoor         = outdoor;
             if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
+            updateWorkoutHistory(s); // refresh index with kcal + rpe
             save();
             renderHistory();
           }
@@ -755,6 +758,7 @@ export function openSessionRefine(savedAt) {
     }
   }
   _refiningSessionAt = savedAt;
+  _cachedHistoryContext = buildWorkoutHistoryContext(30);
   _sessionAttachedImages = [];
   renderSessionAttachPreview();
   document.getElementById('sessionRefineTitle').textContent = (PLAN[session.day]?.label || session.day) + ' · ' + formatDate(session.date);
@@ -773,25 +777,7 @@ export function openSessionRefine(savedAt) {
 
 export function closeSessionRefine() {
   document.getElementById('sessionRefineModal').classList.remove('show');
-}
-
-function buildHistoryBlock(session) {
-  const similar = getSimilarSessions(session);
-  if (!Object.keys(similar).length) return '(no prior sessions with the same exercises/cardio)';
-  const lines = [];
-  for (const [name, sessions] of Object.entries(similar)) {
-    lines.push(`${name}:`);
-    sessions.forEach(s => {
-      const detail = s.sets
-        ? s.sets.filter(Boolean).map(x => x.reps ?? '?').join(', ') + ' reps'
-        : [s.distance, s.duration].filter(Boolean).join(', ');
-      const rpeTag = s.rpe ? ` · RPE ${s.rpe}` : '';
-      const feelTag = s.feel ? ` · ${s.feel}` : '';
-      const burnTag = s.caloriesBurned ? ` · ${s.caloriesBurned} kcal` : '';
-      lines.push(`  ${s.date}: ${detail}${rpeTag}${feelTag}${burnTag}${s.note ? ` — ${s.note}` : ''}${s.notes ? ` — ${s.notes}` : ''}`);
-    });
-  }
-  return lines.join('\n');
+  _cachedHistoryContext = null;
 }
 
 function buildSessionSystemInstruction(session) {
@@ -809,7 +795,7 @@ function buildSessionSystemInstruction(session) {
     .replace('{consistency}', session.consistency || 'unknown')
     .replace('{trainerFeedback}', session.trainerFeedback || 'not available')
     .replace('{breakdown}', JSON.stringify(session.burnBreakdown || []))
-    .replace('{history}', buildHistoryBlock(session));
+    .replace('{history}', _cachedHistoryContext || buildWorkoutHistoryContext(30));
 }
 
 export async function refineSessionEstimate() {
