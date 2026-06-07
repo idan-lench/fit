@@ -783,7 +783,7 @@ function buildHistoryBlock(session) {
     lines.push(`${name}:`);
     sessions.forEach(s => {
       const detail = s.sets
-        ? s.sets.map(x => x.reps).join(', ') + ' reps'
+        ? s.sets.filter(Boolean).map(x => x.reps ?? '?').join(', ') + ' reps'
         : [s.distance, s.duration].filter(Boolean).join(', ');
       const rpeTag = s.rpe ? ` · RPE ${s.rpe}` : '';
       const feelTag = s.feel ? ` · ${s.feel}` : '';

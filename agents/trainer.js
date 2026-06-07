@@ -34,27 +34,33 @@ export function getSimilarSessions(session) {
 
   // Per exercise: last N sessions that contain this exercise
   for (const entry of (session.entries || [])) {
+    if (!entry?.name) continue;
     const name = entry.name.toLowerCase();
     const matches = allSessions
-      .filter(s => (s.entries || []).some(e => e.name.toLowerCase() === name))
+      .filter(s => (s.entries || []).some(e => e?.name?.toLowerCase() === name))
       .slice(-SIMILAR_SESSION_LIMIT)
       .map(s => {
-        const e = s.entries.find(e => e.name.toLowerCase() === name);
+        const e = s.entries.find(e => e?.name?.toLowerCase() === name);
+        if (!e) return null;
         return { date: s.date, sets: e.sets, note: e.note, rpe: s.rpe, feel: s.feel, caloriesBurned: s.caloriesBurned };
-      });
+      })
+      .filter(Boolean);
     if (matches.length) result[entry.name] = matches;
   }
 
   // Per cardio type: last N sessions with the same type
   for (const activity of (session.cardioActivities || [])) {
+    if (!activity?.type) continue;
     const key = activity.type;
     const matches = allSessions
-      .filter(s => (s.cardioActivities || []).some(a => a.type === key))
+      .filter(s => (s.cardioActivities || []).some(a => a?.type === key))
       .slice(-SIMILAR_SESSION_LIMIT)
       .map(s => {
-        const a = s.cardioActivities.find(a => a.type === key);
+        const a = s.cardioActivities.find(a => a?.type === key);
+        if (!a) return null;
         return { date: s.date, distance: a.distance, duration: a.duration, notes: a.notes, rpe: s.rpe, feel: s.feel, caloriesBurned: s.caloriesBurned };
-      });
+      })
+      .filter(Boolean);
     if (matches.length) {
       const def = CARDIO_TYPES.find(c => c.key === key) || { label: key };
       result[def.label] = matches;
