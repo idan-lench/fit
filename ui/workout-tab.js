@@ -1119,7 +1119,24 @@ export function renderWorkout() {
   if (dateInput && state.current) dateInput.value = state.current.date || todayISO();
   const showSave = editing || !isCurrentFresh(state.current);
   if (saveRow) saveRow.style.display = showSave ? 'flex' : 'none';
-  if (feedbackCard) feedbackCard.style.display = (showSave && !editing) ? 'block' : 'none';
+  if (feedbackCard) {
+    feedbackCard.style.display = showSave ? 'block' : 'none';
+    // Pre-populate RPE/feel/location from stored session when editing
+    if (showSave && editing) {
+      const stored = state.sessions.find(s => s.savedAt === state.current._editingId);
+      if (stored) {
+        const rpeEl = document.getElementById('rpeInput');
+        if (rpeEl && stored.rpe != null) { rpeEl.value = stored.rpe; rpeEl.dispatchEvent(new Event('input')); }
+        document.querySelectorAll('.feel-btn').forEach(b => {
+          b.style.background = b.dataset.feel === stored.feel ? 'var(--line)' : '';
+        });
+        document.querySelectorAll('.loc-btn').forEach(b => {
+          const isOutdoor = stored.outdoor;
+          b.style.background = (b.dataset.loc === 'outdoor') === isOutdoor ? 'var(--line)' : '';
+        });
+      }
+    }
+  }
   list.innerHTML = '';
   currentDay = state.current.day;
 
