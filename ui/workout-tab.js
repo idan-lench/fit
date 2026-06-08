@@ -793,7 +793,7 @@ export function openSessionRefine(savedAt) {
     }
   }
   _refiningSessionAt = savedAt;
-  _cachedHistoryContext = buildWorkoutHistoryContext(30);
+  _cachedHistoryContext = buildWorkoutHistoryContext(30, session);
   _sessionAttachedImages = [];
   renderSessionAttachPreview();
   document.getElementById('sessionRefineTitle').textContent = (PLAN[session.day]?.label || session.day) + ' · ' + formatDate(session.date);

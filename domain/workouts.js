@@ -108,17 +108,31 @@ export function updateWorkoutHistory(session) {
   _updateInPlace(session);
 }
 
-// Returns a compact formatted string of all exercises/cardio in the last daysBack days.
+// Returns a compact formatted string of workout history for the last daysBack days.
+// If session is provided, only includes exercises/cardio present in that session.
 // Computed once per modal open and cached by the caller.
-export function buildWorkoutHistoryContext(daysBack = 30) {
+export function buildWorkoutHistoryContext(daysBack = 30, session = null) {
   ensureWorkoutHistory();
   const wh = state.workoutHistory;
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - daysBack);
   const cutoffISO = cutoff.toISOString().split('T')[0];
+
+  // Build filter sets from the session if provided
+  const exerciseFilter = session
+    ? new Set((session.entries || []).map(e => e.name).filter(Boolean))
+    : null;
+  const cardioFilter = session
+    ? new Set((session.cardioActivities || []).map(a => {
+        const def = CARDIO_TYPES.find(c => c.key === a.type);
+        return def ? def.label : a.type;
+      }).filter(Boolean))
+    : null;
+
   const lines = [];
 
   for (const [name, entries] of Object.entries(wh.exercises)) {
+    if (exerciseFilter && !exerciseFilter.has(name)) continue;
     const recent = entries.filter(e => e.date >= cutoffISO);
     if (!recent.length) continue;
     lines.push(`${name}:`);
@@ -129,6 +143,7 @@ export function buildWorkoutHistoryContext(daysBack = 30) {
   }
 
   for (const [label, entries] of Object.entries(wh.cardio)) {
+    if (cardioFilter && !cardioFilter.has(label)) continue;
     const recent = entries.filter(e => e.date >= cutoffISO);
     if (!recent.length) continue;
     lines.push(`${label}:`);
@@ -138,5 +153,5 @@ export function buildWorkoutHistoryContext(daysBack = 30) {
     });
   }
 
-  return lines.join('\n') || `(no workout history in the last ${daysBack} days)`;
+  return lines.join('\n') || `(no history for this workout in the last ${daysBack} days)`;
 }
