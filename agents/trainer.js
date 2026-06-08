@@ -6,6 +6,7 @@ import { parseJSONResponse } from '../core/format.js';
 import { PROMPTS } from '../prompts/index.js';
 import { state } from '../data/state.js';
 import { CARDIO_TYPES } from '../domain/cardio.js';
+import { calculateSessionCalories } from '../domain/calories.js';
 
 const SIMILAR_SESSION_LIMIT = 10;
 
@@ -70,7 +71,7 @@ export function getSimilarSessions(session) {
   return result;
 }
 
-function buildUserMessage({ session, rpe, feel, outdoor, weather }) {
+function buildUserMessage({ session, rpe, feel, outdoor, weather, calories }) {
   const parts = [
     `Session date: ${session.date}, time: ${session.time || 'unknown'}`,
     `Duration: ${session.durationMin ? session.durationMin + ' min' : 'unknown'}`,
@@ -81,6 +82,10 @@ function buildUserMessage({ session, rpe, feel, outdoor, weather }) {
 
   if (outdoor && weather) {
     parts.push(`Weather: ${weather.tempC}°C, humidity ${weather.humidity}%, ${weather.conditions}`);
+  }
+
+  if (calories) {
+    parts.push(`Pre-calculated burn: ${calories.caloriesBurned} kcal (EPOC: +${calories.epocToday} kcal today, +${calories.epocTomorrow} kcal tomorrow)`);
   }
 
   parts.push('', '--- Session ---', buildSessionSummary(session));
@@ -159,12 +164,23 @@ export async function runTrainer(session, inputs) {
     if (loc) weather = await fetchWeather({ ...loc, date: session.date, time: session.time });
   }
 
-  const userMessage = buildUserMessage({ session, rpe, feel, outdoor, weather });
+  const calories = calculateSessionCalories(session, { rpe, feel, outdoor, weather });
+
+  const userMessage = buildUserMessage({ session, rpe, feel, outdoor, weather, calories });
 
   const reply = await geminiGenerate({
     systemInstruction: PROMPTS.trainerSystem,
     contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+    temperature: 0,
   });
 
-  return parseJSONResponse(reply);
+  const llm = parseJSONResponse(reply);
+
+  return {
+    ...calories,
+    consistency: llm?.consistency || 'insufficient_data',
+    feedback:    llm?.feedback    || '',
+    adjustPlan:  llm?.adjustPlan  || false,
+    planNote:    llm?.planNote    || '',
+  };
 }

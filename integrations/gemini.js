@@ -20,11 +20,12 @@ export function setGeminiKey(v) {
 
 // Low-level: takes the Gemini request body (systemInstruction optional,
 // contents required), returns the model's text reply. Throws on HTTP error.
-export async function geminiGenerate({ systemInstruction, contents }) {
+export async function geminiGenerate({ systemInstruction, contents, temperature }) {
   const key = getGeminiKey();
   if (!key) throw new Error('Gemini API key not set');
   const body = { contents };
   if (systemInstruction) body.systemInstruction = { parts: [{ text: systemInstruction }] };
+  if (temperature !== undefined) body.generationConfig = { temperature };
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {
     method: 'POST',

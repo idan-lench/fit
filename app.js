@@ -49,7 +49,7 @@ import {
   removeCardio, openCardioPicker, closeCardioPicker, addCardioActivity, removeCardioActivity, updateCardioField,
   renderExerciseList, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, addCustomExercise, closeExercisePicker, pickExercise, addCustomExerciseText,
   openCardioPhotoAnalyze,
-  finishSession, cancelSession, editSession, setSessionTime, deleteSession, updateSessionDate, updateSessionTime,
+  finishSession, cancelSession, editSession, setSessionTime, deleteSession, reanalyzeSession, updateSessionDate, updateSessionTime,
   openSessionRefine, closeSessionRefine, refineSessionEstimate, requestSessionEstimateUpdate, applySessionRefine, discardSessionRefine,
   sessionAttachFiles, renderSessionAttachPreview, _removeSessionAttach,
   openPlanModal, closePlanModal,
@@ -301,7 +301,7 @@ Object.assign(window, {
   // Dynamic innerHTML handlers (workout-tab.js render functions)
   addCardioActivity, addCardioPlan, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, openCardioPhotoAnalyze, applySessionRefine,
   attachTimerTo, autoResizeTA,
-  deleteSession, discardSessionRefine,
+  deleteSession, reanalyzeSession, discardSessionRefine,
   editSession, editStepsEntry, editWaist,
   openSet, editSet, deleteCurrentSet, openSessionRefine, openTemplateEdit,
   pickExercise,

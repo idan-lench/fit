@@ -585,6 +585,8 @@ export function finishSession() {
             s.stepsFromCardio = result.stepsFromCardio;
             s.consistency     = result.consistency;
             s.trainerFeedback = result.feedback;
+            s.burnBreakdown   = result.breakdown;
+            s.burnNotes       = null;
             s.rpe             = rpe;
             s.feel            = feel;
             s.outdoor         = outdoor;
@@ -677,6 +679,7 @@ export function renderHistory() {
         <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
           <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="editSession(${s.savedAt})">Edit</button>
           <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="openSessionRefine(${s.savedAt})">💬 Chat</button>
+          <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="reanalyzeSession(${s.savedAt})">↺ Re-analyze</button>
           <button class="ghost danger" style="padding: 4px 10px; font-size: 13px;" onclick="deleteSession(${s.savedAt})">Delete</button>
         </div>
       </div>
@@ -731,6 +734,38 @@ export function deleteSession(savedAt) {
   save();
   renderHistory();
   toast('Session deleted');
+}
+
+export async function reanalyzeSession(savedAt) {
+  if (!getGeminiKey()) return toast('Set up Gemini API key first');
+  const s = state.sessions.find(x => x.savedAt === savedAt);
+  if (!s) return;
+  toast('Re-analyzing…', { persistent: true });
+  try {
+    const rpe     = s.rpe     ?? 5;
+    const feel    = s.feel    ?? 'normal';
+    const outdoor = s.outdoor ?? false;
+    const result  = await runTrainer(s, { rpe, feel, outdoor });
+    if (result) {
+      s.caloriesBurned  = result.caloriesBurned;
+      s.epocToday       = result.epocToday;
+      s.epocTomorrow    = result.epocTomorrow;
+      s.stepsFromCardio = result.stepsFromCardio;
+      s.consistency     = result.consistency;
+      s.trainerFeedback = result.feedback;
+      s.burnBreakdown   = result.breakdown;
+      s.burnNotes       = null;
+      if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
+      updateWorkoutHistory(s);
+      save();
+      renderHistory();
+    }
+  } catch {
+    toast('Re-analysis failed');
+    return;
+  }
+  hideToast();
+  toast(`Re-analyzed: ${state.sessions.find(x => x.savedAt === savedAt)?.caloriesBurned ?? '?'} kcal ✓`);
 }
 
 export function updateSessionDate(value) {
