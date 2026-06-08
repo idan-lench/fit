@@ -663,7 +663,8 @@ export function renderHistory() {
         `).join('')}
         ${s.entries.some(e => e.sets.length) ? `<details style="margin-top: 10px;"><summary class="muted small" style="cursor: pointer;">▸ Muscle heatmap</summary>${renderMuscleHeatmapSvg(s)}</details>` : ''}
         ${s.burnBreakdown && s.burnBreakdown.length ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
-          <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">Burn breakdown</div>
+          <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">Burn breakdown</div>
+          ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line);">RPE ${s.rpe}/10 · ${s.feel || 'normal'} · ${s.outdoor ? '🌤 outdoor' : '🏠 indoor'}${s.weather ? ` · ${s.weather.tempC}°C ${s.weather.humidity}% humidity` : ''}</div>` : ''}
           ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
           ${s.burnNotes ? `<div class="small muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
         </div>` : ''}
