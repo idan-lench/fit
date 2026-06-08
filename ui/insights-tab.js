@@ -311,8 +311,12 @@ export async function renderAnalysis() {
   for (const s of todaySessions) {
     if (s.caloriesBurned) {
       const label = (PLAN[s.day]?.label || s.day) + (s.cardioNote ? ' · ' + s.cardioNote.slice(0, 30) + (s.cardioNote.length > 30 ? '…' : '') : '');
-      html += `<div class="row between" style="padding: 4px 0; border-bottom: 1px solid var(--line);"><span class="small">${escapeHtml(label)}</span><span class="small">+${s.caloriesBurned} kcal</span></div>`;
+      const epocLine = s.epocToday > 0 ? ` <span class="muted">(+${s.epocToday} EPOC)</span>` : '';
+      html += `<div class="row between" style="padding: 4px 0; border-bottom: 1px solid var(--line);"><span class="small">${escapeHtml(label)}${epocLine}</span><span class="small">+${s.caloriesBurned + (s.epocToday || 0)} kcal</span></div>`;
     }
+  }
+  if (e.epocCarryIn > 0) {
+    html += `<div class="row between" style="padding: 4px 0; border-bottom: 1px solid var(--line);"><span class="small muted">Afterburn from yesterday</span><span class="small">+${e.epocCarryIn} kcal</span></div>`;
   }
   html += `<div class="row between" style="padding: 6px 0 0; font-weight: 700;"><span>Total burned</span><span>${e.burned.toLocaleString()} kcal</span></div>`;
   breakdown.innerHTML = html;

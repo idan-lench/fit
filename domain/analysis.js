@@ -49,6 +49,7 @@ export async function computeDailyEnergy(date) {
   let burned = BMR;
   let stepsBurn = 0;
   let sessionBurn = 0;
+  let epocCarryIn = 0;
   const stepsEntry = (state.steps || []).find(s => s.date === date);
   if (stepsEntry) {
     stepsBurn = Math.round(stepsEntry.count / STEPS_PER_KCAL);
@@ -56,12 +57,20 @@ export async function computeDailyEnergy(date) {
   }
   for (const s of (state.sessions || []).filter(s => s.date === date)) {
     if (typeof s.caloriesBurned === 'number') sessionBurn += s.caloriesBurned;
+    if (typeof s.epocToday === 'number') sessionBurn += s.epocToday;
   }
-  burned += sessionBurn;
+  // EPOC afterburn from yesterday's intense sessions spills into today
+  const prev = new Date(date + 'T12:00:00');
+  prev.setDate(prev.getDate() - 1);
+  const yesterday = prev.toISOString().slice(0, 10);
+  for (const s of (state.sessions || []).filter(s => s.date === yesterday)) {
+    if (typeof s.epocTomorrow === 'number') epocCarryIn += s.epocTomorrow;
+  }
+  burned += sessionBurn + epocCarryIn;
 
   return {
     eaten, burned, protein,
-    bmr: BMR, stepsBurn, sessionBurn,
+    bmr: BMR, stepsBurn, sessionBurn, epocCarryIn,
     mealCount: todayMeals.length,
     estimatedCount: mealsWithCal.length
   };
