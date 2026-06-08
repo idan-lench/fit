@@ -1031,6 +1031,7 @@ export function renderWorkout() {
     if (metaRow) metaRow.style.display = 'none';
     if (headerRow) headerRow.style.display = 'none';
     if (saveRow) saveRow.style.display = 'none';
+    if (feedbackCard) feedbackCard.style.display = 'none';
     const timerCard = document.getElementById('sessionTimerCard');
     if (timerCard) timerCard.style.display = 'none';
     if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
