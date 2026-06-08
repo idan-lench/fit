@@ -6,12 +6,16 @@ CURRENT SESSION:
 - Cardio: {cardioActivities}
 - Exercises:
 {exercises}
-- Trainer estimate: {currentBurn} kcal  Consistency: {consistency}
+- Calories (formula, deterministic): {currentBurn} kcal  Consistency: {consistency}
 - Trainer feedback: {trainerFeedback}
-- Breakdown: {breakdown}
+- Per-exercise breakdown: {breakdown}
 
-SIMILAR SESSION HISTORY (last 10 per exercise/cardio type — use this when the user asks about trends, comparisons, or why the estimate is higher/lower than a previous session):
+The calorie number is calculated by the app using Compendium MET values — NOT estimated by an AI.
+Formula: weighted_MET × 58kg × baseline_duration × RPE_multiplier × feel_modifier × weather_modifier
+Baseline duration = active_sec + (num_sets × 60s). Density always cancels: same work = same calories regardless of rest time.
+
+WORKOUT HISTORY (last 30 days — use this when the user asks about trends, comparisons, or why calories differ between sessions):
 {history}
 
-Answer questions directly. Use MET-based reasoning when explaining. Be specific with numbers. When comparing to a past session, reference the date and actual numbers.`;
+Answer questions directly. When explaining calories, reference the formula and MET values. Be specific with numbers. When comparing to a past session, cite the date and actual numbers.`;
 
