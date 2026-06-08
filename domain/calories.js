@@ -102,17 +102,35 @@ const PER_LEG = new Set([
 ]);
 
 const CARDIO_MET = {
-  run: 10.0,
   walk: 3.5,
   cycle: 7.5,
   swim: 7.0,
   hike: 6.0,
-  treadmill_run: 10.0,
   treadmill_walk: 3.5,
   elliptical: 5.5,
   rowing: 7.0,
   jump_rope: 11.0,
 };
+
+// Run MET derived from pace (min/km). Compendium values.
+// Used for 'run' and 'treadmill_run' when both distance and duration are available.
+const RUN_PACE_BRACKETS = [
+  { maxPaceMinKm: 4.5,  met: 14.0 },  // < 4:30/km  (>13.3 km/h) — fast/interval
+  { maxPaceMinKm: 5.5,  met: 11.0 },  // 4:30–5:30/km (11–13 km/h) — tempo
+  { maxPaceMinKm: 6.5,  met: 10.0 },  // 5:30–6:30/km (9–11 km/h) — moderate
+  { maxPaceMinKm: 8.0,  met: 8.5  },  // 6:30–8:00/km (7.5–9 km/h) — easy/long run
+  { maxPaceMinKm: Infinity, met: 7.0 }, // > 8:00/km — slow jog
+];
+
+function runMet(durationMin, km) {
+  if (km > 0 && durationMin > 0) {
+    const paceMinKm = durationMin / km;
+    for (const { maxPaceMinKm, met } of RUN_PACE_BRACKETS) {
+      if (paceMinKm < maxPaceMinKm) return met;
+    }
+  }
+  return 10.0; // fallback: ~6:00/km moderate pace
+}
 
 const CARDIO_STEPS_PER_KM = {
   run: 1300,
@@ -211,9 +229,10 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
 
   for (const a of (session.cardioActivities || [])) {
     if (!a?.type) continue;
-    const met = CARDIO_MET[a.type] ?? 6.0;
     const durationMin = parseDurationMin(a.duration);
     const km = parseFloat(a.distance) || 0;
+    const isRun = a.type === 'run' || a.type === 'treadmill_run';
+    const met = isRun ? runMet(durationMin, km) : (CARDIO_MET[a.type] ?? 6.0);
     const rawCal = met * WEIGHT_KG * (durationMin / 60);
     cardioBase += rawCal;
     stepsFromCardio += km * (CARDIO_STEPS_PER_KM[a.type] ?? 0);
@@ -242,10 +261,14 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
   }
   for (const { type, met, durationMin, km, rawCal } of cardioCalcs) {
     const rawShare = base > 0 ? rawCal / base : 0;
+    const isRun = type === 'run' || type === 'treadmill_run';
+    const paceNote = isRun && km > 0 && durationMin > 0
+      ? `, ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
+      : '';
     breakdown.push({
       activity: type,
       calories: Math.round(adjusted * rawShare),
-      reasoning: `MET ${met}, ${durationMin} min${km ? `, ${km} km` : ''}`,
+      reasoning: `MET ${met}, ${durationMin} min${km ? `, ${km} km${paceNote}` : ''}`,
     });
   }
 
