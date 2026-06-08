@@ -8,6 +8,7 @@ import { CARDIO_TYPES, formatCardioActivitiesForAI } from '../domain/cardio.js';
 import { renderMuscleHeatmapSvg } from '../domain/muscle-map.js';
 import { isCurrentFresh, autoAnalyzeSession, updateWorkoutHistory, buildWorkoutHistoryContext } from '../domain/workouts.js';
 import { runTrainer } from '../agents/trainer.js';
+import { rpeMultiplier, feelModifier } from '../domain/calories.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { downscale } from './shared/image.js';
 import { openHeatmap } from './shared/heatmap.js';
@@ -537,6 +538,7 @@ export function finishSession() {
   if (!state.current) return toast('Nothing to save');
   const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote || (state.current.cardioActivities || []).length > 0;
   if (!hasAny) return toast('Log at least one set');
+  if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   let savedAt;
   if (state.current._editingId) {
     const idx = state.sessions.findIndex(s => s.savedAt === state.current._editingId);
@@ -611,13 +613,17 @@ export function cancelSession() {
   if (!state.current) return;
   const wasEditing = !!state.current._editingId;
   const isFresh = isCurrentFresh(state.current);
-  if (!isFresh) {
-    const msg = wasEditing
-      ? 'Discard your edits? The original saved session is unchanged.'
-      : 'Cancel this session? Logged sets will be lost.';
-    if (!confirm(msg)) return;
+  // Edit mode: original session is always intact — no confirm needed.
+  // New session: confirm only if there are logged sets to lose.
+  if (!wasEditing && !isFresh) {
+    if (!confirm('Cancel this session? Logged sets will be lost.')) return;
   }
   state.current = null;
+  // Force-hide editing UI immediately before renderWorkout runs
+  ['sessionHeaderRow','saveRow','sessionFeedbackCard','sessionTimerCard'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
   save();
   renderWorkout();
   if (wasEditing) toast('Edits discarded');
@@ -664,19 +670,23 @@ export function renderHistory() {
           <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.durationMin ? ` <span class="muted">· ${e.durationMin} min</span>` : ''}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
         `).join('')}
         ${s.entries.some(e => e.sets.length) ? `<details style="margin-top: 10px;"><summary class="muted small" style="cursor: pointer;">▸ Muscle heatmap</summary>${renderMuscleHeatmapSvg(s)}</details>` : ''}
-        ${s.burnBreakdown && s.burnBreakdown.length ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
+        ${s.burnBreakdown && s.burnBreakdown.length ? (() => {
+          const mult = s.rpe != null ? rpeMultiplier(s.rpe) * feelModifier(s.feel || 'normal') * (s.outdoor && s.weather && s.weather.tempC > 28 && s.weather.humidity > 70 ? 1.12 : s.outdoor && s.weather && s.weather.tempC > 28 ? 1.08 : s.outdoor && s.weather && s.weather.tempC < 5 ? 1.05 : 1.00) : 1.00;
+          const multPct = mult > 1.001 ? `+${Math.round((mult - 1) * 100)}%` : mult < 0.999 ? `${Math.round((mult - 1) * 100)}%` : null;
+          return `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
           <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">Burn breakdown</div>
-          ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line);">RPE ${s.rpe}/10 · ${s.feel || 'normal'} · ${s.outdoor ? '🌤 outdoor' : '🏠 indoor'}${s.weather ? ` · ${s.weather.tempC}°C ${s.weather.humidity}% humidity` : ''}</div>` : ''}
+          ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line);">RPE ${s.rpe}/10 · ${s.feel || 'normal'} · ${s.outdoor ? '🌤 outdoor' : '🏠 indoor'}${s.weather ? ` · ${s.weather.tempC}°C` : ''}${multPct ? ` <span style="color: var(--accent);">→ ×${mult.toFixed(2)} intensity</span>` : ''}</div>` : ''}
           ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
+          <div class="small" style="margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); font-weight: 600;">Total: ${s.caloriesBurned} kcal${s.epocToday > 0 ? ` <span class="muted" style="font-weight: 400;">· +${s.epocToday} kcal EPOC today</span>` : ''}${s.epocTomorrow > 0 ? ` <span class="muted" style="font-weight: 400;">· +${s.epocTomorrow} kcal carries to tomorrow</span>` : ''}</div>
           ${s.burnNotes ? `<div class="small muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
-        </div>` : ''}
+        </div>`;
+        })() : ''}
         ${burnQs.length ? `<div class="small" style="margin-top: 6px; color: var(--warn);">❓ ${burnQs.length} question${burnQs.length > 1 ? 's' : ''}: ${burnQs.map(escapeHtml).join(' · ')}</div>` : ''}
         ${notes ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
         ${s.trainerFeedback ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px; border-left: 3px solid var(--accent2);">
           <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">🏋️ Trainer</div>
           ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 4px;">RPE ${s.rpe}/10 · ${s.feel || ''}${s.consistency ? ` · ${s.consistency}` : ''}</div>` : ''}
           <div class="small" style="white-space: pre-wrap;">${escapeHtml(s.trainerFeedback)}</div>
-          ${s.epocTomorrow > 0 ? `<div class="small muted" style="margin-top: 4px;">+${s.epocTomorrow} kcal afterburn carries to tomorrow</div>` : ''}
           ${s.planNote ? `<div class="small" style="margin-top: 6px; color: var(--accent);">📋 ${escapeHtml(s.planNote)}</div>` : ''}
         </div>` : ''}
         <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
@@ -1120,9 +1130,9 @@ export function renderWorkout() {
   const showSave = editing || !isCurrentFresh(state.current);
   if (saveRow) saveRow.style.display = showSave ? 'flex' : 'none';
   if (feedbackCard) {
-    feedbackCard.style.display = showSave ? 'block' : 'none';
+    feedbackCard.style.display = (showSave && hasContent) ? 'block' : 'none';
     // Pre-populate RPE/feel/location from stored session when editing
-    if (showSave && editing) {
+    if (showSave && editing && hasContent) {
       const stored = state.sessions.find(s => s.savedAt === state.current._editingId);
       if (stored) {
         const rpeEl = document.getElementById('rpeInput');

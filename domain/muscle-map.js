@@ -33,6 +33,7 @@ export const MUSCLE_MAP = {
   'step-ups':            { quads: 1.0, glutes: 0.7, hamstrings: 0.4 },
   'leg press':           { quads: 1.0, glutes: 0.6, hamstrings: 0.4 },
   // Core
+  'handstand (sec)':     { delts_front: 1.0, triceps: 0.8, traps: 0.7, abs: 0.6, forearms: 0.5 },
   'plank (sec)':         { abs: 1.0, delts_front: 0.3 },
   'side plank (sec)':    { obliques: 1.0, abs: 0.5 },
   'hanging leg raises':  { abs: 1.0, forearms: 0.4 },

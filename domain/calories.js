@@ -134,6 +134,7 @@ function runMet(durationMin, km) {
 
 const CARDIO_STEPS_PER_KM = {
   run: 1300,
+  interval: 1300,
   walk: 1400,
   treadmill_run: 1300,
   treadmill_walk: 1400,
@@ -231,7 +232,7 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
     if (!a?.type) continue;
     const durationMin = parseDurationMin(a.duration);
     const km = parseFloat(a.distance) || 0;
-    const isRun = a.type === 'run' || a.type === 'treadmill_run';
+    const isRun = a.type === 'run' || a.type === 'treadmill_run' || a.type === 'interval';
     const met = isRun ? runMet(durationMin, km) : (CARDIO_MET[a.type] ?? 6.0);
     const rawCal = met * WEIGHT_KG * (durationMin / 60);
     cardioBase += rawCal;
@@ -256,25 +257,26 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
   for (const { name, met, activeSec, legFactor } of exCalcs) {
     const rawCal = met * WEIGHT_KG * (activeSec / 3600);
     const finalCal = Math.round(rawCal * modifier);
-    const legNote = legFactor === 2 ? ' · per leg ×2' : '';
+    const legNote = legFactor === 2 ? ' (per-leg ×2)' : '';
     breakdownSum += finalCal;
     breakdown.push({
       activity: name,
       calories: finalCal,
-      reasoning: `MET ${met} · ${Math.round(activeSec)}s active${legNote}`,
+      reasoning: `MET ${met} × ${WEIGHT_KG}kg × ${Math.round(activeSec)}s active${legNote} = ${Math.round(rawCal)} kcal × ${modifier.toFixed(2)} intensity`,
     });
   }
   for (const { type, met, durationMin, km, rawCal } of cardioCalcs) {
     const finalCal = Math.round(rawCal * modifier);
-    const isRun = type === 'run' || type === 'treadmill_run';
+    const isRun = type === 'run' || type === 'treadmill_run' || type === 'interval';
     const paceNote = isRun && km > 0 && durationMin > 0
-      ? ` · ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
+      ? ` at ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
       : '';
+    const kmNote = km ? ` · ${km} km${paceNote}` : '';
     breakdownSum += finalCal;
     breakdown.push({
       activity: type,
       calories: finalCal,
-      reasoning: `MET ${met} · ${durationMin} min${km ? ` · ${km} km${paceNote}` : ''}`,
+      reasoning: `MET ${met} × ${WEIGHT_KG}kg × ${durationMin} min${kmNote} = ${Math.round(rawCal)} kcal × ${modifier.toFixed(2)} intensity`,
     });
   }
   // Rest time: baseline includes 1 min/set — attribute remainder here
@@ -283,7 +285,7 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
     breakdown.push({
       activity: 'Rest time',
       calories: restCal,
-      reasoning: `${totalSets} sets × 60s · MET ${weightedMet.toFixed(1)} avg`,
+      reasoning: `${totalSets} sets × 60s rest at avg MET ${weightedMet.toFixed(1)} × ${modifier.toFixed(2)} intensity`,
     });
   }
 
