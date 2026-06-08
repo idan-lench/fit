@@ -200,7 +200,7 @@ function _openSetModal({ exerciseIdx, setIdx = null }) {
   const isEdit = setIdx !== null;
   currentReps = isEdit ? entry.sets[setIdx].reps : (entry.sets.slice(-1)[0]?.reps ?? getPrevSets(entry.name)?.[0] ?? 8);
   const isTime = /plank|hold|sec|hang/i.test(entry.name);
-  document.getElementById('setRepsVal').textContent = currentReps;
+  document.getElementById('setRepsVal').value = currentReps;
   document.getElementById('setModalTitle').textContent = entry.name;
   document.getElementById('setModalLabel').textContent = isTime ? 'Seconds' : 'Reps';
   document.getElementById('confirmSetBtn').textContent = isEdit ? 'Save' : 'Add set';
@@ -222,12 +222,14 @@ export function closeSet() {
 }
 
 export function bumpReps(d) {
-  currentReps = Math.max(0, currentReps + d);
-  document.getElementById('setRepsVal').textContent = currentReps;
+  const input = document.getElementById('setRepsVal');
+  currentReps = Math.max(0, (parseInt(input.value, 10) || 0) + d);
+  input.value = currentReps;
 }
 
 export function confirmSet() {
   if (!currentSetCtx) return;
+  currentReps = Math.max(0, parseInt(document.getElementById('setRepsVal').value, 10) || 0);
   const { exerciseIdx, setIdx } = currentSetCtx;
   if (setIdx !== null) {
     state.current.entries[exerciseIdx].sets[setIdx].reps = currentReps;
