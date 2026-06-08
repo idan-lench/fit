@@ -25,6 +25,7 @@ const EXERCISE_MET = {
   'barbell rows': 5.0,
   'front raises': 4.0,
   'shoulder press machine': 5.0,
+  'handstand (sec)': 8.0,
   'squats': 5.0,
   'lunges (each leg)': 5.0,
   'bulgarian split squats': 5.0,
@@ -68,6 +69,7 @@ const SECS_PER_REP = {
   'barbell rows': 2.5,
   'front raises': 2.0,
   'shoulder press machine': 2.5,
+  'handstand (sec)': 1.0,  // reps = seconds held
   'squats': 2.5,
   'lunges (each leg)': 2.0,
   'bulgarian split squats': 2.5,
