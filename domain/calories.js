@@ -251,40 +251,39 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
 
   // --- Breakdown (pro-rata share of adjusted total) ---
   const breakdown = [];
-  const modStr = `×${modifier.toFixed(2)}`;
   let breakdownSum = 0;
 
-  for (const { name, met, activeSec, sets, legFactor } of exCalcs) {
+  for (const { name, met, activeSec, legFactor } of exCalcs) {
     const rawCal = met * WEIGHT_KG * (activeSec / 3600);
     const finalCal = Math.round(rawCal * modifier);
-    const legNote = legFactor === 2 ? ' ×2 legs' : '';
+    const legNote = legFactor === 2 ? ' · per leg ×2' : '';
     breakdownSum += finalCal;
     breakdown.push({
       activity: name,
       calories: finalCal,
-      reasoning: `${met} MET × 58kg × ${Math.round(activeSec)}s${legNote} ÷ 3600 = ${rawCal.toFixed(1)} kcal ${modStr} = ${finalCal} kcal`,
+      reasoning: `MET ${met} · ${Math.round(activeSec)}s active${legNote}`,
     });
   }
   for (const { type, met, durationMin, km, rawCal } of cardioCalcs) {
     const finalCal = Math.round(rawCal * modifier);
     const isRun = type === 'run' || type === 'treadmill_run';
     const paceNote = isRun && km > 0 && durationMin > 0
-      ? ` @ ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
+      ? ` · ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
       : '';
     breakdownSum += finalCal;
     breakdown.push({
       activity: type,
       calories: finalCal,
-      reasoning: `${met} MET × 58kg × ${durationMin}min${km ? ` (${km}km${paceNote})` : ''} ÷ 60 = ${rawCal.toFixed(1)} kcal ${modStr} = ${finalCal} kcal`,
+      reasoning: `MET ${met} · ${durationMin} min${km ? ` · ${km} km${paceNote}` : ''}`,
     });
   }
-  // Rest time overhead: baseline includes 1 min/set rest — attribute remainder to session
+  // Rest time: baseline includes 1 min/set — attribute remainder here
   const restCal = Math.round(adjusted) - breakdownSum;
   if (restCal > 0) {
     breakdown.push({
       activity: 'Rest time',
       calories: restCal,
-      reasoning: `${totalSets} sets × 60s rest × ${(weightedMet).toFixed(2)} weighted MET × 58kg ÷ 3600 ${modStr}`,
+      reasoning: `${totalSets} sets × 60s · MET ${weightedMet.toFixed(1)} avg`,
     });
   }
 
