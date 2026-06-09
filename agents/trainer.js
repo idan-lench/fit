@@ -164,7 +164,7 @@ export async function runTrainer(session, inputs) {
     if (loc) weather = await fetchWeather({ ...loc, date: session.date, time: session.time });
   }
 
-  const calories = calculateSessionCalories(session, { rpe, feel, outdoor, weather });
+  const calories = calculateSessionCalories(session, { rpe, feel, outdoor, weather, weightKg: state.profile?.weightKg ?? 58 });
 
   const userMessage = buildUserMessage({ session, rpe, feel, outdoor, weather, calories });
 

@@ -3,8 +3,6 @@
 // Formula: weighted_MET × weight × baseline_duration × modifiers
 // Baseline = active_sec + (num_sets × 60s rest), so density always cancels.
 
-const WEIGHT_KG = 58;
-
 // Compendium MET values (session-averaged, active phase)
 const EXERCISE_MET = {
   'pull-ups': 8.0,
@@ -104,8 +102,10 @@ const PER_LEG = new Set([
 const CARDIO_MET = {
   walk: 3.5,
   cycle: 7.5,
-  swim: 7.0,
+  bike: 7.5,       // same as cycle
+  swim: 8.0,   // freestyle moderate (Compendium: 8.0 MET)
   hike: 6.0,
+  movement: 5.0,   // movement/flexibility class
   treadmill_walk: 3.5,
   elliptical: 5.5,
   rowing: 7.0,
@@ -114,10 +114,14 @@ const CARDIO_MET = {
 
 // Run MET derived from pace (min/km). Compendium values.
 // Used for 'run' and 'treadmill_run' when both distance and duration are available.
+// Compendium of Physical Activities 2011 + Gemini cross-reference:
+// 15 km/h=13.3, 16 km/h=14.5, 18 km/h=16.0 | 9.7 km/h=10.0, 10.8=11.0, 12.1=11.8
 const RUN_PACE_BRACKETS = [
-  { maxPaceMinKm: 4.5,  met: 14.0 },  // < 4:30/km  (>13.3 km/h) — fast/interval
-  { maxPaceMinKm: 5.5,  met: 11.0 },  // 4:30–5:30/km (11–13 km/h) — tempo
-  { maxPaceMinKm: 6.5,  met: 10.0 },  // 5:30–6:30/km (9–11 km/h) — moderate
+  { maxPaceMinKm: 3.33, met: 16.0 },  // < 3:20/km  (>18 km/h) — max sprint
+  { maxPaceMinKm: 4.0,  met: 14.5 },  // 3:20–4:00/km (15–18 km/h) — sprint
+  { maxPaceMinKm: 4.5,  met: 13.5 },  // 4:00–4:30/km (13–15 km/h) — fast/interval
+  { maxPaceMinKm: 5.5,  met: 11.5 },  // 4:30–5:30/km (11–13 km/h) — tempo
+  { maxPaceMinKm: 6.5,  met: 10.5 },  // 5:30–6:30/km (9–11 km/h) — moderate
   { maxPaceMinKm: 8.0,  met: 8.5  },  // 6:30–8:00/km (7.5–9 km/h) — easy/long run
   { maxPaceMinKm: Infinity, met: 7.0 }, // > 8:00/km — slow jog
 ];
@@ -134,6 +138,7 @@ function runMet(durationMin, km) {
 
 const CARDIO_STEPS_PER_KM = {
   run: 1300,
+  'long-run': 1300,
   interval: 1300,
   walk: 1400,
   treadmill_run: 1300,
@@ -186,10 +191,11 @@ function parseDurationMin(str) {
  * Deterministic session calorie calculation.
  *
  * @param {object} session  - session with entries[], cardioActivities[], time
- * @param {object} opts     - { rpe, feel, outdoor, weather }
+ * @param {object} opts     - { rpe, feel, outdoor, weather, weightKg }
  * @returns {{ caloriesBurned, epocToday, epocTomorrow, stepsFromCardio, breakdown }}
  */
-export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', outdoor = false, weather = null } = {}) {
+export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', outdoor = false, weather = null, weightKg = 58 } = {}) {
+  const WEIGHT_KG = weightKg;
   const rpeMult   = rpeMultiplier(rpe);
   const feelMod   = feelModifier(feel);
   const weatherMod = weatherModifier(outdoor, weather);
@@ -232,7 +238,7 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
     if (!a?.type) continue;
     const durationMin = parseDurationMin(a.duration);
     const km = parseFloat(a.distance) || 0;
-    const isRun = a.type === 'run' || a.type === 'treadmill_run' || a.type === 'interval';
+    const isRun = a.type === 'run' || a.type === 'treadmill_run' || a.type === 'interval' || a.type === 'long-run';
     const met = isRun ? runMet(durationMin, km) : (CARDIO_MET[a.type] ?? 6.0);
     const rawCal = met * WEIGHT_KG * (durationMin / 60);
     cardioBase += rawCal;
@@ -267,7 +273,7 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
   }
   for (const { type, met, durationMin, km, rawCal } of cardioCalcs) {
     const finalCal = Math.round(rawCal * modifier);
-    const isRun = type === 'run' || type === 'treadmill_run' || type === 'interval';
+    const isRun = type === 'run' || type === 'treadmill_run' || type === 'interval' || type === 'long-run';
     const paceNote = isRun && km > 0 && durationMin > 0
       ? ` at ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
       : '';
