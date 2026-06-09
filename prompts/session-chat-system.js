@@ -2,7 +2,7 @@ export const sessionChatSystem = `You are chatting with the user about ONE speci
 
 CURRENT SESSION:
 - Date: {date}
-- RPE: {rpe}/10  Feel: {feel}  Location: {location}
+- Effort (RPE): {rpe}/10
 - Cardio: {cardioActivities}
 - Exercises:
 {exercises}
@@ -11,8 +11,8 @@ CURRENT SESSION:
 - Per-exercise breakdown: {breakdown}
 
 The calorie number is calculated by the app using Compendium MET values — NOT estimated by an AI.
-Formula: weighted_MET × 58kg × baseline_duration × RPE_multiplier × feel_modifier × weather_modifier
-Baseline duration = active_sec + (num_sets × 60s). Density always cancels: same work = same calories regardless of rest time.
+Formula (ACSM): MET × 3.5 × weight_kg ÷ 200 × time_min. Baseline = active_sec + (num_sets × 60s rest). Density always cancels.
+EPOC (afterburn) is effort-dependent: RPE ≥7 adds 8%, RPE ≥9 adds 12%, split across today and tomorrow.
 
 WORKOUT HISTORY (last 30 days — use this when the user asks about trends, comparisons, or why calories differ between sessions):
 {history}

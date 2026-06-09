@@ -1,20 +1,20 @@
 // Generic SVG chart helpers. Each function takes a DOM element directly —
 // callers own the getElementById lookup so these stay testable and reusable.
 
-export function drawChart(el, ms) {
+export function drawChart(el, ms, getVal = m => m.cm) {
   const w = 600, h = 200, pad = 28;
   if (ms.length === 0) {
     el.innerHTML = `<div class="empty">Add a measurement to see the trend.</div>`;
     return;
   }
   const xs = ms.map(m => +new Date(m.date));
-  const ys = ms.map(m => m.cm);
+  const ys = ms.map(getVal);
   const xMin = Math.min(...xs), xMax = Math.max(...xs);
   const yMin = Math.min(...ys) - 1, yMax = Math.max(...ys) + 1;
   const xScale = x => pad + ((x - xMin) / Math.max(1, xMax - xMin)) * (w - pad*2);
   const yScale = y => h - pad - ((y - yMin) / Math.max(0.01, yMax - yMin)) * (h - pad*2);
-  const pts = ms.map(m => `${xScale(+new Date(m.date)).toFixed(1)},${yScale(m.cm).toFixed(1)}`).join(' ');
-  const dots = ms.map(m => `<circle cx="${xScale(+new Date(m.date))}" cy="${yScale(m.cm)}" r="4" fill="var(--accent)"/>`).join('');
+  const pts = ms.map(m => `${xScale(+new Date(m.date)).toFixed(1)},${yScale(getVal(m)).toFixed(1)}`).join(' ');
+  const dots = ms.map(m => `<circle cx="${xScale(+new Date(m.date))}" cy="${yScale(getVal(m))}" r="4" fill="var(--accent)"/>`).join('');
   const yTicks = [yMin, (yMin+yMax)/2, yMax].map(y => `
     <line x1="${pad}" y1="${yScale(y)}" x2="${w-pad}" y2="${yScale(y)}" stroke="var(--line)" stroke-dasharray="2,4"/>
     <text x="${pad-6}" y="${yScale(y)+4}" fill="var(--muted)" font-size="11" text-anchor="end">${y.toFixed(1)}</text>
