@@ -27,9 +27,10 @@ import {
   copySecret, copyScript, saveAndTestSync, testSync, importData, wipeAll, syncGoogleFit, fullBackup,
 } from './ui/settings.js';
 import {
-  renderBody, renderSteps, renderPhotos, renderCompareByDate,
+  renderBody, renderSteps, renderPhotos,
   saveWorkoutSteps, removeSteps, editStepsEntry, toggleStepsEdit,
   toggleWaistEdit, addWaist, removeWaist, editWaist,
+  addWeight, toggleWeightEdit, removeWeightEntry, editWeight, renderWeight,
   onPhotoPicked, analyzePhotoComparison, deleteCompareAnalysis, removePhoto, dedupePhotos,
 } from './ui/body-tab.js';
 import {
@@ -317,7 +318,7 @@ Object.assign(window, {
   useTemplate,
 
   // Dynamic innerHTML handlers (body-tab.js render functions)
-  deleteCompareAnalysis, removePhoto,
+  deleteCompareAnalysis, removePhoto, editWeight, removeWeightEntry,
 
   // Dynamic innerHTML handlers (chat-input.js)
   _removeAiAttach, _removeMealAttach, _removeSessionAttach,

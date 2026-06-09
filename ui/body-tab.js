@@ -6,7 +6,7 @@ import { putPhoto, getAllPhotos, deletePhoto } from '../data/photo-store.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { photoSizeKey } from '../integrations/drive-sync.js';
 import { upsertStep, removeStep } from '../domain/steps.js';
-import { upsertMeasurement, removeMeasurement } from '../domain/body.js';
+import { upsertMeasurement, removeMeasurement, upsertWeight, removeWeight, latestWeightKg } from '../domain/body.js';
 import { drawChart, drawStepsChart } from './shared/chart.js';
 import { downscale } from './shared/image.js';
 import { getTrendMode } from './insights-tab.js';
@@ -19,7 +19,8 @@ let selectedForCompare = [];
 export function renderBody() {
   const waistGoal = state.profile?.goals?.waistCm || 75;
   renderCompareHistory();
-  document.getElementById('waistDate').value = todayISO();
+  const dateInput = document.getElementById('weightDate');
+  if (dateInput && !dateInput.value) dateInput.value = todayISO();
   const ms = state.measurements.slice().sort((a,b) => a.date.localeCompare(b.date));
   const last = ms[ms.length - 1];
   const first = ms[0];
@@ -55,7 +56,6 @@ export function renderBody() {
   }
 
   drawChart(document.getElementById('waistChart'), ms);
-  renderSteps();
   document.getElementById('waistList').innerHTML = ms.length === 0
     ? '<div class="muted small">No measurements yet.</div>'
     : ms.slice().reverse().map((m) => `
@@ -68,6 +68,9 @@ export function renderBody() {
           </span>
         </div>
       `).join('');
+
+  renderWeight();
+  renderSteps();
 }
 
 export function toggleWaistEdit() {
@@ -80,13 +83,85 @@ export function toggleWaistEdit() {
 
 export function addWaist() {
   const v = parseFloat(document.getElementById('waistInput').value);
-  const d = document.getElementById('waistDate').value || todayISO();
+  const d = document.getElementById('weightDate').value || todayISO();
   if (isNaN(v) || v <= 0) return toast('Enter a number');
   state.measurements = upsertMeasurement(state.measurements, d, v);
   save();
   document.getElementById('waistInput').value = '';
   renderBody();
   toast('Saved ✓');
+}
+
+// ---------- WEIGHT ----------
+export function renderWeight() {
+  const ws = (state.weights || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+  const last  = ws[ws.length - 1];
+  const first = ws[0];
+
+  document.getElementById('weightNow').textContent = last ? last.kg.toFixed(1) + ' kg' : '—';
+  const dEl = document.getElementById('weightDelta');
+  if (last && first && first !== last) {
+    const d = last.kg - first.kg;
+    dEl.textContent = (d >= 0 ? '+' : '') + d.toFixed(1) + ' kg vs start';
+    dEl.className = 'delta ' + (d < 0 ? 'down' : 'up');
+  } else {
+    dEl.textContent = ' ';
+    dEl.className = 'delta';
+  }
+
+  drawChart(document.getElementById('weightChart'), ws, w => w.kg);
+  document.getElementById('weightList').innerHTML = ws.length === 0
+    ? '<div class="muted small">No entries yet.</div>'
+    : ws.slice().reverse().map(w => `
+        <div class="row between" style="padding:6px 2px; border-bottom:1px solid var(--line);">
+          <span class="small">${formatDate(w.date)}</span>
+          <span class="row" style="gap:6px;">
+            <b style="font-variant-numeric: tabular-nums; margin-right: 4px;">${w.kg.toFixed(1)} kg</b>
+            <button class="icon ghost" onclick="editWeight('${w.date}')" aria-label="Edit">✏</button>
+            <button class="icon ghost" onclick="removeWeightEntry('${w.date}')" aria-label="Remove">✕</button>
+          </span>
+        </div>
+      `).join('');
+}
+
+export function addWeight() {
+  const v = parseFloat(document.getElementById('weightInput').value);
+  const d = document.getElementById('weightDate').value || todayISO();
+  if (isNaN(v) || v <= 0) return toast('Enter a number');
+  state.weights = upsertWeight(state.weights, d, v);
+  // keep profile in sync so calorie engine always has latest
+  if (!state.profile) state.profile = {};
+  state.profile.weightKg = latestWeightKg(state.weights);
+  save();
+  document.getElementById('weightInput').value = '';
+  renderWeight();
+  toast('Saved ✓');
+}
+
+export function removeWeightEntry(date) {
+  if (!confirm('Remove this entry?')) return;
+  state.weights = removeWeight(state.weights, date);
+  const latest = latestWeightKg(state.weights);
+  if (state.profile) state.profile.weightKg = latest ?? state.profile.weightKg;
+  save();
+  renderWeight();
+}
+
+export function editWeight(date) {
+  const w = (state.weights || []).find(x => x.date === date);
+  if (!w) return;
+  document.getElementById('weightInput').value = w.kg;
+  document.getElementById('weightDate').value = w.date;
+  document.getElementById('weightInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  document.getElementById('weightInput').focus();
+}
+
+export function toggleWeightEdit() {
+  const list = document.getElementById('weightList');
+  const btn  = document.getElementById('weightEditBtn');
+  const open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : 'block';
+  btn.textContent = open ? '✏ Edit' : '✓ Done';
 }
 
 export function removeWaist(date) {
@@ -100,7 +175,7 @@ export function editWaist(date) {
   const m = state.measurements.find(x => x.date === date);
   if (!m) return;
   document.getElementById('waistInput').value = m.cm;
-  document.getElementById('waistDate').value = m.date;
+  document.getElementById('weightDate').value = m.date;
   document.getElementById('waistInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
   document.getElementById('waistInput').focus();
 }
@@ -204,19 +279,27 @@ export function toggleStepsEdit() {
 export async function onPhotoPicked(e) {
   const files = Array.from(e.target.files);
   if (!files.length) return;
-  for (const file of files) {
-    const blob = await downscale(file, 1280);
-    await putPhoto(blob, todayISO());
+  toast('Saving…', { persistent: true });
+  try {
+    for (const file of files) {
+      const blob = await downscale(file, 1280);
+      await putPhoto(blob, todayISO());
+    }
+    e.target.value = '';
+    hideToast();
+    toast(files.length > 1 ? `${files.length} photos saved ✓` : 'Photo saved ✓');
+    renderPhotos();
+  } catch (err) {
+    hideToast();
+    toast('Upload failed: ' + (err.message || 'unknown error'));
   }
-  e.target.value = '';
-  toast(files.length > 1 ? `${files.length} photos saved ✓` : 'Photo saved ✓');
-  renderPhotos();
 }
 
 export async function renderPhotos() {
   const photos = await getAllPhotos();
   const grid = document.getElementById('photoGrid');
   const empty = document.getElementById('photoEmpty');
+  grid.style.display = photos.length ? '' : 'none';
   empty.style.display = photos.length ? 'none' : 'block';
   grid.innerHTML = '';
   for (const p of photos) {
@@ -231,67 +314,28 @@ export async function renderPhotos() {
     grid.appendChild(cell);
   }
   const dates = [...new Set(photos.map(p => p.date))].sort();
-  const dateA = document.getElementById('compareDateA');
-  const dateB = document.getElementById('compareDateB');
-  if (dateA && dateB && dates.length >= 1) {
-    if (!dateA.value) dateA.value = dates[0];
-    if (!dateB.value) dateB.value = dates[dates.length - 1];
+  const btn = document.getElementById('compareAnalyzeBtn');
+  if (btn) btn.style.display = (dates.length >= 2 && getGeminiKey()) ? 'block' : 'none';
+  const hint = document.getElementById('compareHint');
+  if (hint) {
+    if (dates.length < 2) {
+      hint.textContent = dates.length === 0 ? 'Add photos to track your progress.' : 'Add photos on another date to enable comparison.';
+      hint.style.display = 'block';
+    } else {
+      hint.textContent = `${dates.length} dates — comparing ${formatDate(dates[0])} vs ${formatDate(dates[dates.length - 1])}`;
+      hint.style.display = 'block';
+    }
   }
-  renderCompareByDate();
 }
 
-export async function renderCompareByDate() {
-  const dateA = document.getElementById('compareDateA')?.value;
-  const dateB = document.getElementById('compareDateB')?.value;
-  const grid = document.getElementById('compareGrid');
-  const hint = document.getElementById('compareHint');
-  const btn = document.getElementById('compareAnalyzeBtn');
-  if (!grid) return;
-  if (!dateA || !dateB) {
-    grid.style.display = 'none';
-    hint.style.display = 'block';
-    hint.textContent = 'Pick two dates to load all photos from each.';
-    if (btn) btn.style.display = 'none';
-    return;
-  }
-  const photos = await getAllPhotos();
-  const a = photos.filter(p => p.date === dateA);
-  const b = photos.filter(p => p.date === dateB);
-  if (a.length === 0 && b.length === 0) {
-    grid.style.display = 'none';
-    hint.style.display = 'block';
-    hint.textContent = 'No photos on those dates.';
-    if (btn) btn.style.display = 'none';
-    return;
-  }
-  hint.style.display = 'none';
-  grid.style.display = 'block';
-  const block = (label, list) => `
-    <div style="margin-top: 8px;">
-      <div class="muted small" style="margin-bottom: 4px;">${label} · ${list.length} photo${list.length !== 1 ? 's' : ''}</div>
-      <div class="photoGrid">${list.map(p => `
-        <div class="photoCell">
-          <img src="${URL.createObjectURL(p.blob)}">
-          <span class="x" onclick="event.stopPropagation(); removePhoto(${p.id});">✕</span>
-        </div>
-      `).join('') || '<div class="muted small">(no photos)</div>'}</div>
-    </div>`;
-  grid.innerHTML = block(formatDate(dateA), a) + block(formatDate(dateB), b);
-  if (btn) btn.style.display = (a.length && b.length && getGeminiKey()) ? 'block' : 'none';
-}
 
 export async function analyzePhotoComparison() {
-  const dateA = document.getElementById('compareDateA')?.value;
-  const dateB = document.getElementById('compareDateB')?.value;
-  if (!dateA || !dateB) return;
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
   const photos = await getAllPhotos();
-  let a = photos.filter(p => p.date === dateA);
-  let b = photos.filter(p => p.date === dateB);
-  if (a.length === 0 || b.length === 0) return toast('Need at least one photo on each date');
-  const earlierIsA = dateA <= dateB;
-  const earlier = { date: earlierIsA ? dateA : dateB, photos: earlierIsA ? a : b };
-  const later   = { date: earlierIsA ? dateB : dateA, photos: earlierIsA ? b : a };
+  const dates = [...new Set(photos.map(p => p.date))].sort();
+  if (dates.length < 2) return toast('Need photos on at least 2 different dates');
+  const earlier = { date: dates[0],               photos: photos.filter(p => p.date === dates[0]) };
+  const later   = { date: dates[dates.length - 1], photos: photos.filter(p => p.date === dates[dates.length - 1]) };
   const btn = document.getElementById('compareAnalyzeBtn');
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = 'Analyzing…';

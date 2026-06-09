@@ -6,7 +6,10 @@ export const CARDIO_TYPES = [
   { key: 'movement',  icon: '🤸',  label: 'Movement class',   showDist: false, showDur: true },
   { key: 'hike',      icon: '🥾',  label: 'Hike / trek',      showDist: true,  showDur: true },
   { key: 'bike',      icon: '🚴',  label: 'Bike ride',        showDist: true,  showDur: true },
-  { key: 'swim',      icon: '🏊',  label: 'Swim',             showDist: true,  showDur: true },
+  { key: 'swim_freestyle',   icon: '🏊',  label: 'Swim — freestyle',   showDist: true,  showDur: true },
+  { key: 'swim_butterfly',   icon: '🦋',  label: 'Swim — butterfly',   showDist: true,  showDur: true },
+  { key: 'swim_breaststroke',icon: '🐸',  label: 'Swim — breaststroke',showDist: true,  showDur: true },
+  { key: 'swim_backstroke',  icon: '🏊',  label: 'Swim — backstroke',  showDist: true,  showDur: true },
   { key: 'custom',    icon: '➕',  label: 'Custom cardio',    showDist: true,  showDur: true }
 ];
 

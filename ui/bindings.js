@@ -13,7 +13,8 @@ import {
   copySecret, copyScript, saveAndTestSync, testSync, importData, wipeAll, syncGoogleFit,
 } from './settings.js';
 import {
-  renderCompareByDate, saveWorkoutSteps, toggleStepsEdit, toggleWaistEdit, addWaist,
+  saveWorkoutSteps, toggleStepsEdit, toggleWaistEdit, addWaist,
+  addWeight, toggleWeightEdit,
   onPhotoPicked, analyzePhotoComparison, dedupePhotos,
 } from './body-tab.js';
 import {
@@ -32,7 +33,7 @@ import {
   closeExercisePicker, addCustomExerciseText, closeTimerAttach,
   updateSessionDate, updateSessionTime, renderExerciseList,
   refineSessionEstimate, requestSessionEstimateUpdate, closeSessionRefine,
-  sessionAttachFiles, onCardioPhotoSelected,
+  sessionAttachFiles, onCardioPhotoSelected, updateEffortDisplay,
 } from './workout-tab.js';
 
 export const _setup = true; // dummy export so flattenModules includes this file
@@ -77,25 +78,18 @@ on('addCardioBtn',          'click', openCardioPicker);
 on('cardioPhotoInput',      'change', e => onCardioPhotoSelected(e));
 on('finishSessionBtn',      'click', finishSession);
 on('resetSessionBtn',       'click', cancelSession);
-on('rpeInput', 'input', e => { document.getElementById('rpeLabel').textContent = e.target.value; });
-document.querySelectorAll('.feel-btn').forEach(btn => btn.addEventListener('click', () => {
-  document.querySelectorAll('.feel-btn').forEach(b => b.style.background = '');
-  btn.style.background = 'var(--line)';
-}));
-document.querySelectorAll('.loc-btn').forEach(btn => btn.addEventListener('click', () => {
-  document.querySelectorAll('.loc-btn').forEach(b => b.style.background = '');
-  btn.style.background = 'var(--line)';
-}));
+// effort slider: pos 1–9 maps to RPE 2–10 (odd positions = between-emoji values)
+on('effortInput', 'input', () => updateEffortDisplay());
 
 // ── BODY TAB ──────────────────────────────────────────────────────────────────
 on('saveWaistBtn',     'click',  addWaist);
 on('waistEditBtn',     'click',  toggleWaistEdit);
+on('saveWeightBtn',    'click',  addWeight);
+on('weightEditBtn',    'click',  toggleWeightEdit);
 on('photoCameraInput', 'change', onPhotoPicked);
 on('photoGalleryInput','change', onPhotoPicked);
 on('photoCameraBtn',   'click',  () => document.getElementById('photoCameraInput').click());
 on('photoGalleryBtn',  'click',  () => document.getElementById('photoGalleryInput').click());
-on('compareDateA',     'change', renderCompareByDate);
-on('compareDateB',     'change', renderCompareByDate);
 on('compareAnalyzeBtn','click',  analyzePhotoComparison);
 
 // ── MEALS TAB ─────────────────────────────────────────────────────────────────

@@ -44,4 +44,5 @@ export const state = load() || {
   sessions: [], measurements: [], current: null, steps: [],
 };
 state.steps = state.steps || [];
+state.weights = state.weights || [];
 state.workoutHistory = state.workoutHistory || { exercises: {}, cardio: {} };

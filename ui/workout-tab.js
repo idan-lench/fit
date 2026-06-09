@@ -8,7 +8,6 @@ import { CARDIO_TYPES, formatCardioActivitiesForAI } from '../domain/cardio.js';
 import { renderMuscleHeatmapSvg } from '../domain/muscle-map.js';
 import { isCurrentFresh, autoAnalyzeSession, updateWorkoutHistory, buildWorkoutHistoryContext } from '../domain/workouts.js';
 import { runTrainer } from '../agents/trainer.js';
-import { rpeMultiplier, feelModifier } from '../domain/calories.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { downscale } from './shared/image.js';
 import { openHeatmap } from './shared/heatmap.js';
@@ -29,6 +28,20 @@ let _sessionAttachedImages = [];
 let _cachedHistoryContext = null;
 
 export const getCurrentDay = () => currentDay;
+
+export function updateEffortDisplay() {
+  const slider = document.getElementById('effortInput');
+  if (!slider) return;
+  const pos = parseInt(slider.value, 10);
+  const activeIdx = Math.floor((pos - 1) / 2);
+  const emojiRow = document.getElementById('effortEmojiRow');
+  if (!emojiRow) return;
+  [...emojiRow.children].forEach((el, i) => {
+    el.style.opacity = i === activeIdx ? '1' : '0.4';
+    el.style.transform = i === activeIdx ? 'scale(1.25)' : 'scale(1)';
+    el.style.transition = 'opacity 0.15s, transform 0.15s';
+  });
+}
 
 // ---------- DATE HELPERS ----------
 export function workoutCurrentDate() {
@@ -572,16 +585,13 @@ export function finishSession() {
     }
   }
   if (getGeminiKey() && savedAt) {
-    const rpe     = parseInt(document.getElementById('rpeInput')?.value || '5', 10);
-    const feelEl  = document.querySelector('.feel-btn[style*="var(--line)"]');
-    const feel    = feelEl?.dataset?.feel || 'normal';
-    const locEl   = document.querySelector('.loc-btn[style*="var(--line)"]');
-    const outdoor = locEl?.dataset?.loc === 'outdoor';
+    const effortPos = parseInt(document.getElementById('effortInput')?.value || '5', 10);
+    const rpe = effortPos + 1; // slider 1–9 → RPE 2–10
     const s = state.sessions.find(x => x.savedAt === savedAt);
     if (s) {
       setTimeout(async () => {
         try {
-          const result = await runTrainer(s, { rpe, feel, outdoor });
+          const result = await runTrainer(s, { rpe });
           if (result) {
             s.caloriesBurned  = result.caloriesBurned;
             s.epocToday       = result.epocToday;
@@ -592,10 +602,8 @@ export function finishSession() {
             s.burnBreakdown   = result.breakdown;
             s.burnNotes       = null;
             s.rpe             = rpe;
-            s.feel            = feel;
-            s.outdoor         = outdoor;
             if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
-            updateWorkoutHistory(s); // refresh index with kcal + rpe
+            updateWorkoutHistory(s);
             save();
             renderHistory();
           }
@@ -670,22 +678,17 @@ export function renderHistory() {
           <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.durationMin ? ` <span class="muted">· ${e.durationMin} min</span>` : ''}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
         `).join('')}
         ${s.entries.some(e => e.sets.length) ? `<details style="margin-top: 10px;"><summary class="muted small" style="cursor: pointer;">▸ Muscle heatmap</summary>${renderMuscleHeatmapSvg(s)}</details>` : ''}
-        ${s.burnBreakdown && s.burnBreakdown.length ? (() => {
-          const mult = s.rpe != null ? rpeMultiplier(s.rpe) * feelModifier(s.feel || 'normal') * (s.outdoor && s.weather && s.weather.tempC > 28 && s.weather.humidity > 70 ? 1.12 : s.outdoor && s.weather && s.weather.tempC > 28 ? 1.08 : s.outdoor && s.weather && s.weather.tempC < 5 ? 1.05 : 1.00) : 1.00;
-          const multPct = mult > 1.001 ? `+${Math.round((mult - 1) * 100)}%` : mult < 0.999 ? `${Math.round((mult - 1) * 100)}%` : null;
-          return `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
-          <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">Burn breakdown</div>
-          ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--line);">RPE ${s.rpe}/10 · ${s.feel || 'normal'} · ${s.outdoor ? '🌤 outdoor' : '🏠 indoor'}${s.weather ? ` · ${s.weather.tempC}°C` : ''}${multPct ? ` <span style="color: var(--accent);">→ ×${mult.toFixed(2)} intensity</span>` : ''}</div>` : ''}
+        ${s.burnBreakdown && s.burnBreakdown.length ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
+          <div class="muted small" style="margin-bottom: 6px; font-weight: 500;">Burn breakdown${s.rpe != null ? ` · effort ${s.rpe}/10` : ''}</div>
           ${s.burnBreakdown.map(b => `<div class="small" style="margin-top: 4px;"><b>${escapeHtml(b.activity)}</b>: ${b.calories} kcal <span class="muted">— ${escapeHtml(b.reasoning || '')}</span></div>`).join('')}
           <div class="small" style="margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); font-weight: 600;">Total: ${s.caloriesBurned} kcal${s.epocToday > 0 ? ` <span class="muted" style="font-weight: 400;">· +${s.epocToday} kcal EPOC today</span>` : ''}${s.epocTomorrow > 0 ? ` <span class="muted" style="font-weight: 400;">· +${s.epocTomorrow} kcal carries to tomorrow</span>` : ''}</div>
           ${s.burnNotes ? `<div class="small muted" style="margin-top: 6px; font-style: italic;">${escapeHtml(s.burnNotes)}</div>` : ''}
-        </div>`;
-        })() : ''}
+        </div>` : ''}
         ${burnQs.length ? `<div class="small" style="margin-top: 6px; color: var(--warn);">❓ ${burnQs.length} question${burnQs.length > 1 ? 's' : ''}: ${burnQs.map(escapeHtml).join(' · ')}</div>` : ''}
         ${notes ? `<div style="margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent);"><div class="muted small">Notes / Analysis</div><div style="white-space: pre-wrap;">${notes}</div></div>` : ''}
         ${s.trainerFeedback ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px; border-left: 3px solid var(--accent2);">
           <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">🏋️ Trainer</div>
-          ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 4px;">RPE ${s.rpe}/10 · ${s.feel || ''}${s.consistency ? ` · ${s.consistency}` : ''}</div>` : ''}
+          ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 4px;">Effort ${s.rpe}/10${s.consistency ? ` · ${s.consistency}` : ''}</div>` : ''}
           <div class="small" style="white-space: pre-wrap;">${escapeHtml(s.trainerFeedback)}</div>
           ${s.planNote ? `<div class="small" style="margin-top: 6px; color: var(--accent);">📋 ${escapeHtml(s.planNote)}</div>` : ''}
         </div>` : ''}
@@ -755,10 +758,8 @@ export async function reanalyzeSession(savedAt) {
   if (!s) return;
   toast('Re-analyzing…', { persistent: true });
   try {
-    const rpe     = s.rpe     ?? 5;
-    const feel    = s.feel    ?? 'normal';
-    const outdoor = s.outdoor ?? false;
-    const result  = await runTrainer(s, { rpe, feel, outdoor });
+    const rpe    = s.rpe ?? 5;
+    const result = await runTrainer(s, { rpe });
     if (result) {
       s.caloriesBurned  = result.caloriesBurned;
       s.epocToday       = result.epocToday;
@@ -835,8 +836,6 @@ function buildSessionSystemInstruction(session) {
   return PROMPTS.sessionChatSystem
     .replace('{date}', session.date)
     .replace('{rpe}', String(session.rpe ?? '?'))
-    .replace('{feel}', session.feel || '?')
-    .replace('{location}', session.outdoor ? 'outdoor' : 'indoor')
     .replace('{cardioActivities}', formatCardioActivitiesForAI(session.cardioActivities))
     .replace('{exercises}', exLines)
     .replace('{currentBurn}', String(session.caloriesBurned ?? 'unknown'))
@@ -1131,19 +1130,15 @@ export function renderWorkout() {
   if (saveRow) saveRow.style.display = showSave ? 'flex' : 'none';
   if (feedbackCard) {
     feedbackCard.style.display = (showSave && hasContent) ? 'block' : 'none';
-    // Pre-populate RPE/feel/location from stored session when editing
+    // Pre-populate effort slider from stored session when editing
     if (showSave && editing && hasContent) {
       const stored = state.sessions.find(s => s.savedAt === state.current._editingId);
       if (stored) {
-        const rpeEl = document.getElementById('rpeInput');
-        if (rpeEl && stored.rpe != null) { rpeEl.value = stored.rpe; rpeEl.dispatchEvent(new Event('input')); }
-        document.querySelectorAll('.feel-btn').forEach(b => {
-          b.style.background = b.dataset.feel === stored.feel ? 'var(--line)' : '';
-        });
-        document.querySelectorAll('.loc-btn').forEach(b => {
-          const isOutdoor = stored.outdoor;
-          b.style.background = (b.dataset.loc === 'outdoor') === isOutdoor ? 'var(--line)' : '';
-        });
+        const effortEl = document.getElementById('effortInput');
+        if (effortEl && stored.rpe != null) {
+          effortEl.value = Math.max(1, Math.min(9, stored.rpe - 1)); // RPE 2–10 → slider 1–9
+          updateEffortDisplay();
+        }
       }
     }
   }

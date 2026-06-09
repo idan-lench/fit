@@ -7,6 +7,7 @@ import { PROMPTS } from '../prompts/index.js';
 import { state } from '../data/state.js';
 import { CARDIO_TYPES } from '../domain/cardio.js';
 import { calculateSessionCalories } from '../domain/calories.js';
+import { latestWeightKg } from '../domain/body.js';
 
 const SIMILAR_SESSION_LIMIT = 10;
 
@@ -71,18 +72,12 @@ export function getSimilarSessions(session) {
   return result;
 }
 
-function buildUserMessage({ session, rpe, feel, outdoor, weather, calories }) {
+function buildUserMessage({ session, rpe, calories }) {
   const parts = [
     `Session date: ${session.date}, time: ${session.time || 'unknown'}`,
     `Duration: ${session.durationMin ? session.durationMin + ' min' : 'unknown'}`,
     `RPE: ${rpe}/10`,
-    `Feel: ${feel}`,
-    `Location: ${outdoor ? 'outdoor' : 'indoor'}`,
   ];
-
-  if (outdoor && weather) {
-    parts.push(`Weather: ${weather.tempC}°C, humidity ${weather.humidity}%, ${weather.conditions}`);
-  }
 
   if (calories) {
     parts.push(`Pre-calculated burn: ${calories.caloriesBurned} kcal (EPOC: +${calories.epocToday} kcal today, +${calories.epocTomorrow} kcal tomorrow)`);
@@ -107,66 +102,21 @@ function buildUserMessage({ session, rpe, feel, outdoor, weather, calories }) {
   return parts.join('\n');
 }
 
-// ---------- WEATHER ----------
-
-async function fetchWeather({ lat, lon, date, time }) {
-  try {
-    const hour = time ? parseInt(time.split(':')[0], 10) : 12;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relativehumidity_2m,weathercode&start_date=${date}&end_date=${date}&timezone=auto`;
-    const res = await fetch(url);
-    const data = await res.json();
-    const tempC    = data.hourly?.temperature_2m?.[hour] ?? null;
-    const humidity = data.hourly?.relativehumidity_2m?.[hour] ?? null;
-    const code     = data.hourly?.weathercode?.[hour] ?? null;
-    const conditions = weatherCodeLabel(code);
-    return { tempC, humidity, conditions };
-  } catch {
-    return null;
-  }
-}
-
-function weatherCodeLabel(code) {
-  if (code === null) return 'unknown';
-  if (code === 0) return 'clear sky';
-  if (code <= 3) return 'partly cloudy';
-  if (code <= 48) return 'foggy';
-  if (code <= 67) return 'rain';
-  if (code <= 77) return 'snow';
-  if (code <= 82) return 'rain showers';
-  return 'thunderstorm';
-}
-
-async function getLocation() {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) { resolve(null); return; }
-    navigator.geolocation.getCurrentPosition(
-      p => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
-      () => resolve(null),
-      { timeout: 5000 }
-    );
-  });
-}
-
 // ---------- MAIN ENTRY ----------
 
 /**
  * Run the trainer agent on a completed session.
  * @param {object} session - the session object from state.sessions
- * @param {object} inputs  - { rpe: number, feel: string, outdoor: boolean }
+ * @param {object} inputs  - { rpe: number }
  * @returns {object|null}  - parsed trainer result or null on failure
  */
 export async function runTrainer(session, inputs) {
-  const { rpe, feel, outdoor } = inputs;
+  const { rpe } = inputs;
 
-  let weather = null;
-  if (outdoor) {
-    const loc = await getLocation();
-    if (loc) weather = await fetchWeather({ ...loc, date: session.date, time: session.time });
-  }
+  const weightKg = latestWeightKg(state.weights) ?? state.profile?.weightKg ?? 58;
+  const calories = calculateSessionCalories(session, { rpe, weightKg });
 
-  const calories = calculateSessionCalories(session, { rpe, feel, outdoor, weather, weightKg: state.profile?.weightKg ?? 58 });
-
-  const userMessage = buildUserMessage({ session, rpe, feel, outdoor, weather, calories });
+  const userMessage = buildUserMessage({ session, rpe, calories });
 
   const reply = await geminiGenerate({
     systemInstruction: PROMPTS.trainerSystem,

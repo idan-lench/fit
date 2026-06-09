@@ -1,6 +1,6 @@
 // Deterministic calorie engine — Compendium of Physical Activities MET values.
 // The LLM never touches calorie numbers; it only assesses consistency and feedback.
-// Formula: weighted_MET × weight × baseline_duration × modifiers
+// Formula (ACSM): MET × 3.5 × weight_kg ÷ 200 × time_min
 // Baseline = active_sec + (num_sets × 60s rest), so density always cancels.
 
 // Compendium MET values (session-averaged, active phase)
@@ -103,7 +103,11 @@ const CARDIO_MET = {
   walk: 3.5,
   cycle: 7.5,
   bike: 7.5,       // same as cycle
-  swim: 8.0,   // freestyle moderate (Compendium: 8.0 MET)
+  swim: 8.0,             // legacy key — freestyle moderate fallback
+  swim_freestyle: 8.0,   // front crawl moderate (Compendium 2011: 8.0)
+  swim_butterfly: 13.8,  // most demanding stroke (Compendium: 13.8)
+  swim_breaststroke: 5.3,// general/recreational pace (Compendium: 5.3)
+  swim_backstroke: 4.8,  // general/recreational pace (Compendium: 4.8)
   hike: 6.0,
   movement: 5.0,   // movement/flexibility class
   treadmill_walk: 3.5,
@@ -153,21 +157,6 @@ export function rpeMultiplier(rpe) {
   return 0.85 + (rpe - 1) * (0.35 / 9);
 }
 
-export function feelModifier(feel) {
-  if (feel === 'easy') return 0.95;
-  if (feel === 'exhausted') return 1.10;
-  return 1.00;
-}
-
-function weatherModifier(outdoor, weather) {
-  if (!outdoor || !weather) return 1.00;
-  const { tempC, humidity } = weather;
-  if (tempC > 28 && humidity > 70) return 1.12;
-  if (tempC > 28) return 1.08;
-  if (tempC < 5) return 1.05;
-  return 1.00;
-}
-
 // EPOC: rate and today/tomorrow split based on session hour
 function epocSplit(rpe, sessionHour) {
   const rate = rpe >= 9 ? 0.12 : rpe >= 7 ? 0.08 : 0;
@@ -191,15 +180,11 @@ function parseDurationMin(str) {
  * Deterministic session calorie calculation.
  *
  * @param {object} session  - session with entries[], cardioActivities[], time
- * @param {object} opts     - { rpe, feel, outdoor, weather, weightKg }
+ * @param {object} opts     - { rpe, weightKg }
  * @returns {{ caloriesBurned, epocToday, epocTomorrow, stepsFromCardio, breakdown }}
  */
-export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', outdoor = false, weather = null, weightKg = 58 } = {}) {
+export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {}) {
   const WEIGHT_KG = weightKg;
-  const rpeMult   = rpeMultiplier(rpe);
-  const feelMod   = feelModifier(feel);
-  const weatherMod = weatherModifier(outdoor, weather);
-  const modifier  = rpeMult * feelMod * weatherMod;
 
   // --- Strength ---
   let totalActiveSec = 0;
@@ -227,7 +212,8 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
 
   const weightedMet = totalActiveSec > 0 ? weightedMetNum / totalActiveSec : 0;
   const baselineSec = totalActiveSec + totalSets * 60;
-  const strengthBase = weightedMet * WEIGHT_KG * (baselineSec / 3600);
+  // ACSM formula: MET × 3.5 mL O₂/kg/min × weight × time → ÷200 converts to kcal
+  const strengthBase = weightedMet * 3.5 * WEIGHT_KG / 200 * (baselineSec / 60);
 
   // --- Cardio ---
   let cardioBase = 0;
@@ -240,14 +226,13 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
     const km = parseFloat(a.distance) || 0;
     const isRun = a.type === 'run' || a.type === 'treadmill_run' || a.type === 'interval' || a.type === 'long-run';
     const met = isRun ? runMet(durationMin, km) : (CARDIO_MET[a.type] ?? 6.0);
-    const rawCal = met * WEIGHT_KG * (durationMin / 60);
+    const rawCal = met * 3.5 * WEIGHT_KG / 200 * durationMin;
     cardioBase += rawCal;
     stepsFromCardio += km * (CARDIO_STEPS_PER_KM[a.type] ?? 0);
     cardioCalcs.push({ type: a.type, met, durationMin, km, rawCal });
   }
 
-  const base = strengthBase + cardioBase;
-  const adjusted = base * modifier;
+  const adjusted = strengthBase + cardioBase;
 
   // --- EPOC ---
   const hour = session.time ? parseInt(session.time.split(':')[0], 10) : 12;
@@ -261,18 +246,18 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
   let breakdownSum = 0;
 
   for (const { name, met, activeSec, legFactor } of exCalcs) {
-    const rawCal = met * WEIGHT_KG * (activeSec / 3600);
-    const finalCal = Math.round(rawCal * modifier);
+    const rawCal = met * 3.5 * WEIGHT_KG / 200 * (activeSec / 60);
+    const finalCal = Math.round(rawCal);
     const legNote = legFactor === 2 ? ' (per-leg ×2)' : '';
     breakdownSum += finalCal;
     breakdown.push({
       activity: name,
       calories: finalCal,
-      reasoning: `MET ${met} × ${WEIGHT_KG}kg × ${Math.round(activeSec)}s active${legNote} = ${Math.round(rawCal)} kcal × ${modifier.toFixed(2)} intensity`,
+      reasoning: `MET ${met} × 3.5 × ${WEIGHT_KG}kg ÷ 200 × ${Math.round(activeSec / 60 * 10) / 10}min active${legNote} = ${finalCal} kcal`,
     });
   }
   for (const { type, met, durationMin, km, rawCal } of cardioCalcs) {
-    const finalCal = Math.round(rawCal * modifier);
+    const finalCal = Math.round(rawCal);
     const isRun = type === 'run' || type === 'treadmill_run' || type === 'interval' || type === 'long-run';
     const paceNote = isRun && km > 0 && durationMin > 0
       ? ` at ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
@@ -282,7 +267,7 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
     breakdown.push({
       activity: type,
       calories: finalCal,
-      reasoning: `MET ${met} × ${WEIGHT_KG}kg × ${durationMin} min${kmNote} = ${Math.round(rawCal)} kcal × ${modifier.toFixed(2)} intensity`,
+      reasoning: `MET ${met} × 3.5 × ${WEIGHT_KG}kg ÷ 200 × ${durationMin} min${kmNote} = ${finalCal} kcal`,
     });
   }
   // Rest time: baseline includes 1 min/set — attribute remainder here
@@ -291,7 +276,7 @@ export function calculateSessionCalories(session, { rpe = 5, feel = 'normal', ou
     breakdown.push({
       activity: 'Rest time',
       calories: restCal,
-      reasoning: `${totalSets} sets × 60s rest at avg MET ${weightedMet.toFixed(1)} × ${modifier.toFixed(2)} intensity`,
+      reasoning: `${totalSets} sets × 60s rest at avg MET ${weightedMet.toFixed(1)}`,
     });
   }
 

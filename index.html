@@ -115,31 +115,14 @@
     <div id="exerciseList"></div>
 
     <div id="sessionFeedbackCard" style="display: none; margin-top: 12px; padding: 14px 16px; background: var(--panel2); border-radius: 12px;">
-      <div class="muted small" style="font-weight: 500; margin-bottom: 12px;">How did it go?</div>
-      <div style="margin-bottom: 12px;">
-        <div class="row between" style="margin-bottom: 4px;">
-          <label class="muted small">Effort (RPE)</label>
-          <span id="rpeLabel" style="font-weight: 600; font-size: 15px;">5</span>
-        </div>
-        <input type="range" id="rpeInput" min="1" max="10" value="5" style="width: 100%;">
-        <div class="row between" style="margin-top: 2px;">
-          <span class="muted small">Easy</span><span class="muted small">Max effort</span>
-        </div>
-      </div>
-      <div style="margin-bottom: 12px;">
-        <label class="muted small" style="display: block; margin-bottom: 6px;">Feel</label>
-        <div class="row" style="gap: 8px;">
-          <button class="feel-btn ghost" data-feel="easy"      style="flex: 1; font-size: 13px;">😊 Easy</button>
-          <button class="feel-btn ghost" data-feel="normal"    style="flex: 1; font-size: 13px; background: var(--line);">😐 Normal</button>
-          <button class="feel-btn ghost" data-feel="exhausted" style="flex: 1; font-size: 13px;">😓 Exhausted</button>
-        </div>
-      </div>
-      <div>
-        <label class="muted small" style="display: block; margin-bottom: 6px;">Location</label>
-        <div class="row" style="gap: 8px;">
-          <button class="loc-btn ghost" data-loc="indoor"  style="flex: 1; font-size: 13px; background: var(--line);">🏠 Indoor</button>
-          <button class="loc-btn ghost" data-loc="outdoor" style="flex: 1; font-size: 13px;">🌤️ Outdoor</button>
-        </div>
+      <div class="muted small" style="font-weight: 500; margin-bottom: 10px;">How did it go?</div>
+      <input type="range" id="effortInput" min="1" max="9" step="1" value="5" style="width: 100%; accent-color: var(--accent);">
+      <div id="effortEmojiRow" style="display: flex; justify-content: space-between; margin-top: 6px; text-align: center; pointer-events: none;">
+        <div><div style="font-size: 22px;">😌</div><div class="muted small" style="font-size: 10px;">Recovery</div></div>
+        <div><div style="font-size: 22px;">🙂</div><div class="muted small" style="font-size: 10px;">Easy</div></div>
+        <div><div style="font-size: 22px;">😐</div><div class="muted small" style="font-size: 10px;">Moderate</div></div>
+        <div><div style="font-size: 22px;">😤</div><div class="muted small" style="font-size: 10px;">Hard</div></div>
+        <div><div style="font-size: 22px;">🥵</div><div class="muted small" style="font-size: 10px;">Crushed</div></div>
       </div>
     </div>
 
@@ -166,6 +149,11 @@
         <div class="v" id="waistToGoal">—</div>
         <div class="delta" id="waistGoalDelta">&nbsp;</div>
       </div>
+      <div class="stat">
+        <div class="label">Weight</div>
+        <div class="v" id="weightNow">—</div>
+        <div class="delta" id="weightDelta">&nbsp;</div>
+      </div>
     </div>
 
     <h2>Add measurement</h2>
@@ -175,12 +163,19 @@
           <label>Waist (cm)</label>
           <input type="number" id="waistInput" step="0.1" inputmode="decimal" placeholder="e.g. 76.5">
         </div>
-        <div style="width: 150px;">
+        <div class="grow">
+          <label>Weight (kg)</label>
+          <input type="number" id="weightInput" step="0.1" inputmode="decimal" placeholder="e.g. 58.5">
+        </div>
+        <div style="width: 140px;">
           <label>Date</label>
-          <input type="date" id="waistDate">
+          <input type="date" id="weightDate">
         </div>
       </div>
-      <button class="primary" id="saveWaistBtn" style="width: 100%; margin-top: 12px;">Save</button>
+      <div class="row" style="gap: 8px; margin-top: 12px;">
+        <button class="primary grow" id="saveWaistBtn">Save waist</button>
+        <button class="primary grow" id="saveWeightBtn">Save weight</button>
+      </div>
     </div>
 
     <h2>Waist trend</h2>
@@ -191,6 +186,16 @@
       </div>
       <div id="waistChart"></div>
       <div id="waistList" style="margin-top: 8px; display: none;"></div>
+    </div>
+
+    <h2>Weight trend</h2>
+    <div class="card">
+      <div class="row between" style="margin-bottom: 8px; align-items: center;">
+        <div class="muted small">&nbsp;</div>
+        <button class="ghost" id="weightEditBtn" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
+      </div>
+      <div id="weightChart"></div>
+      <div id="weightList" style="margin-top: 8px; display: none;"></div>
     </div>
 
     <h2>Photos</h2>
@@ -204,21 +209,9 @@
       <div class="small muted" style="margin-top: 8px;">Tip: same lighting, same pose, same time of day. Mornings work best.</div>
     </div>
 
-    <h2 id="compareLabel">Compare dates</h2>
-    <div class="card" id="compareCard">
-      <div class="row" style="gap: 8px; flex-wrap: wrap;">
-        <div style="flex: 1; min-width: 130px;">
-          <label class="muted small">Earlier</label>
-          <input type="date" id="compareDateA">
-        </div>
-        <div style="flex: 1; min-width: 130px;">
-          <label class="muted small">Later</label>
-          <input type="date" id="compareDateB">
-        </div>
-      </div>
-      <div class="muted small" id="compareHint" style="margin-top: 10px;">Pick two dates to load all photos from each.</div>
-      <div id="compareGrid" style="margin-top: 10px; display: none;"></div>
-      <button class="primary" id="compareAnalyzeBtn" style="width:100%; margin-top: 10px; display: none;">🔍 Analyze changes with AI</button>
+    <div class="card" style="margin-top: 12px;">
+      <div class="muted small" id="compareHint" style="margin-bottom: 8px;">Add photos to track your progress.</div>
+      <button class="primary" id="compareAnalyzeBtn" style="width:100%; display: none;">🔍 Analyze my progress with AI</button>
     </div>
 
     <h2 id="compareHistoryTitle" style="display: none;">Comparison history</h2>
