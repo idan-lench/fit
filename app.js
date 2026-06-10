@@ -47,6 +47,7 @@ import {
   shiftWorkoutDate, loadWorkoutPlan, startWorkout, addCardioPlan,
   closeTimerAttach, attachTimerTo,
   pauseTimer, resumeTimer, stopTimer, discardTimer, attachTimer,
+  clearExerciseDuration, clearCardioDuration,
   openSet, editSet, closeSet, bumpReps, confirmSet, deleteCurrentSet, removeSet, removeExercise, updateExerciseNote, openExercisePhotoAnalyze,
   removeCardio, openCardioPicker, closeCardioPicker, addCardioActivity, removeCardioActivity, updateCardioField,
   renderExerciseList, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, addCustomExercise, closeExercisePicker, pickExercise, addCustomExerciseText,
@@ -302,7 +303,8 @@ document.addEventListener('visibilitychange', () => {
 Object.assign(window, {
   // Dynamic innerHTML handlers (workout-tab.js render functions)
   addCardioActivity, addCardioPlan, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, openCardioPhotoAnalyze, applySessionRefine,
-  attachTimerTo, attachTimer, pauseTimer, resumeTimer, stopTimer, discardTimer, autoResizeTA,
+  attachTimerTo, attachTimer, pauseTimer, resumeTimer, stopTimer, discardTimer,
+  clearExerciseDuration, clearCardioDuration, autoResizeTA,
   deleteSession, reanalyzeSession, discardSessionRefine,
   editSession, editStepsEntry, editWaist,
   openSet, editSet, deleteCurrentSet, openSessionRefine, openTemplateEdit,

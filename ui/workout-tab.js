@@ -203,6 +203,22 @@ export function discardTimer(id) {
   renderTimers();
 }
 
+export function clearExerciseDuration(idx) {
+  const e = state.current?.entries?.[idx];
+  if (!e) return;
+  delete e.durationMin;
+  save();
+  renderWorkout();
+}
+
+export function clearCardioDuration(idx) {
+  const a = state.current?.cardioActivities?.[idx];
+  if (!a) return;
+  a.duration = '';
+  save();
+  renderCardioActivities();
+}
+
 export function attachTimer(id) {
   const t = state.current?.timers?.find(t => t.id === id);
   if (!t?.durationMin) return;
@@ -479,7 +495,7 @@ function renderCardioActivities() {
         </div>
         <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
           ${def.showDist ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Distance</label><input type="text" placeholder="e.g. 8 km" value="${escapeHtml(a.distance || '')}" oninput="updateCardioField(${i}, 'distance', this.value)"></div>` : ''}
-          ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label><input type="text" placeholder="e.g. 45 min" value="${escapeHtml(a.duration || '')}" oninput="updateCardioField(${i}, 'duration', this.value)"></div>` : ''}
+          ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small" style="display:flex; align-items:center; gap:4px;">Duration${a.duration ? ` <span style="color:var(--accent2);">⏱</span> <button onclick="clearCardioDuration(${i})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;" aria-label="Clear duration">×</button>` : ''}</label><input type="text" placeholder="e.g. 45 min" value="${escapeHtml(a.duration || '')}" oninput="updateCardioField(${i}, 'duration', this.value)"></div>` : ''}
         </div>
         <div style="margin-top: 8px;">
           <label class="muted small" style="display: block; margin-bottom: 4px;">Notes</label>
@@ -1258,6 +1274,7 @@ export function renderWorkout() {
       </div>
       <div class="sets">
         ${e.sets.length === 0 ? '<span class="set-pill empty">No sets yet</span>' : e.sets.map((s, si) => `<span class="set-pill" onclick="editSet(${idx},${si})">${s.reps}</span>`).join('')}
+        ${e.durationMin ? `<span class="set-pill" style="background: var(--panel2); color: var(--accent2); border: 1px solid var(--accent2); gap: 4px;">⏱ ${e.durationMin} min <button onclick="clearExerciseDuration(${idx})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;">×</button></span>` : ''}
       </div>
       <div class="row" style="gap: 6px; align-items: stretch; margin-top: 8px;">
         <button class="chat-icon-btn" onclick="openExercisePhotoAnalyze(${idx})" aria-label="Attach photo" title="Attach a screenshot to auto-fill notes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
