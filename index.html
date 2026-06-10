@@ -74,28 +74,8 @@
 
     <!-- Session timer / status -->
     <div id="sessionTimerCard" class="card" style="display: none; margin-top: 10px;">
-      <div id="timerNotStarted" style="display: none;">
-        <button class="primary" id="startTimerBtn" style="width: 100%;">Start workout</button>
-      </div>
-      <div id="timerInProgress" style="display: none;">
-        <div class="row between" style="align-items: center;">
-          <div>
-            <div class="muted small"><span id="timerStatusLabel">In progress</span> · <span id="timerStartLabel"></span></div>
-            <div class="big" id="timerElapsed" style="font-size: 22px; margin-top: 2px;">0 min</div>
-          </div>
-          <div class="row" style="gap: 8px;">
-            <button class="ghost" id="pauseTimerBtn" style="padding: 6px 14px;">Pause</button>
-            <button class="primary" id="finishTimerBtn">Finish</button>
-          </div>
-        </div>
-      </div>
-      <div id="timerFinished" style="display: none;">
-        <div class="muted small">Workout duration</div>
-        <div class="row between" style="align-items: baseline;">
-          <div class="big" id="timerFinishedLabel" style="font-size: 22px;"></div>
-          <button class="ghost" id="resetTimerBtn" style="padding: 4px 10px; font-size: 13px;">Reset timer</button>
-        </div>
-      </div>
+      <div id="timersContainer"></div>
+      <button class="ghost" id="addTimerBtn" style="width: 100%; margin-top: 4px;">Start workout</button>
     </div>
 
     <div class="row" style="gap: 8px; align-items: center; padding: 8px 4px 0; flex-wrap: wrap;" id="sessionMetaRow">
@@ -138,14 +118,14 @@
   <!-- BODY TAB -->
   <section id="tab-body">
     <h2>Latest</h2>
-    <div class="row" style="gap: 10px; margin-bottom: 4px;">
+    <div class="row" style="gap: 10px; margin-bottom: 4px; align-items: stretch;">
       <div class="stat">
         <div class="label">Waist</div>
         <div class="v" id="waistNow">—</div>
         <div class="delta" id="waistDelta">&nbsp;</div>
       </div>
       <div class="stat">
-        <div class="label">To goal (75 cm)</div>
+        <div class="label">Goal</div>
         <div class="v" id="waistToGoal">—</div>
         <div class="delta" id="waistGoalDelta">&nbsp;</div>
       </div>
@@ -178,26 +158,6 @@
       </div>
     </div>
 
-    <h2>Waist trend</h2>
-    <div class="card">
-      <div class="row between" style="margin-bottom: 8px; align-items: center;">
-        <div class="muted small" id="waistChartSubtitle">&nbsp;</div>
-        <button class="ghost" id="waistEditBtn" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
-      </div>
-      <div id="waistChart"></div>
-      <div id="waistList" style="margin-top: 8px; display: none;"></div>
-    </div>
-
-    <h2>Weight trend</h2>
-    <div class="card">
-      <div class="row between" style="margin-bottom: 8px; align-items: center;">
-        <div class="muted small">&nbsp;</div>
-        <button class="ghost" id="weightEditBtn" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
-      </div>
-      <div id="weightChart"></div>
-      <div id="weightList" style="margin-top: 8px; display: none;"></div>
-    </div>
-
     <h2>Photos</h2>
     <div class="card">
       <input type="file" accept="image/*" capture="environment" id="photoCameraInput" style="display:none">
@@ -219,6 +179,26 @@
 
     <div id="photoGrid" class="photoGrid" style="display: none;"></div>
     <div class="empty" id="photoEmpty">No photos yet.</div>
+
+    <h2>Waist trend</h2>
+    <div class="card">
+      <div class="row between" style="margin-bottom: 8px; align-items: center;">
+        <div class="muted small" id="waistChartSubtitle">&nbsp;</div>
+        <button class="ghost" id="waistEditBtn" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
+      </div>
+      <div id="waistChart"></div>
+      <div id="waistList" style="margin-top: 8px; display: none;"></div>
+    </div>
+
+    <h2>Weight trend</h2>
+    <div class="card">
+      <div class="row between" style="margin-bottom: 8px; align-items: center;">
+        <div class="muted small">&nbsp;</div>
+        <button class="ghost" id="weightEditBtn" style="padding: 4px 12px; font-size: 13px;">✏ Edit</button>
+      </div>
+      <div id="weightChart"></div>
+      <div id="weightList" style="margin-top: 8px; display: none;"></div>
+    </div>
   </section>
 
   <!-- MEALS TAB -->
@@ -638,10 +618,27 @@
 <!-- TIMER ATTACH-TO PICKER MODAL -->
 <div class="modal" id="timerAttachModal">
   <div class="body" style="max-width: 440px;">
-    <h2 style="margin-top:0">⏱ Attach <span id="timerAttachDurLabel"></span> to:</h2>
-    <div class="muted small" style="margin-bottom: 10px;">Pick the activity this time covers. The duration is also kept on the whole session for AI burn estimation.</div>
+    <div class="row between" style="align-items:center; margin-bottom: 6px;">
+      <h2 style="margin:0">⏱ Attach <span id="timerAttachDurLabel"></span> to:</h2>
+      <button class="icon ghost" id="closeTimerAttachXBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="muted small" style="margin-bottom: 10px;">Tap any activity to attach this duration. Tap multiple if needed. Close when done.</div>
     <div id="timerAttachList"></div>
-    <button class="ghost" id="closeTimerAttachBtn" style="width:100%; margin-top: 10px;">Skip — keep on whole session</button>
+    <button id="attachToAllBtn" style="width:100%; margin-top: 10px; display:none;">Attach to all exercises</button>
+    <button class="ghost" id="closeTimerAttachBtn" style="width:100%; margin-top: 8px;">Done</button>
+  </div>
+</div>
+
+<!-- DURATION PROMPT MODAL -->
+<div class="modal" id="durationPromptModal">
+  <div class="body" style="max-width: 440px;">
+    <div class="row between" style="align-items:center; margin-bottom: 12px;">
+      <h2 style="margin:0">⏱ Add cardio duration</h2>
+      <button class="icon ghost" id="closeDurationPromptBtn" aria-label="Close">✕</button>
+    </div>
+    <div class="muted small" style="margin-bottom: 14px;">Duration is required to calculate cardio calories.</div>
+    <div id="durationPromptList"></div>
+    <button class="primary" id="saveDurationsBtn" style="width:100%; margin-top: 4px;">Save & finish</button>
   </div>
 </div>
 

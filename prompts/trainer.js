@@ -18,11 +18,20 @@ Compare current session to the last 10 similar sessions:
 ## Plan adjustment
 If the trend clearly warrants a change (persistent plateau, overtraining pattern, significant regression), set adjustPlan: true and explain what to change and why. Otherwise false.
 
+## Exercise mix (strength sessions only)
+Look at the exercises in this session and consider:
+- Muscle group balance: e.g. all push and no pull, heavy upper body but no core
+- An obvious complementary exercise that was missing
+- A useful substitution if one exercise is a weaker choice for the goal
+
+Only fill exerciseSuggestion if you have something specific and genuinely useful to say. One sentence max. Leave empty for cardio-only sessions or when the mix looks fine.
+
 ## Output format
 Return valid JSON only, no markdown:
 {
   "consistency": "improving" | "plateau" | "declining" | "insufficient_data",
   "feedback": "string — 2-3 sentences, direct and specific.",
   "adjustPlan": boolean,
-  "planNote": "string — if adjustPlan is true, what to change. Otherwise empty."
+  "planNote": "string — if adjustPlan is true, what to change. Otherwise empty.",
+  "exerciseSuggestion": "string — one sentence, only if relevant. Otherwise empty."
 }`;

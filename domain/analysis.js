@@ -52,7 +52,11 @@ export async function computeDailyEnergy(date) {
   let epocCarryIn = 0;
   const stepsEntry = (state.steps || []).find(s => s.date === date);
   if (stepsEntry) {
-    stepsBurn = Math.round(stepsEntry.count / STEPS_PER_KCAL);
+    const cardioSteps = (state.sessions || [])
+      .filter(s => s.date === date)
+      .reduce((sum, s) => sum + (s.stepsFromCardio || 0), 0);
+    const netSteps = Math.max(0, stepsEntry.count - cardioSteps);
+    stepsBurn = Math.round(netSteps / STEPS_PER_KCAL);
     burned += stepsBurn;
   }
   for (const s of (state.sessions || []).filter(s => s.date === date)) {

@@ -45,7 +45,9 @@ import {
 import {
   selectDay, getCurrentDay, renderWorkout, renderHistory, workoutCurrentDate,
   shiftWorkoutDate, loadWorkoutPlan, startWorkout, addCardioPlan,
-  startWorkoutTimer, finishWorkoutTimer, openTimerAttachPicker, closeTimerAttach, attachTimerTo, resetWorkoutTimer,
+  closeTimerAttach, attachTimerTo, detachTimerFrom, attachTimerToAll,
+  pauseTimer, resumeTimer, stopTimer, discardTimer, attachTimer,
+  clearExerciseDuration, clearCardioDuration, useTimerForDuration,
   openSet, editSet, closeSet, bumpReps, confirmSet, deleteCurrentSet, removeSet, removeExercise, updateExerciseNote, openExercisePhotoAnalyze,
   removeCardio, openCardioPicker, closeCardioPicker, addCardioActivity, removeCardioActivity, updateCardioField,
   renderExerciseList, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, addCustomExercise, closeExercisePicker, pickExercise, addCustomExerciseText,
@@ -104,6 +106,24 @@ function switchTab(name) {
   if (name === 'meals') renderMeals();
   if (name === 'analysis') renderAnalysis();
   if (name === 'ai') renderAI();
+  // Remember the last tab + when, so reopening can restore it (see restoreLastTab)
+  state.lastTab = name;
+  state.lastTabAt = Date.now();
+  save();
+}
+
+// On boot, return to the last tab if it's still "fresh" — same calendar day and
+// within 4 hours. Otherwise fall back to the Workout hub so a stale view (e.g. a
+// half-edited meal from lunch) doesn't greet you at night.
+function restoreLastTab() {
+  const VALID = ['workout', 'meals', 'analysis', 'body', 'ai'];
+  const tab = state.lastTab;
+  if (!VALID.includes(tab)) return switchTab('workout');
+  const at = state.lastTabAt || 0;
+  const fresh = at
+    && (Date.now() - at) < 4 * 60 * 60 * 1000
+    && new Date(at).toDateString() === new Date().toDateString();
+  switchTab(fresh ? tab : 'workout');
 }
 
 
@@ -265,6 +285,7 @@ function _initialRender() {
   try { if (typeof renderWorkout === 'function') { selectDay(); } } catch {}
   try { if (typeof renderMeals === 'function') renderMeals(); } catch {}
   try { if (typeof renderBody === 'function') renderBody(); } catch {}
+  try { restoreLastTab(); } catch {}
 }
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
   _initialRender();
@@ -301,7 +322,8 @@ document.addEventListener('visibilitychange', () => {
 Object.assign(window, {
   // Dynamic innerHTML handlers (workout-tab.js render functions)
   addCardioActivity, addCardioPlan, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, openCardioPhotoAnalyze, applySessionRefine,
-  attachTimerTo, autoResizeTA,
+  attachTimerTo, detachTimerFrom, attachTimerToAll, attachTimer, pauseTimer, resumeTimer, stopTimer, discardTimer,
+  clearExerciseDuration, clearCardioDuration, useTimerForDuration, autoResizeTA,
   deleteSession, reanalyzeSession, discardSessionRefine,
   editSession, editStepsEntry, editWaist,
   openSet, editSet, deleteCurrentSet, openSessionRefine, openTemplateEdit,

@@ -20,6 +20,7 @@ let workoutViewDate = null; // null = today
 let currentSetCtx = null;
 let currentReps = 8;
 let _timerInterval = null;
+let _attachingTimerId = null;
 let _pendingSessionRefine = null;
 let _refiningSessionAt = null;
 let _sessionChatHistory = [];
@@ -97,113 +98,278 @@ export function startWorkout(dayKey) {
 }
 
 // ---------- TIMER ----------
-export function startWorkoutTimer() {
-  if (!state.current) return;
-  state.current.startedAt = new Date().toISOString();
-  if (!state.current.time) {
-    const now = new Date();
-    state.current.time = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+// ---------- MULTI-TIMER HELPERS ----------
+
+function _timerElapsedMs(t) {
+  const paused = t.pausedAt ? (Date.now() - new Date(t.pausedAt).getTime()) : 0;
+  const end = t.stoppedAt ? new Date(t.stoppedAt).getTime() : Date.now();
+  return end - new Date(t.startedAt).getTime() - (t.pausedMs || 0) - paused;
+}
+
+function _fmtTimer(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}:${String(m % 60).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+  return `${m}:${String(s % 60).padStart(2,'0')}`;
+}
+
+function _tickTimers() {
+  for (const t of (state.current?.timers || [])) {
+    if (t.stoppedAt || t.pausedAt) continue;
+    const el = document.getElementById(`td_${t.id}`);
+    if (el) el.textContent = _fmtTimer(_timerElapsedMs(t));
   }
+}
+
+function renderTimers() {
+  const timers = state.current?.timers || [];
+  const container = document.getElementById('timersContainer');
+  if (!container) return;
+  container.innerHTML = timers.map((t, i) => {
+    const sep = i < timers.length - 1 ? 'border-bottom:1px solid var(--line);' : '';
+    if (t.stoppedAt) {
+      const display = _fmtTimer(_timerElapsedMs(t));
+      return `<div class="row between" style="align-items:center; padding:8px 0; ${sep}">
+        <div><div class="muted small">Stopped</div><div style="font-size:20px; font-weight:700; font-variant-numeric:tabular-nums;">${display}</div></div>
+        <div class="row" style="gap:6px;">
+          <button class="ghost" style="padding:6px 12px;" onclick="discardTimer(${t.id})">Discard</button>
+          <button class="primary" style="padding:6px 14px;" onclick="attachTimer(${t.id})">Attach</button>
+        </div>
+      </div>`;
+    }
+    const isPaused = !!t.pausedAt;
+    const btns = isPaused
+      ? `<button class="ghost" style="padding:6px 12px;" onclick="resumeTimer(${t.id})">Resume</button>
+         <button class="primary" style="padding:6px 14px;" onclick="stopTimer(${t.id})">Stop</button>`
+      : `<button class="ghost" style="padding:6px 12px;" onclick="pauseTimer(${t.id})">Pause</button>
+         <button class="primary" style="padding:6px 14px;" onclick="stopTimer(${t.id})">Stop</button>`;
+    return `<div class="row between" style="align-items:center; padding:8px 0; ${sep}">
+      <div style="font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;" id="td_${t.id}">${_fmtTimer(_timerElapsedMs(t))}</div>
+      <div class="row" style="gap:6px;">${btns}</div>
+    </div>`;
+  }).join('');
+  const anyRunning = timers.some(t => !t.stoppedAt && !t.pausedAt);
+  if (anyRunning && !_timerInterval) {
+    _timerInterval = setInterval(_tickTimers, 1000);
+  } else if (!anyRunning && _timerInterval) {
+    clearInterval(_timerInterval);
+    _timerInterval = null;
+  }
+}
+
+export function addTimer() {
+  if (!state.current) return;
+  if (!state.current.timers) state.current.timers = [];
+  state.current.timers.push({ id: Date.now(), startedAt: new Date().toISOString(), stoppedAt: null, pausedAt: null, pausedMs: 0, durationMin: null });
+  save();
+  renderTimers();
+}
+
+export function pauseTimer(id) {
+  const t = state.current?.timers?.find(t => t.id === id);
+  if (!t || t.stoppedAt || t.pausedAt) return;
+  t.pausedAt = new Date().toISOString();
+  save();
+  renderTimers();
+}
+
+export function resumeTimer(id) {
+  const t = state.current?.timers?.find(t => t.id === id);
+  if (!t || !t.pausedAt) return;
+  t.pausedMs = (t.pausedMs || 0) + (Date.now() - new Date(t.pausedAt).getTime());
+  t.pausedAt = null;
+  save();
+  renderTimers();
+}
+
+export function stopTimer(id) {
+  const t = state.current?.timers?.find(t => t.id === id);
+  if (!t || t.stoppedAt) return;
+  if (t.pausedAt) {
+    t.pausedMs = (t.pausedMs || 0) + (Date.now() - new Date(t.pausedAt).getTime());
+    t.pausedAt = null;
+  }
+  t.stoppedAt = new Date().toISOString();
+  t.durationSec = Math.max(1, Math.round((new Date(t.stoppedAt) - new Date(t.startedAt) - (t.pausedMs || 0)) / 1000));
+  save();
+  renderTimers();
+}
+
+export function discardTimer(id) {
+  if (!state.current?.timers) return;
+  state.current.timers = state.current.timers.filter(t => t.id !== id);
+  save();
+  renderTimers();
+}
+
+function _showDurationPrompt(missingCardios) {
+  const list = document.getElementById('durationPromptList');
+  if (!list) return;
+  const stoppedTimers = (state.current?.timers || []).filter(t => t.stoppedAt && t.durationSec);
+  list.innerHTML = missingCardios.map(a => {
+    const idx = state.current.cardioActivities.indexOf(a);
+    const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
+    const timerPills = stoppedTimers.length
+      ? `<div style="position:absolute; right:6px; top:50%; transform:translateY(-50%); display:flex; gap:6px;">
+          ${stoppedTimers.map(t => `<button type="button" class="set-pill" style="background:var(--card); color:var(--accent2); border:1.5px solid var(--accent2); gap:4px; cursor:pointer;" onclick="useTimerForDuration(${idx}, ${t.durationSec})">⏱ ${_fmtTimer(t.durationSec * 1000)} · add</button>`).join('')}
+        </div>`
+      : '';
+    return `<div style="margin-bottom: 12px;">
+      <label class="muted small" style="display:block; margin-bottom: 4px;">${def.icon} ${def.label}</label>
+      <div style="position:relative;">
+        <input type="text" data-cardio-idx="${idx}" placeholder="e.g. 45:00 or 30 min" style="width:100%; padding-right:${stoppedTimers.length ? '110px' : ''};">
+        ${timerPills}
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('durationPromptModal').classList.add('show');
+}
+
+export function useTimerForDuration(cardioIdx, durationSec) {
+  const input = document.querySelector(`#durationPromptList [data-cardio-idx="${cardioIdx}"]`);
+  if (input) {
+    input.value = _fmtTimer(durationSec * 1000);
+    input.style.paddingRight = '';
+    // Remove the green timer pill(s) for this field once added
+    input.parentElement?.querySelector('div')?.remove();
+  }
+}
+
+export function closeDurationPrompt() {
+  // Persist any durations the user already typed before closing, so partial
+  // input isn't lost (the still-empty ones just stay empty).
+  const list = document.getElementById('durationPromptList');
+  [...(list?.querySelectorAll('[data-cardio-idx]') || [])].forEach(input => {
+    const v = input.value.trim();
+    if (!v) return;
+    const a = state.current?.cardioActivities?.[parseInt(input.dataset.cardioIdx)];
+    if (a) a.duration = v;
+  });
+  save();
+  renderCardioActivities();
+  document.getElementById('durationPromptModal').classList.remove('show');
+}
+
+export function saveDurations() {
+  const list = document.getElementById('durationPromptList');
+  const inputs = [...(list?.querySelectorAll('[data-cardio-idx]') || [])];
+  if (inputs.some(i => !i.value.trim())) return toast('Fill in all durations to continue');
+  inputs.forEach(input => {
+    const idx = parseInt(input.dataset.cardioIdx);
+    const a = state.current?.cardioActivities?.[idx];
+    if (a) a.duration = input.value.trim();
+  });
+  document.getElementById('durationPromptModal').classList.remove('show');
+  // Re-run finishSession; its check re-validates. Anything still missing
+  // (e.g. a cardio not shown in this prompt) re-triggers the prompt rather
+  // than slipping through to a 0-min save.
+  finishSession();
+}
+
+export function clearExerciseDuration(idx) {
+  const e = state.current?.entries?.[idx];
+  if (!e) return;
+  delete e.durationMin;
   save();
   renderWorkout();
 }
 
-export function pauseWorkoutTimer() {
-  if (!state.current?.startedAt || state.current.endedAt || state.current.pausedAt) return;
-  state.current.pausedAt = new Date().toISOString();
+export function clearCardioDuration(idx) {
+  const a = state.current?.cardioActivities?.[idx];
+  if (!a) return;
+  a.duration = '';
   save();
-  renderWorkout();
+  renderCardioActivities();
 }
 
-export function resumeWorkoutTimer() {
-  if (!state.current?.pausedAt) return;
-  state.current.pausedMs = (state.current.pausedMs || 0) + (Date.now() - new Date(state.current.pausedAt).getTime());
-  delete state.current.pausedAt;
-  save();
-  renderWorkout();
+export function attachTimer(id) {
+  const t = state.current?.timers?.find(t => t.id === id);
+  if (!t?.durationSec) return;
+  _attachingTimerId = id;
+  openTimerAttachPicker(t.durationSec);
 }
 
-export function finishWorkoutTimer() {
-  if (!state.current || !state.current.startedAt) return;
-  if (state.current.pausedAt) resumeWorkoutTimer();
-  state.current.endedAt = new Date().toISOString();
-  const rawMs = new Date(state.current.endedAt) - new Date(state.current.startedAt);
-  const ms = rawMs - (state.current.pausedMs || 0);
-  state.current.durationMin = Math.max(1, Math.round(ms / 60000));
-  save();
-  renderWorkout();
-  openTimerAttachPicker(state.current.durationMin);
-}
-
-export function openTimerAttachPicker(minutes) {
+export function openTimerAttachPicker(durationSec) {
   if (!state.current) return;
   const cardios = state.current.cardioActivities || [];
   const entries = state.current.entries || [];
   if (cardios.length === 0 && entries.length === 0) return;
-  document.getElementById('timerAttachDurLabel').textContent = minutes + ' min';
+  const fmtDur = _fmtTimer(durationSec * 1000);
+  document.getElementById('timerAttachDurLabel').textContent = fmtDur;
   const items = [];
   cardios.forEach((a, i) => {
     const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
-    const existing = a.duration ? ` <span class="muted small">(already: ${escapeHtml(a.duration)})</span>` : '';
-    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; background: var(--panel); border: none; text-align: left; cursor: pointer;" onclick="attachTimerTo('cardio', ${i}, ${minutes})">${def.icon} ${def.label}${existing}</button>`);
+    const attached = !!a.duration;
+    const badge = attached ? `<span style="margin-left:6px; color:var(--accent2); font-weight:600;">✓ ${escapeHtml(a.duration)}</span>` : '';
+    const bg = attached ? 'background: rgba(52,199,89,0.08); border: 1px solid var(--accent2);' : 'background: var(--panel); border: 1px solid transparent;';
+    const action = attached ? `detachTimerFrom('cardio', ${i})` : `attachTimerTo('cardio', ${i}, ${durationSec})`;
+    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="${action}">${def.icon} <b>${def.label}</b>${badge}</button>`);
   });
   entries.forEach((e, i) => {
     if (!e.sets || e.sets.length === 0) return;
-    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; background: var(--panel); border: none; text-align: left; cursor: pointer;" onclick="attachTimerTo('exercise', ${i}, ${minutes})">💪 ${escapeHtml(e.name)} <span class="muted small">(${e.sets.length} set${e.sets.length>1?'s':''})</span></button>`);
+    const attached = !!e.durationMin;
+    const badge = attached ? `<span style="margin-left:6px; color:var(--accent2); font-weight:600;">✓ ${_fmtTimer(e.durationMin * 60000)}</span>` : `<span class="muted small" style="margin-left:4px;">(${e.sets.length} set${e.sets.length>1?'s':''})</span>`;
+    const bg = attached ? 'background: rgba(52,199,89,0.08); border: 1px solid var(--accent2);' : 'background: var(--panel); border: 1px solid transparent;';
+    const action = attached ? `detachTimerFrom('exercise', ${i})` : `attachTimerTo('exercise', ${i}, ${durationSec})`;
+    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="${action}">💪 <b>${escapeHtml(e.name)}</b>${badge}</button>`);
   });
   document.getElementById('timerAttachList').innerHTML = items.join('') || '<div class="empty">No activities to attach to.</div>';
+  const allBtn = document.getElementById('attachToAllBtn');
+  if (allBtn) {
+    const hasExercises = entries.some(e => e.sets?.length > 0);
+    allBtn.style.display = hasExercises ? 'block' : 'none';
+    allBtn.onclick = () => attachTimerToAll(durationSec);
+  }
   document.getElementById('timerAttachModal').classList.add('show');
+}
+
+export function attachTimerToAll(durationSec) {
+  if (!state.current) return;
+  for (const e of (state.current.entries || [])) {
+    if (e.sets?.length > 0) e.durationMin = durationSec / 60;
+  }
+  save();
+  renderWorkout();
+  openTimerAttachPicker(durationSec);
+  toast('Attached to all exercises ✓');
 }
 
 export function closeTimerAttach() {
   document.getElementById('timerAttachModal').classList.remove('show');
 }
 
-export function attachTimerTo(kind, idx, minutes) {
+export function attachTimerTo(kind, idx, durationSec) {
   if (!state.current) return;
   if (kind === 'cardio') {
     const a = state.current.cardioActivities?.[idx];
-    if (a) a.duration = minutes + ' min';
+    if (a) a.duration = _fmtTimer(durationSec * 1000);
   } else if (kind === 'exercise') {
     const e = state.current.entries?.[idx];
-    if (e) e.durationMin = minutes;
+    if (e) e.durationMin = durationSec / 60;
   }
   save();
-  closeTimerAttach();
   renderWorkout();
-  toast('Duration attached ✓');
+  openTimerAttachPicker(durationSec);
+  toast('Attached ✓');
 }
 
-export function resetWorkoutTimer() {
+export function detachTimerFrom(kind, idx) {
   if (!state.current) return;
-  if (!confirm('Reset the timer? You can start it again.')) return;
-  delete state.current.startedAt;
-  delete state.current.endedAt;
-  delete state.current.durationMin;
-  delete state.current.pausedAt;
-  delete state.current.pausedMs;
+  if (kind === 'cardio') {
+    const a = state.current.cardioActivities?.[idx];
+    if (a) a.duration = '';
+  } else if (kind === 'exercise') {
+    const e = state.current.entries?.[idx];
+    if (e) delete e.durationMin;
+  }
   save();
   renderWorkout();
+  const t = state.current.timers?.find(t => t.id === _attachingTimerId);
+  if (t) openTimerAttachPicker(t.durationSec);
+  toast('Detached');
 }
 
-function tickTimer() {
-  const el = document.getElementById('timerElapsed');
-  if (!el || !state.current?.startedAt || state.current?.endedAt) {
-    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
-    return;
-  }
-  const refTime = state.current.pausedAt ? new Date(state.current.pausedAt).getTime() : Date.now();
-  const ms = refTime - new Date(state.current.startedAt).getTime() - (state.current.pausedMs || 0);
-  const totalMin = Math.floor(ms / 60000);
-  const sec = Math.floor((ms % 60000) / 1000);
-  if (totalMin >= 60) {
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    el.textContent = `${h}h ${m}m`;
-  } else {
-    el.textContent = `${totalMin}:${String(sec).padStart(2,'0')}`;
-  }
-}
 
 // ---------- SET MODAL ----------
 function getPrevSets(name) { return lastSetsFor(state.sessions, name); }
@@ -435,7 +601,10 @@ function renderCardioActivities() {
         </div>
         <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
           ${def.showDist ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Distance</label><input type="text" placeholder="e.g. 8 km" value="${escapeHtml(a.distance || '')}" oninput="updateCardioField(${i}, 'distance', this.value)"></div>` : ''}
-          ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label><input type="text" placeholder="e.g. 45 min" value="${escapeHtml(a.duration || '')}" oninput="updateCardioField(${i}, 'duration', this.value)"></div>` : ''}
+          ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label>${a.duration
+            ? `<div style="margin-top: 6px;"><span class="set-pill" style="background:transparent; color:var(--accent2); border:1.5px solid var(--accent2); gap:4px;">⏱ ${escapeHtml(a.duration)} <button onclick="clearCardioDuration(${i})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;" aria-label="Clear duration">×</button></span></div>`
+            : `<input type="text" placeholder="e.g. 45 min" value="" oninput="updateCardioField(${i}, 'duration', this.value)">`
+          }</div>` : ''}
         </div>
         <div style="margin-top: 8px;">
           <label class="muted small" style="display: block; margin-bottom: 4px;">Notes</label>
@@ -551,6 +720,14 @@ export function finishSession() {
   if (!state.current) return toast('Nothing to save');
   const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote || (state.current.cardioActivities || []).length > 0;
   if (!hasAny) return toast('Log at least one set');
+
+  // Mandatory: block save if any cardio activity has no duration
+  const missingCardio = (state.current.cardioActivities || []).filter(a => !a.duration?.trim());
+  if (missingCardio.length > 0) {
+    _showDurationPrompt(missingCardio);
+    return;
+  }
+
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   let savedAt;
   if (state.current._editingId) {
@@ -597,11 +774,12 @@ export function finishSession() {
             s.epocToday       = result.epocToday;
             s.epocTomorrow    = result.epocTomorrow;
             s.stepsFromCardio = result.stepsFromCardio;
-            s.consistency     = result.consistency;
-            s.trainerFeedback = result.feedback;
-            s.burnBreakdown   = result.breakdown;
-            s.burnNotes       = null;
-            s.rpe             = rpe;
+            s.consistency        = result.consistency;
+            s.trainerFeedback    = result.feedback;
+            s.exerciseSuggestion = result.exerciseSuggestion || '';
+            s.burnBreakdown      = result.breakdown;
+            s.burnNotes          = null;
+            s.rpe                = rpe;
             if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
             updateWorkoutHistory(s);
             save();
@@ -690,6 +868,7 @@ export function renderHistory() {
           <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">🏋️ Trainer</div>
           ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 4px;">Effort ${s.rpe}/10${s.consistency ? ` · ${s.consistency}` : ''}</div>` : ''}
           <div class="small" style="white-space: pre-wrap;">${escapeHtml(s.trainerFeedback)}</div>
+          ${s.exerciseSuggestion ? `<div class="small" style="margin-top: 6px; color: var(--accent);">💡 ${escapeHtml(s.exerciseSuggestion)}</div>` : ''}
           ${s.planNote ? `<div class="small" style="margin-top: 6px; color: var(--accent);">📋 ${escapeHtml(s.planNote)}</div>` : ''}
         </div>` : ''}
         <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
@@ -765,10 +944,11 @@ export async function reanalyzeSession(savedAt) {
       s.epocToday       = result.epocToday;
       s.epocTomorrow    = result.epocTomorrow;
       s.stepsFromCardio = result.stepsFromCardio;
-      s.consistency     = result.consistency;
-      s.trainerFeedback = result.feedback;
-      s.burnBreakdown   = result.breakdown;
-      s.burnNotes       = null;
+      s.consistency        = result.consistency;
+      s.trainerFeedback    = result.feedback;
+      s.exerciseSuggestion = result.exerciseSuggestion || '';
+      s.burnBreakdown      = result.breakdown;
+      s.burnNotes          = null;
       if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
       updateWorkoutHistory(s);
       save();
@@ -1089,32 +1269,10 @@ export function renderWorkout() {
   if (cancelBtn) cancelBtn.style.display = 'inline-flex';
 
   const timerCard = document.getElementById('sessionTimerCard');
-  const timerNotStarted = document.getElementById('timerNotStarted');
-  const timerInProgress = document.getElementById('timerInProgress');
-  const timerFinished = document.getElementById('timerFinished');
   if (timerCard) {
     timerCard.style.display = 'block';
-    timerNotStarted.style.display = !state.current.startedAt ? 'block' : 'none';
-    timerInProgress.style.display = (state.current.startedAt && !state.current.endedAt) ? 'block' : 'none';
-    timerFinished.style.display = state.current.endedAt ? 'block' : 'none';
-    if (state.current.startedAt) {
-      const startDt = new Date(state.current.startedAt);
-      document.getElementById('timerStartLabel').textContent = 'started ' + String(startDt.getHours()).padStart(2,'0') + ':' + String(startDt.getMinutes()).padStart(2,'0');
-    }
-    if (state.current.endedAt) {
-      const mins = state.current.durationMin || Math.max(1, Math.round((new Date(state.current.endedAt) - new Date(state.current.startedAt)) / 60000));
-      document.getElementById('timerFinishedLabel').textContent = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} min`;
-    }
-    const paused = !!(state.current.startedAt && !state.current.endedAt && state.current.pausedAt);
-    const pauseBtn = document.getElementById('pauseTimerBtn');
-    const statusLabel = document.getElementById('timerStatusLabel');
-    if (pauseBtn) pauseBtn.textContent = paused ? 'Resume' : 'Pause';
-    if (statusLabel) statusLabel.textContent = paused ? 'Paused' : 'In progress';
-    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
-    if (state.current.startedAt && !state.current.endedAt) {
-      tickTimer();
-      if (!paused) _timerInterval = setInterval(tickTimer, 1000);
-    }
+    if (!state.current.timers) state.current.timers = [];
+    renderTimers();
   }
 
   const editing = !!state.current?._editingId;
@@ -1223,11 +1381,12 @@ export function renderWorkout() {
     const ex = document.createElement('div');
     ex.className = 'ex';
     ex.innerHTML = `
-      <div class="row between">
+      <div class="row between" style="align-items: flex-start;">
         <div class="grow">
           <div class="name">${escapeHtml(e.name)}</div>
           <div class="target">${last ? 'Last: ' + last.join(' · ') : (isTime ? 'New — log seconds held per set' : 'New — log reps per set, pick a count you can finish with good form')}</div>
         </div>
+        ${e.durationMin ? `<span class="set-pill" style="background: var(--panel2); color: var(--accent2); border: 1px solid var(--accent2); gap: 4px; align-self: center; margin-right: 4px;">⏱ ${_fmtTimer(e.durationMin * 60000)} <button onclick="clearExerciseDuration(${idx})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;">×</button></span>` : ''}
         <button class="icon ghost" onclick="removeExercise(${idx})" aria-label="Remove">✕</button>
         <button class="icon" onclick="openSet(${idx})">+</button>
       </div>
