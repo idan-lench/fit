@@ -129,9 +129,9 @@ function renderTimers() {
   container.innerHTML = timers.map((t, i) => {
     const sep = i < timers.length - 1 ? 'border-bottom:1px solid var(--line);' : '';
     if (t.stoppedAt) {
-      const mins = t.durationMin >= 60 ? `${Math.floor(t.durationMin/60)}h ${t.durationMin%60}m` : `${t.durationMin} min`;
+      const display = _fmtTimer(_timerElapsedMs(t));
       return `<div class="row between" style="align-items:center; padding:8px 0; ${sep}">
-        <div><div class="muted small">Stopped</div><div style="font-size:20px; font-weight:700;">${mins}</div></div>
+        <div><div class="muted small">Stopped</div><div style="font-size:20px; font-weight:700; font-variant-numeric:tabular-nums;">${display}</div></div>
         <div class="row" style="gap:6px;">
           <button class="ghost" style="padding:6px 12px;" onclick="discardTimer(${t.id})">Discard</button>
           <button class="primary" style="padding:6px 14px;" onclick="attachTimer(${t.id})">Attach</button>
@@ -191,7 +191,7 @@ export function stopTimer(id) {
     t.pausedAt = null;
   }
   t.stoppedAt = new Date().toISOString();
-  t.durationMin = Math.max(1, Math.round((new Date(t.stoppedAt) - new Date(t.startedAt) - (t.pausedMs || 0)) / 60000));
+  t.durationSec = Math.max(1, Math.round((new Date(t.stoppedAt) - new Date(t.startedAt) - (t.pausedMs || 0)) / 1000));
   save();
   renderTimers();
 }
@@ -221,31 +221,34 @@ export function clearCardioDuration(idx) {
 
 export function attachTimer(id) {
   const t = state.current?.timers?.find(t => t.id === id);
-  if (!t?.durationMin) return;
+  if (!t?.durationSec) return;
   _attachingTimerId = id;
-  openTimerAttachPicker(t.durationMin);
+  openTimerAttachPicker(t.durationSec);
 }
 
-export function openTimerAttachPicker(minutes) {
+export function openTimerAttachPicker(durationSec) {
   if (!state.current) return;
   const cardios = state.current.cardioActivities || [];
   const entries = state.current.entries || [];
   if (cardios.length === 0 && entries.length === 0) return;
-  document.getElementById('timerAttachDurLabel').textContent = minutes + ' min';
+  const fmtDur = _fmtTimer(durationSec * 1000);
+  document.getElementById('timerAttachDurLabel').textContent = fmtDur;
   const items = [];
   cardios.forEach((a, i) => {
     const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
     const attached = !!a.duration;
     const badge = attached ? `<span style="margin-left:6px; color:var(--accent2); font-weight:600;">✓ ${escapeHtml(a.duration)}</span>` : '';
     const bg = attached ? 'background: rgba(52,199,89,0.08); border: 1px solid var(--accent2);' : 'background: var(--panel); border: 1px solid transparent;';
-    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="attachTimerTo('cardio', ${i}, ${minutes})">${def.icon} <b>${def.label}</b>${badge}</button>`);
+    const action = attached ? `detachTimerFrom('cardio', ${i})` : `attachTimerTo('cardio', ${i}, ${durationSec})`;
+    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="${action}">${def.icon} <b>${def.label}</b>${badge}</button>`);
   });
   entries.forEach((e, i) => {
     if (!e.sets || e.sets.length === 0) return;
     const attached = !!e.durationMin;
-    const badge = attached ? `<span style="margin-left:6px; color:var(--accent2); font-weight:600;">✓ ${e.durationMin} min</span>` : `<span class="muted small" style="margin-left:4px;">(${e.sets.length} set${e.sets.length>1?'s':''})</span>`;
+    const badge = attached ? `<span style="margin-left:6px; color:var(--accent2); font-weight:600;">✓ ${_fmtTimer(e.durationMin * 60000)}</span>` : `<span class="muted small" style="margin-left:4px;">(${e.sets.length} set${e.sets.length>1?'s':''})</span>`;
     const bg = attached ? 'background: rgba(52,199,89,0.08); border: 1px solid var(--accent2);' : 'background: var(--panel); border: 1px solid transparent;';
-    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="attachTimerTo('exercise', ${i}, ${minutes})">💪 <b>${escapeHtml(e.name)}</b>${badge}</button>`);
+    const action = attached ? `detachTimerFrom('exercise', ${i})` : `attachTimerTo('exercise', ${i}, ${durationSec})`;
+    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="${action}">💪 <b>${escapeHtml(e.name)}</b>${badge}</button>`);
   });
   document.getElementById('timerAttachList').innerHTML = items.join('') || '<div class="empty">No activities to attach to.</div>';
   document.getElementById('timerAttachModal').classList.add('show');
@@ -255,18 +258,33 @@ export function closeTimerAttach() {
   document.getElementById('timerAttachModal').classList.remove('show');
 }
 
-export function attachTimerTo(kind, idx, minutes) {
+export function attachTimerTo(kind, idx, durationSec) {
   if (!state.current) return;
   if (kind === 'cardio') {
     const a = state.current.cardioActivities?.[idx];
-    if (a) a.duration = minutes + ' min';
+    if (a) a.duration = _fmtTimer(durationSec * 1000);
   } else if (kind === 'exercise') {
     const e = state.current.entries?.[idx];
-    if (e) e.durationMin = minutes;
+    if (e) e.durationMin = durationSec / 60;
   }
   save();
-  openTimerAttachPicker(minutes); // refresh list to show attached state
+  openTimerAttachPicker(durationSec);
   toast('Attached ✓');
+}
+
+export function detachTimerFrom(kind, idx) {
+  if (!state.current) return;
+  if (kind === 'cardio') {
+    const a = state.current.cardioActivities?.[idx];
+    if (a) a.duration = '';
+  } else if (kind === 'exercise') {
+    const e = state.current.entries?.[idx];
+    if (e) delete e.durationMin;
+  }
+  save();
+  const t = state.current.timers?.find(t => t.id === _attachingTimerId);
+  if (t) openTimerAttachPicker(t.durationSec);
+  toast('Detached');
 }
 
 
@@ -1282,7 +1300,7 @@ export function renderWorkout() {
       </div>
       <div class="sets">
         ${e.sets.length === 0 ? '<span class="set-pill empty">No sets yet</span>' : e.sets.map((s, si) => `<span class="set-pill" onclick="editSet(${idx},${si})">${s.reps}</span>`).join('')}
-        ${e.durationMin ? `<span class="set-pill" style="background: var(--panel2); color: var(--accent2); border: 1px solid var(--accent2); gap: 4px;">⏱ ${e.durationMin} min <button onclick="clearExerciseDuration(${idx})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;">×</button></span>` : ''}
+        ${e.durationMin ? `<span class="set-pill" style="background: var(--panel2); color: var(--accent2); border: 1px solid var(--accent2); gap: 4px;">⏱ ${_fmtTimer(e.durationMin * 60000)} <button onclick="clearExerciseDuration(${idx})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;">×</button></span>` : ''}
       </div>
       <div class="row" style="gap: 6px; align-items: stretch; margin-top: 8px;">
         <button class="chat-icon-btn" onclick="openExercisePhotoAnalyze(${idx})" aria-label="Attach photo" title="Attach a screenshot to auto-fill notes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>

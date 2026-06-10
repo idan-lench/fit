@@ -170,7 +170,12 @@ function epocSplit(rpe, sessionHour) {
 
 function parseDurationMin(str) {
   if (!str) return 0;
-  const m = String(str).match(/(\d+(?:\.\d+)?)/);
+  const s = String(str).trim();
+  const hms = s.match(/^(\d+):(\d{2}):(\d{2})$/);
+  if (hms) return parseInt(hms[1]) * 60 + parseInt(hms[2]) + parseInt(hms[3]) / 60;
+  const ms = s.match(/^(\d+):(\d{2})$/);
+  if (ms) return parseInt(ms[1]) + parseInt(ms[2]) / 60;
+  const m = s.match(/(\d+(?:\.\d+)?)/);
   return m ? parseFloat(m[1]) : 0;
 }
 
