@@ -268,6 +268,7 @@ export function attachTimerTo(kind, idx, durationSec) {
     if (e) e.durationMin = durationSec / 60;
   }
   save();
+  renderWorkout();
   openTimerAttachPicker(durationSec);
   toast('Attached ✓');
 }
@@ -282,6 +283,7 @@ export function detachTimerFrom(kind, idx) {
     if (e) delete e.durationMin;
   }
   save();
+  renderWorkout();
   const t = state.current.timers?.find(t => t.id === _attachingTimerId);
   if (t) openTimerAttachPicker(t.durationSec);
   toast('Detached');
