@@ -42,12 +42,12 @@ export function renderBody() {
     if (toGoal <= 0) {
       goalEl.textContent = '✓';
       goalEl.style.color = 'var(--accent2)';
-      goalDeltaEl.textContent = 'Goal reached!';
+      goalDeltaEl.textContent = `${waistGoal} cm ✓`;
       goalDeltaEl.className = 'delta down';
     } else {
-      goalEl.textContent = toGoal.toFixed(1);
+      goalEl.textContent = toGoal.toFixed(1) + ' cm';
       goalEl.style.color = '';
-      goalDeltaEl.textContent = 'cm to go';
+      goalDeltaEl.textContent = `to ${waistGoal} cm`;
       goalDeltaEl.className = 'delta muted';
     }
   } else {
