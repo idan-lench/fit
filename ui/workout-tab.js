@@ -500,7 +500,10 @@ function renderCardioActivities() {
         </div>
         <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
           ${def.showDist ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Distance</label><input type="text" placeholder="e.g. 8 km" value="${escapeHtml(a.distance || '')}" oninput="updateCardioField(${i}, 'distance', this.value)"></div>` : ''}
-          ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small" style="display:flex; align-items:center; gap:4px;">Duration${a.duration ? ` <span style="color:var(--accent2);">⏱</span> <button onclick="clearCardioDuration(${i})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;" aria-label="Clear duration">×</button>` : ''}</label><input type="text" placeholder="e.g. 45 min" value="${escapeHtml(a.duration || '')}" oninput="updateCardioField(${i}, 'duration', this.value)"></div>` : ''}
+          ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label>${a.duration
+            ? `<div style="margin-top: 6px;"><span class="set-pill" style="background:transparent; color:var(--accent2); border:1.5px solid var(--accent2); gap:4px;">⏱ ${escapeHtml(a.duration)} <button onclick="clearCardioDuration(${i})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;" aria-label="Clear duration">×</button></span></div>`
+            : `<input type="text" placeholder="e.g. 45 min" value="" oninput="updateCardioField(${i}, 'duration', this.value)">`
+          }</div>` : ''}
         </div>
         <div style="margin-top: 8px;">
           <label class="muted small" style="display: block; margin-bottom: 4px;">Notes</label>
