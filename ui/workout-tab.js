@@ -20,6 +20,7 @@ let workoutViewDate = null; // null = today
 let currentSetCtx = null;
 let currentReps = 8;
 let _timerInterval = null;
+let _attachingTimerId = null;
 let _pendingSessionRefine = null;
 let _refiningSessionAt = null;
 let _sessionChatHistory = [];
@@ -97,42 +98,116 @@ export function startWorkout(dayKey) {
 }
 
 // ---------- TIMER ----------
-export function startWorkoutTimer() {
-  if (!state.current) return;
-  state.current.startedAt = new Date().toISOString();
-  if (!state.current.time) {
-    const now = new Date();
-    state.current.time = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+// ---------- MULTI-TIMER HELPERS ----------
+
+function _timerElapsedMs(t) {
+  const paused = t.pausedAt ? (Date.now() - new Date(t.pausedAt).getTime()) : 0;
+  const end = t.stoppedAt ? new Date(t.stoppedAt).getTime() : Date.now();
+  return end - new Date(t.startedAt).getTime() - (t.pausedMs || 0) - paused;
+}
+
+function _fmtTimer(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  if (h > 0) return `${h}:${String(m % 60).padStart(2,'0')}:${String(s % 60).padStart(2,'0')}`;
+  return `${m}:${String(s % 60).padStart(2,'0')}`;
+}
+
+function _tickTimers() {
+  for (const t of (state.current?.timers || [])) {
+    if (t.stoppedAt || t.pausedAt) continue;
+    const el = document.getElementById(`td_${t.id}`);
+    if (el) el.textContent = _fmtTimer(_timerElapsedMs(t));
   }
-  save();
-  renderWorkout();
 }
 
-export function pauseWorkoutTimer() {
-  if (!state.current?.startedAt || state.current.endedAt || state.current.pausedAt) return;
-  state.current.pausedAt = new Date().toISOString();
-  save();
-  renderWorkout();
+function renderTimers() {
+  const timers = state.current?.timers || [];
+  const container = document.getElementById('timersContainer');
+  if (!container) return;
+  container.innerHTML = timers.map((t, i) => {
+    const sep = i < timers.length - 1 ? 'border-bottom:1px solid var(--line);' : '';
+    if (t.stoppedAt) {
+      const mins = t.durationMin >= 60 ? `${Math.floor(t.durationMin/60)}h ${t.durationMin%60}m` : `${t.durationMin} min`;
+      return `<div class="row between" style="align-items:center; padding:8px 0; ${sep}">
+        <div><div class="muted small">Stopped</div><div style="font-size:20px; font-weight:700;">${mins}</div></div>
+        <div class="row" style="gap:6px;">
+          <button class="ghost" style="padding:6px 12px;" onclick="discardTimer(${t.id})">Discard</button>
+          <button class="primary" style="padding:6px 14px;" onclick="attachTimer(${t.id})">Attach</button>
+        </div>
+      </div>`;
+    }
+    const isPaused = !!t.pausedAt;
+    const btns = isPaused
+      ? `<button class="ghost" style="padding:6px 12px;" onclick="resumeTimer(${t.id})">Resume</button>
+         <button class="primary" style="padding:6px 14px;" onclick="stopTimer(${t.id})">Stop</button>`
+      : `<button class="ghost" style="padding:6px 12px;" onclick="pauseTimer(${t.id})">Pause</button>
+         <button class="primary" style="padding:6px 14px;" onclick="stopTimer(${t.id})">Stop</button>`;
+    return `<div class="row between" style="align-items:center; padding:8px 0; ${sep}">
+      <div style="font-size:22px; font-weight:700; font-variant-numeric:tabular-nums;" id="td_${t.id}">${_fmtTimer(_timerElapsedMs(t))}</div>
+      <div class="row" style="gap:6px;">${btns}</div>
+    </div>`;
+  }).join('');
+  const anyRunning = timers.some(t => !t.stoppedAt && !t.pausedAt);
+  if (anyRunning && !_timerInterval) {
+    _timerInterval = setInterval(_tickTimers, 1000);
+  } else if (!anyRunning && _timerInterval) {
+    clearInterval(_timerInterval);
+    _timerInterval = null;
+  }
 }
 
-export function resumeWorkoutTimer() {
-  if (!state.current?.pausedAt) return;
-  state.current.pausedMs = (state.current.pausedMs || 0) + (Date.now() - new Date(state.current.pausedAt).getTime());
-  delete state.current.pausedAt;
+export function addTimer() {
+  if (!state.current) return;
+  if (!state.current.timers) state.current.timers = [];
+  state.current.timers.push({ id: Date.now(), startedAt: new Date().toISOString(), stoppedAt: null, pausedAt: null, pausedMs: 0, durationMin: null });
   save();
-  renderWorkout();
+  renderTimers();
 }
 
-export function finishWorkoutTimer() {
-  if (!state.current || !state.current.startedAt) return;
-  if (state.current.pausedAt) resumeWorkoutTimer();
-  state.current.endedAt = new Date().toISOString();
-  const rawMs = new Date(state.current.endedAt) - new Date(state.current.startedAt);
-  const ms = rawMs - (state.current.pausedMs || 0);
-  state.current.durationMin = Math.max(1, Math.round(ms / 60000));
+export function pauseTimer(id) {
+  const t = state.current?.timers?.find(t => t.id === id);
+  if (!t || t.stoppedAt || t.pausedAt) return;
+  t.pausedAt = new Date().toISOString();
   save();
-  renderWorkout();
-  openTimerAttachPicker(state.current.durationMin);
+  renderTimers();
+}
+
+export function resumeTimer(id) {
+  const t = state.current?.timers?.find(t => t.id === id);
+  if (!t || !t.pausedAt) return;
+  t.pausedMs = (t.pausedMs || 0) + (Date.now() - new Date(t.pausedAt).getTime());
+  t.pausedAt = null;
+  save();
+  renderTimers();
+}
+
+export function stopTimer(id) {
+  const t = state.current?.timers?.find(t => t.id === id);
+  if (!t || t.stoppedAt) return;
+  if (t.pausedAt) {
+    t.pausedMs = (t.pausedMs || 0) + (Date.now() - new Date(t.pausedAt).getTime());
+    t.pausedAt = null;
+  }
+  t.stoppedAt = new Date().toISOString();
+  t.durationMin = Math.max(1, Math.round((new Date(t.stoppedAt) - new Date(t.startedAt) - (t.pausedMs || 0)) / 60000));
+  save();
+  renderTimers();
+}
+
+export function discardTimer(id) {
+  if (!state.current?.timers) return;
+  state.current.timers = state.current.timers.filter(t => t.id !== id);
+  save();
+  renderTimers();
+}
+
+export function attachTimer(id) {
+  const t = state.current?.timers?.find(t => t.id === id);
+  if (!t?.durationMin) return;
+  _attachingTimerId = id;
+  openTimerAttachPicker(t.durationMin);
 }
 
 export function openTimerAttachPicker(minutes) {
@@ -168,42 +243,16 @@ export function attachTimerTo(kind, idx, minutes) {
     const e = state.current.entries?.[idx];
     if (e) e.durationMin = minutes;
   }
+  if (_attachingTimerId !== null && state.current.timers) {
+    state.current.timers = state.current.timers.filter(t => t.id !== _attachingTimerId);
+    _attachingTimerId = null;
+  }
   save();
   closeTimerAttach();
   renderWorkout();
   toast('Duration attached ✓');
 }
 
-export function resetWorkoutTimer() {
-  if (!state.current) return;
-  if (!confirm('Reset the timer? You can start it again.')) return;
-  delete state.current.startedAt;
-  delete state.current.endedAt;
-  delete state.current.durationMin;
-  delete state.current.pausedAt;
-  delete state.current.pausedMs;
-  save();
-  renderWorkout();
-}
-
-function tickTimer() {
-  const el = document.getElementById('timerElapsed');
-  if (!el || !state.current?.startedAt || state.current?.endedAt) {
-    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
-    return;
-  }
-  const refTime = state.current.pausedAt ? new Date(state.current.pausedAt).getTime() : Date.now();
-  const ms = refTime - new Date(state.current.startedAt).getTime() - (state.current.pausedMs || 0);
-  const totalMin = Math.floor(ms / 60000);
-  const sec = Math.floor((ms % 60000) / 1000);
-  if (totalMin >= 60) {
-    const h = Math.floor(totalMin / 60);
-    const m = totalMin % 60;
-    el.textContent = `${h}h ${m}m`;
-  } else {
-    el.textContent = `${totalMin}:${String(sec).padStart(2,'0')}`;
-  }
-}
 
 // ---------- SET MODAL ----------
 function getPrevSets(name) { return lastSetsFor(state.sessions, name); }
@@ -1092,32 +1141,10 @@ export function renderWorkout() {
   if (cancelBtn) cancelBtn.style.display = 'inline-flex';
 
   const timerCard = document.getElementById('sessionTimerCard');
-  const timerNotStarted = document.getElementById('timerNotStarted');
-  const timerInProgress = document.getElementById('timerInProgress');
-  const timerFinished = document.getElementById('timerFinished');
   if (timerCard) {
     timerCard.style.display = 'block';
-    timerNotStarted.style.display = !state.current.startedAt ? 'block' : 'none';
-    timerInProgress.style.display = (state.current.startedAt && !state.current.endedAt) ? 'block' : 'none';
-    timerFinished.style.display = state.current.endedAt ? 'block' : 'none';
-    if (state.current.startedAt) {
-      const startDt = new Date(state.current.startedAt);
-      document.getElementById('timerStartLabel').textContent = 'started ' + String(startDt.getHours()).padStart(2,'0') + ':' + String(startDt.getMinutes()).padStart(2,'0');
-    }
-    if (state.current.endedAt) {
-      const mins = state.current.durationMin || Math.max(1, Math.round((new Date(state.current.endedAt) - new Date(state.current.startedAt)) / 60000));
-      document.getElementById('timerFinishedLabel').textContent = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins} min`;
-    }
-    const paused = !!(state.current.startedAt && !state.current.endedAt && state.current.pausedAt);
-    const pauseBtn = document.getElementById('pauseTimerBtn');
-    const statusLabel = document.getElementById('timerStatusLabel');
-    if (pauseBtn) pauseBtn.textContent = paused ? 'Resume' : 'Pause';
-    if (statusLabel) statusLabel.textContent = paused ? 'Paused' : 'In progress';
-    if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
-    if (state.current.startedAt && !state.current.endedAt) {
-      tickTimer();
-      if (!paused) _timerInterval = setInterval(tickTimer, 1000);
-    }
+    if (!state.current.timers) state.current.timers = [];
+    renderTimers();
   }
 
   const editing = !!state.current?._editingId;

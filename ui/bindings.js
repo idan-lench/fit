@@ -25,8 +25,7 @@ import {
 } from './meals-tab.js';
 import {
   shiftWorkoutDate, loadWorkoutPlan, startWorkout,
-  startWorkoutTimer, finishWorkoutTimer, resetWorkoutTimer,
-  pauseWorkoutTimer, resumeWorkoutTimer,
+  addTimer,
   cancelSession, finishSession, openPlanModal, closePlanModal,
   openCardioPicker, closeCardioPicker,
   closeSet, bumpReps, confirmSet, editSet, deleteCurrentSet,
@@ -67,10 +66,7 @@ on('loadPlanBtn',           'click', loadWorkoutPlan);
 on('startWorkoutFromPlanBtn','click', () => startWorkout('custom'));
 on('startWorkoutEmptyBtn',  'click', () => startWorkout('custom'));
 on('workoutCancelBtn',      'click', cancelSession);
-on('startTimerBtn',         'click', startWorkoutTimer);
-on('pauseTimerBtn',         'click', () => document.getElementById('pauseTimerBtn')?.textContent === 'Resume' ? resumeWorkoutTimer() : pauseWorkoutTimer());
-on('finishTimerBtn',        'click', finishWorkoutTimer);
-on('resetTimerBtn',         'click', resetWorkoutTimer);
+on('addTimerBtn',           'click', addTimer);
 on('sessionDate',           'change', e => updateSessionDate(e.target.value));
 on('sessionTime',           'change', e => updateSessionTime(e.target.value));
 on('viewPlanBtn',           'click', openPlanModal);
