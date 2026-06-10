@@ -621,7 +621,21 @@
     <h2 style="margin-top:0">⏱ Attach <span id="timerAttachDurLabel"></span> to:</h2>
     <div class="muted small" style="margin-bottom: 10px;">Tap any activity to attach this duration. Tap multiple if needed. Close when done.</div>
     <div id="timerAttachList"></div>
-    <button class="ghost" id="closeTimerAttachBtn" style="width:100%; margin-top: 10px;">Done</button>
+    <button id="attachToAllBtn" style="width:100%; margin-top: 10px; display:none;">Attach to all exercises</button>
+    <button class="ghost" id="closeTimerAttachBtn" style="width:100%; margin-top: 8px;">Done</button>
+  </div>
+</div>
+
+<!-- DURATION PROMPT MODAL -->
+<div class="modal" id="durationPromptModal">
+  <div class="body" style="max-width: 440px;">
+    <h2 style="margin-top:0">⏱ Add durations?</h2>
+    <div class="muted small" style="margin-bottom: 14px;">These exercises have no duration yet. Fill in any you want to track.</div>
+    <div id="durationPromptList"></div>
+    <div class="row" style="gap: 8px; margin-top: 4px;">
+      <button class="ghost grow" id="skipAllDurationBtn">Skip all</button>
+      <button class="primary grow" id="saveDurationsBtn">Save & finish</button>
+    </div>
   </div>
 </div>
 

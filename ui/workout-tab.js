@@ -21,6 +21,7 @@ let currentSetCtx = null;
 let currentReps = 8;
 let _timerInterval = null;
 let _attachingTimerId = null;
+let _skipDurationCheck = false;
 let _pendingSessionRefine = null;
 let _refiningSessionAt = null;
 let _sessionChatHistory = [];
@@ -203,6 +204,40 @@ export function discardTimer(id) {
   renderTimers();
 }
 
+function _showDurationPrompt(missingEntries) {
+  const list = document.getElementById('durationPromptList');
+  if (!list) return;
+  list.innerHTML = missingEntries.map(e => {
+    const idx = state.current.entries.indexOf(e);
+    return `<div style="margin-bottom: 12px;">
+      <label class="muted small" style="display:block; margin-bottom: 4px;">${escapeHtml(e.name)}</label>
+      <input type="text" data-entry-idx="${idx}" placeholder="e.g. 45:00 or 30 min" style="width:100%;">
+    </div>`;
+  }).join('');
+  document.getElementById('durationPromptModal').classList.add('show');
+}
+
+export function saveDurations() {
+  document.getElementById('durationPromptModal').classList.remove('show');
+  const list = document.getElementById('durationPromptList');
+  list?.querySelectorAll('[data-entry-idx]').forEach(input => {
+    const val = input.value.trim();
+    if (!val) return;
+    const idx = parseInt(input.dataset.entryIdx);
+    const msMatch = val.match(/^(\d+):(\d{2})$/);
+    const sec = msMatch ? parseInt(msMatch[1]) * 60 + parseInt(msMatch[2]) : parseInt(val) * 60;
+    if (sec > 0 && state.current?.entries?.[idx]) state.current.entries[idx].durationMin = sec / 60;
+  });
+  _skipDurationCheck = true;
+  finishSession();
+}
+
+export function skipAllDurations() {
+  document.getElementById('durationPromptModal').classList.remove('show');
+  _skipDurationCheck = true;
+  finishSession();
+}
+
 export function clearExerciseDuration(idx) {
   const e = state.current?.entries?.[idx];
   if (!e) return;
@@ -251,7 +286,24 @@ export function openTimerAttachPicker(durationSec) {
     items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="${action}">💪 <b>${escapeHtml(e.name)}</b>${badge}</button>`);
   });
   document.getElementById('timerAttachList').innerHTML = items.join('') || '<div class="empty">No activities to attach to.</div>';
+  const allBtn = document.getElementById('attachToAllBtn');
+  if (allBtn) {
+    const hasExercises = entries.some(e => e.sets?.length > 0);
+    allBtn.style.display = hasExercises ? 'block' : 'none';
+    allBtn.onclick = () => attachTimerToAll(durationSec);
+  }
   document.getElementById('timerAttachModal').classList.add('show');
+}
+
+export function attachTimerToAll(durationSec) {
+  if (!state.current) return;
+  for (const e of (state.current.entries || [])) {
+    if (e.sets?.length > 0) e.durationMin = durationSec / 60;
+  }
+  save();
+  renderWorkout();
+  openTimerAttachPicker(durationSec);
+  toast('Attached to all exercises ✓');
 }
 
 export function closeTimerAttach() {
@@ -639,6 +691,17 @@ export function finishSession() {
   if (!state.current) return toast('Nothing to save');
   const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote || (state.current.cardioActivities || []).length > 0;
   if (!hasAny) return toast('Log at least one set');
+
+  // If timers were used, prompt for any exercises still missing duration
+  if (!_skipDurationCheck && (state.current.timers || []).length > 0) {
+    const missing = state.current.entries.filter(e => e.sets.length > 0 && !e.durationMin);
+    if (missing.length > 0) {
+      _showDurationPrompt(missing);
+      return;
+    }
+  }
+  _skipDurationCheck = false;
+
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   let savedAt;
   if (state.current._editingId) {
@@ -1292,17 +1355,17 @@ export function renderWorkout() {
     const ex = document.createElement('div');
     ex.className = 'ex';
     ex.innerHTML = `
-      <div class="row between">
+      <div class="row between" style="align-items: flex-start;">
         <div class="grow">
           <div class="name">${escapeHtml(e.name)}</div>
           <div class="target">${last ? 'Last: ' + last.join(' · ') : (isTime ? 'New — log seconds held per set' : 'New — log reps per set, pick a count you can finish with good form')}</div>
         </div>
+        ${e.durationMin ? `<span class="set-pill" style="background: var(--panel2); color: var(--accent2); border: 1px solid var(--accent2); gap: 4px; align-self: center; margin-right: 4px;">⏱ ${_fmtTimer(e.durationMin * 60000)} <button onclick="clearExerciseDuration(${idx})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;">×</button></span>` : ''}
         <button class="icon ghost" onclick="removeExercise(${idx})" aria-label="Remove">✕</button>
         <button class="icon" onclick="openSet(${idx})">+</button>
       </div>
       <div class="sets">
         ${e.sets.length === 0 ? '<span class="set-pill empty">No sets yet</span>' : e.sets.map((s, si) => `<span class="set-pill" onclick="editSet(${idx},${si})">${s.reps}</span>`).join('')}
-        ${e.durationMin ? `<span class="set-pill" style="background: var(--panel2); color: var(--accent2); border: 1px solid var(--accent2); gap: 4px;">⏱ ${_fmtTimer(e.durationMin * 60000)} <button onclick="clearExerciseDuration(${idx})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;">×</button></span>` : ''}
       </div>
       <div class="row" style="gap: 6px; align-items: stretch; margin-top: 8px;">
         <button class="chat-icon-btn" onclick="openExercisePhotoAnalyze(${idx})" aria-label="Attach photo" title="Attach a screenshot to auto-fill notes"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
