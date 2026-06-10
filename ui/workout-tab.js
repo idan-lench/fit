@@ -218,6 +218,10 @@ function _showDurationPrompt(missingCardios) {
   document.getElementById('durationPromptModal').classList.add('show');
 }
 
+export function closeDurationPrompt() {
+  document.getElementById('durationPromptModal').classList.remove('show');
+}
+
 export function saveDurations() {
   const list = document.getElementById('durationPromptList');
   const inputs = [...(list?.querySelectorAll('[data-cardio-idx]') || [])];

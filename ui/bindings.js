@@ -25,7 +25,7 @@ import {
 } from './meals-tab.js';
 import {
   shiftWorkoutDate, loadWorkoutPlan, startWorkout,
-  addTimer, saveDurations,
+  addTimer, saveDurations, closeDurationPrompt,
   cancelSession, finishSession, openPlanModal, closePlanModal,
   openCardioPicker, closeCardioPicker,
   closeSet, bumpReps, confirmSet, editSet, deleteCurrentSet,
@@ -67,7 +67,9 @@ on('startWorkoutFromPlanBtn','click', () => startWorkout('custom'));
 on('startWorkoutEmptyBtn',  'click', () => startWorkout('custom'));
 on('workoutCancelBtn',      'click', cancelSession);
 on('addTimerBtn',           'click', addTimer);
-on('saveDurationsBtn',      'click', saveDurations);
+on('saveDurationsBtn',         'click', saveDurations);
+on('closeDurationPromptBtn',  'click', closeDurationPrompt);
+backdropClose('durationPromptModal', closeDurationPrompt);
 on('sessionDate',           'change', e => updateSessionDate(e.target.value));
 on('sessionTime',           'change', e => updateSessionTime(e.target.value));
 on('viewPlanBtn',           'click', openPlanModal);

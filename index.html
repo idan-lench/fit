@@ -629,7 +629,10 @@
 <!-- DURATION PROMPT MODAL -->
 <div class="modal" id="durationPromptModal">
   <div class="body" style="max-width: 440px;">
-    <h2 style="margin-top:0">⏱ Add cardio duration</h2>
+    <div class="row between" style="align-items:center; margin-bottom: 12px;">
+      <h2 style="margin:0">⏱ Add cardio duration</h2>
+      <button class="icon ghost" id="closeDurationPromptBtn" aria-label="Close">✕</button>
+    </div>
     <div class="muted small" style="margin-bottom: 14px;">Duration is required to calculate cardio calories.</div>
     <div id="durationPromptList"></div>
     <button class="primary" id="saveDurationsBtn" style="width:100%; margin-top: 4px;">Save & finish</button>
