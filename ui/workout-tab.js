@@ -597,11 +597,12 @@ export function finishSession() {
             s.epocToday       = result.epocToday;
             s.epocTomorrow    = result.epocTomorrow;
             s.stepsFromCardio = result.stepsFromCardio;
-            s.consistency     = result.consistency;
-            s.trainerFeedback = result.feedback;
-            s.burnBreakdown   = result.breakdown;
-            s.burnNotes       = null;
-            s.rpe             = rpe;
+            s.consistency        = result.consistency;
+            s.trainerFeedback    = result.feedback;
+            s.exerciseSuggestion = result.exerciseSuggestion || '';
+            s.burnBreakdown      = result.breakdown;
+            s.burnNotes          = null;
+            s.rpe                = rpe;
             if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
             updateWorkoutHistory(s);
             save();
@@ -690,6 +691,7 @@ export function renderHistory() {
           <div class="muted small" style="margin-bottom: 4px; font-weight: 500;">🏋️ Trainer</div>
           ${s.rpe != null ? `<div class="small muted" style="margin-bottom: 4px;">Effort ${s.rpe}/10${s.consistency ? ` · ${s.consistency}` : ''}</div>` : ''}
           <div class="small" style="white-space: pre-wrap;">${escapeHtml(s.trainerFeedback)}</div>
+          ${s.exerciseSuggestion ? `<div class="small" style="margin-top: 6px; color: var(--accent);">💡 ${escapeHtml(s.exerciseSuggestion)}</div>` : ''}
           ${s.planNote ? `<div class="small" style="margin-top: 6px; color: var(--accent);">📋 ${escapeHtml(s.planNote)}</div>` : ''}
         </div>` : ''}
         <div class="row" style="margin-top: 10px; gap: 6px; flex-wrap: wrap;">
@@ -765,10 +767,11 @@ export async function reanalyzeSession(savedAt) {
       s.epocToday       = result.epocToday;
       s.epocTomorrow    = result.epocTomorrow;
       s.stepsFromCardio = result.stepsFromCardio;
-      s.consistency     = result.consistency;
-      s.trainerFeedback = result.feedback;
-      s.burnBreakdown   = result.breakdown;
-      s.burnNotes       = null;
+      s.consistency        = result.consistency;
+      s.trainerFeedback    = result.feedback;
+      s.exerciseSuggestion = result.exerciseSuggestion || '';
+      s.burnBreakdown      = result.breakdown;
+      s.burnNotes          = null;
       if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
       updateWorkoutHistory(s);
       save();
