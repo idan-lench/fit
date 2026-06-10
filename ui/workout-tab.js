@@ -204,35 +204,29 @@ export function discardTimer(id) {
   renderTimers();
 }
 
-function _showDurationPrompt(missingEntries) {
+function _showDurationPrompt(missingCardios) {
   const list = document.getElementById('durationPromptList');
   if (!list) return;
-  list.innerHTML = missingEntries.map(e => {
-    const idx = state.current.entries.indexOf(e);
+  list.innerHTML = missingCardios.map(a => {
+    const idx = state.current.cardioActivities.indexOf(a);
+    const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
     return `<div style="margin-bottom: 12px;">
-      <label class="muted small" style="display:block; margin-bottom: 4px;">${escapeHtml(e.name)}</label>
-      <input type="text" data-entry-idx="${idx}" placeholder="e.g. 45:00 or 30 min" style="width:100%;">
+      <label class="muted small" style="display:block; margin-bottom: 4px;">${def.icon} ${def.label}</label>
+      <input type="text" data-cardio-idx="${idx}" placeholder="e.g. 45:00 or 30 min" style="width:100%;">
     </div>`;
   }).join('');
   document.getElementById('durationPromptModal').classList.add('show');
 }
 
 export function saveDurations() {
-  document.getElementById('durationPromptModal').classList.remove('show');
   const list = document.getElementById('durationPromptList');
-  list?.querySelectorAll('[data-entry-idx]').forEach(input => {
-    const val = input.value.trim();
-    if (!val) return;
-    const idx = parseInt(input.dataset.entryIdx);
-    const msMatch = val.match(/^(\d+):(\d{2})$/);
-    const sec = msMatch ? parseInt(msMatch[1]) * 60 + parseInt(msMatch[2]) : parseInt(val) * 60;
-    if (sec > 0 && state.current?.entries?.[idx]) state.current.entries[idx].durationMin = sec / 60;
+  const inputs = [...(list?.querySelectorAll('[data-cardio-idx]') || [])];
+  if (inputs.some(i => !i.value.trim())) return toast('Fill in all durations to continue');
+  inputs.forEach(input => {
+    const idx = parseInt(input.dataset.cardioIdx);
+    const a = state.current?.cardioActivities?.[idx];
+    if (a) a.duration = input.value.trim();
   });
-  _skipDurationCheck = true;
-  finishSession();
-}
-
-export function skipAllDurations() {
   document.getElementById('durationPromptModal').classList.remove('show');
   _skipDurationCheck = true;
   finishSession();
@@ -692,11 +686,11 @@ export function finishSession() {
   const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote || (state.current.cardioActivities || []).length > 0;
   if (!hasAny) return toast('Log at least one set');
 
-  // If timers were used, prompt for any exercises still missing duration
-  if (!_skipDurationCheck && (state.current.timers || []).length > 0) {
-    const missing = state.current.entries.filter(e => e.sets.length > 0 && !e.durationMin);
-    if (missing.length > 0) {
-      _showDurationPrompt(missing);
+  // Mandatory: block save if any cardio activity has no duration
+  if (!_skipDurationCheck) {
+    const missingCardio = (state.current.cardioActivities || []).filter(a => !a.duration);
+    if (missingCardio.length > 0) {
+      _showDurationPrompt(missingCardio);
       return;
     }
   }
