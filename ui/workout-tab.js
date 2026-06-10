@@ -235,12 +235,17 @@ export function openTimerAttachPicker(minutes) {
   const items = [];
   cardios.forEach((a, i) => {
     const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
-    const existing = a.duration ? ` <span class="muted small">(already: ${escapeHtml(a.duration)})</span>` : '';
-    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; background: var(--panel); border: none; text-align: left; cursor: pointer;" onclick="attachTimerTo('cardio', ${i}, ${minutes})">${def.icon} ${def.label}${existing}</button>`);
+    const attached = !!a.duration;
+    const badge = attached ? `<span style="margin-left:6px; color:var(--accent2); font-weight:600;">✓ ${escapeHtml(a.duration)}</span>` : '';
+    const bg = attached ? 'background: rgba(52,199,89,0.08); border: 1px solid var(--accent2);' : 'background: var(--panel); border: 1px solid transparent;';
+    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="attachTimerTo('cardio', ${i}, ${minutes})">${def.icon} <b>${def.label}</b>${badge}</button>`);
   });
   entries.forEach((e, i) => {
     if (!e.sets || e.sets.length === 0) return;
-    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; background: var(--panel); border: none; text-align: left; cursor: pointer;" onclick="attachTimerTo('exercise', ${i}, ${minutes})">💪 ${escapeHtml(e.name)} <span class="muted small">(${e.sets.length} set${e.sets.length>1?'s':''})</span></button>`);
+    const attached = !!e.durationMin;
+    const badge = attached ? `<span style="margin-left:6px; color:var(--accent2); font-weight:600;">✓ ${e.durationMin} min</span>` : `<span class="muted small" style="margin-left:4px;">(${e.sets.length} set${e.sets.length>1?'s':''})</span>`;
+    const bg = attached ? 'background: rgba(52,199,89,0.08); border: 1px solid var(--accent2);' : 'background: var(--panel); border: 1px solid transparent;';
+    items.push(`<button class="card" style="display:block; width:100%; padding: 10px 12px; margin-bottom: 6px; ${bg} border-radius: 10px; text-align: left; cursor: pointer;" onclick="attachTimerTo('exercise', ${i}, ${minutes})">💪 <b>${escapeHtml(e.name)}</b>${badge}</button>`);
   });
   document.getElementById('timerAttachList').innerHTML = items.join('') || '<div class="empty">No activities to attach to.</div>';
   document.getElementById('timerAttachModal').classList.add('show');
