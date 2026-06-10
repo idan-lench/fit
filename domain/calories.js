@@ -187,9 +187,9 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
   const WEIGHT_KG = weightKg;
 
   // --- Strength ---
-  let totalActiveSec = 0;
-  let totalSets = 0;
-  let weightedMetNum = 0;
+  // Active: exercise MET × active time
+  // Rest:   exercise MET × 0.45 × 1 min per set (first minute only, after that uncounted)
+  let strengthBase = 0;
   const exCalcs = [];
 
   for (const entry of (session.entries || [])) {
@@ -204,16 +204,11 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
       if (r > 0) { reps += r; sets++; }
     }
     const activeSec = reps * secsPerRep * legFactor;
-    totalActiveSec += activeSec;
-    totalSets += sets;
-    weightedMetNum += activeSec * met;
-    exCalcs.push({ name: entry.name, met, activeSec, sets, legFactor });
+    const activeCal = met * 3.5 * WEIGHT_KG / 200 * (activeSec / 60);
+    const restCal   = met * 0.45 * 3.5 * WEIGHT_KG / 200 * sets; // 1 min/set at 45% of exercise MET
+    strengthBase += activeCal + restCal;
+    exCalcs.push({ name: entry.name, met, activeSec, sets, legFactor, activeCal, restCal });
   }
-
-  const weightedMet = totalActiveSec > 0 ? weightedMetNum / totalActiveSec : 0;
-  const baselineSec = totalActiveSec + totalSets * 60;
-  // ACSM formula: MET × 3.5 mL O₂/kg/min × weight × time → ÷200 converts to kcal
-  const strengthBase = weightedMet * 3.5 * WEIGHT_KG / 200 * (baselineSec / 60);
 
   // --- Cardio ---
   let cardioBase = 0;
@@ -245,15 +240,15 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
   const breakdown = [];
   let breakdownSum = 0;
 
-  for (const { name, met, activeSec, legFactor } of exCalcs) {
-    const rawCal = met * 3.5 * WEIGHT_KG / 200 * (activeSec / 60);
-    const finalCal = Math.round(rawCal);
+  for (const { name, met, activeSec, sets, legFactor, activeCal, restCal } of exCalcs) {
+    const finalCal = Math.round(activeCal + restCal);
     const legNote = legFactor === 2 ? ' (per-leg ×2)' : '';
+    const restMet = (met * 0.45).toFixed(1);
     breakdownSum += finalCal;
     breakdown.push({
       activity: name,
       calories: finalCal,
-      reasoning: `MET ${met} × 3.5 × ${WEIGHT_KG}kg ÷ 200 × ${Math.round(activeSec / 60 * 10) / 10}min active${legNote} = ${finalCal} kcal`,
+      reasoning: `MET ${met} × ${Math.round(activeSec / 60 * 10) / 10}min active${legNote} + ${sets} × 1min rest at MET ${restMet} = ${finalCal} kcal`,
     });
   }
   for (const { type, met, durationMin, km, rawCal } of cardioCalcs) {
@@ -268,15 +263,6 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
       activity: type,
       calories: finalCal,
       reasoning: `MET ${met} × 3.5 × ${WEIGHT_KG}kg ÷ 200 × ${durationMin} min${kmNote} = ${finalCal} kcal`,
-    });
-  }
-  // Rest time: baseline includes 1 min/set — attribute remainder here
-  const restCal = Math.round(adjusted) - breakdownSum;
-  if (restCal > 0) {
-    breakdown.push({
-      activity: 'Rest time',
-      calories: restCal,
-      reasoning: `${totalSets} sets × 60s rest at avg MET ${weightedMet.toFixed(1)}`,
     });
   }
 
