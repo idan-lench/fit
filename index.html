@@ -75,7 +75,7 @@
     <!-- Session timer / status -->
     <div id="sessionTimerCard" class="card" style="display: none; margin-top: 10px;">
       <div id="timersContainer"></div>
-      <button class="ghost" id="addTimerBtn" style="width: 100%; margin-top: 4px;">+ New timer</button>
+      <button class="ghost" id="addTimerBtn" style="width: 100%; margin-top: 4px;">Start workout</button>
     </div>
 
     <div class="row" style="gap: 8px; align-items: center; padding: 8px 4px 0; flex-wrap: wrap;" id="sessionMetaRow">
@@ -619,9 +619,9 @@
 <div class="modal" id="timerAttachModal">
   <div class="body" style="max-width: 440px;">
     <h2 style="margin-top:0">⏱ Attach <span id="timerAttachDurLabel"></span> to:</h2>
-    <div class="muted small" style="margin-bottom: 10px;">Pick the activity this time covers. The duration is also kept on the whole session for AI burn estimation.</div>
+    <div class="muted small" style="margin-bottom: 10px;">Tap any activity to attach this duration. Tap multiple if needed. Close when done.</div>
     <div id="timerAttachList"></div>
-    <button class="ghost" id="closeTimerAttachBtn" style="width:100%; margin-top: 10px;">Skip — keep on whole session</button>
+    <button class="ghost" id="closeTimerAttachBtn" style="width:100%; margin-top: 10px;">Done</button>
   </div>
 </div>
 

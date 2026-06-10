@@ -243,14 +243,9 @@ export function attachTimerTo(kind, idx, minutes) {
     const e = state.current.entries?.[idx];
     if (e) e.durationMin = minutes;
   }
-  if (_attachingTimerId !== null && state.current.timers) {
-    state.current.timers = state.current.timers.filter(t => t.id !== _attachingTimerId);
-    _attachingTimerId = null;
-  }
   save();
-  closeTimerAttach();
-  renderWorkout();
-  toast('Duration attached ✓');
+  openTimerAttachPicker(minutes); // refresh list to show attached state
+  toast('Attached ✓');
 }
 
 
