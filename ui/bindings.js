@@ -190,6 +190,7 @@ on('cancelSetBtn',   'click', closeSet);
 // ── TIMER ATTACH MODAL ────────────────────────────────────────────────────────
 backdropClose('timerAttachModal', closeTimerAttach);
 on('closeTimerAttachBtn','click', closeTimerAttach);
+on('closeTimerAttachXBtn','click', closeTimerAttach);
 
 // ── CARDIO PICKER MODAL ───────────────────────────────────────────────────────
 backdropClose('cardioPickerModal', closeCardioPicker);

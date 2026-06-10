@@ -21,7 +21,6 @@ let currentSetCtx = null;
 let currentReps = 8;
 let _timerInterval = null;
 let _attachingTimerId = null;
-let _skipDurationCheck = false;
 let _pendingSessionRefine = null;
 let _refiningSessionAt = null;
 let _sessionChatHistory = [];
@@ -207,18 +206,48 @@ export function discardTimer(id) {
 function _showDurationPrompt(missingCardios) {
   const list = document.getElementById('durationPromptList');
   if (!list) return;
+  const stoppedTimers = (state.current?.timers || []).filter(t => t.stoppedAt && t.durationSec);
   list.innerHTML = missingCardios.map(a => {
     const idx = state.current.cardioActivities.indexOf(a);
     const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
+    const timerPills = stoppedTimers.length
+      ? `<div style="position:absolute; right:6px; top:50%; transform:translateY(-50%); display:flex; gap:6px;">
+          ${stoppedTimers.map(t => `<button type="button" class="set-pill" style="background:var(--card); color:var(--accent2); border:1.5px solid var(--accent2); gap:4px; cursor:pointer;" onclick="useTimerForDuration(${idx}, ${t.durationSec})">⏱ ${_fmtTimer(t.durationSec * 1000)} · add</button>`).join('')}
+        </div>`
+      : '';
     return `<div style="margin-bottom: 12px;">
       <label class="muted small" style="display:block; margin-bottom: 4px;">${def.icon} ${def.label}</label>
-      <input type="text" data-cardio-idx="${idx}" placeholder="e.g. 45:00 or 30 min" style="width:100%;">
+      <div style="position:relative;">
+        <input type="text" data-cardio-idx="${idx}" placeholder="e.g. 45:00 or 30 min" style="width:100%; padding-right:${stoppedTimers.length ? '110px' : ''};">
+        ${timerPills}
+      </div>
     </div>`;
   }).join('');
   document.getElementById('durationPromptModal').classList.add('show');
 }
 
+export function useTimerForDuration(cardioIdx, durationSec) {
+  const input = document.querySelector(`#durationPromptList [data-cardio-idx="${cardioIdx}"]`);
+  if (input) {
+    input.value = _fmtTimer(durationSec * 1000);
+    input.style.paddingRight = '';
+    // Remove the green timer pill(s) for this field once added
+    input.parentElement?.querySelector('div')?.remove();
+  }
+}
+
 export function closeDurationPrompt() {
+  // Persist any durations the user already typed before closing, so partial
+  // input isn't lost (the still-empty ones just stay empty).
+  const list = document.getElementById('durationPromptList');
+  [...(list?.querySelectorAll('[data-cardio-idx]') || [])].forEach(input => {
+    const v = input.value.trim();
+    if (!v) return;
+    const a = state.current?.cardioActivities?.[parseInt(input.dataset.cardioIdx)];
+    if (a) a.duration = v;
+  });
+  save();
+  renderCardioActivities();
   document.getElementById('durationPromptModal').classList.remove('show');
 }
 
@@ -232,7 +261,9 @@ export function saveDurations() {
     if (a) a.duration = input.value.trim();
   });
   document.getElementById('durationPromptModal').classList.remove('show');
-  _skipDurationCheck = true;
+  // Re-run finishSession; its check re-validates. Anything still missing
+  // (e.g. a cardio not shown in this prompt) re-triggers the prompt rather
+  // than slipping through to a 0-min save.
   finishSession();
 }
 
@@ -691,14 +722,11 @@ export function finishSession() {
   if (!hasAny) return toast('Log at least one set');
 
   // Mandatory: block save if any cardio activity has no duration
-  if (!_skipDurationCheck) {
-    const missingCardio = (state.current.cardioActivities || []).filter(a => !a.duration);
-    if (missingCardio.length > 0) {
-      _showDurationPrompt(missingCardio);
-      return;
-    }
+  const missingCardio = (state.current.cardioActivities || []).filter(a => !a.duration?.trim());
+  if (missingCardio.length > 0) {
+    _showDurationPrompt(missingCardio);
+    return;
   }
-  _skipDurationCheck = false;
 
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   let savedAt;

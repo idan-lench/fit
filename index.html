@@ -618,7 +618,10 @@
 <!-- TIMER ATTACH-TO PICKER MODAL -->
 <div class="modal" id="timerAttachModal">
   <div class="body" style="max-width: 440px;">
-    <h2 style="margin-top:0">⏱ Attach <span id="timerAttachDurLabel"></span> to:</h2>
+    <div class="row between" style="align-items:center; margin-bottom: 6px;">
+      <h2 style="margin:0">⏱ Attach <span id="timerAttachDurLabel"></span> to:</h2>
+      <button class="icon ghost" id="closeTimerAttachXBtn" aria-label="Close">✕</button>
+    </div>
     <div class="muted small" style="margin-bottom: 10px;">Tap any activity to attach this duration. Tap multiple if needed. Close when done.</div>
     <div id="timerAttachList"></div>
     <button id="attachToAllBtn" style="width:100%; margin-top: 10px; display:none;">Attach to all exercises</button>
