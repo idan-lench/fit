@@ -5,11 +5,11 @@
 
 // Compendium MET values (session-averaged, active phase)
 const EXERCISE_MET = {
-  'pull-ups': 8.0,
-  'chin-ups': 8.0,
+  'pull-ups': 10.0,
+  'chin-ups': 10.0,
   'dips': 6.5,
   'parallel bars': 6.5,
-  'push-ups': 6.0,
+  'push-ups': 8.0,
   'ring push-ups': 9.0,
   'decline push-ups': 8.5,
   'diamond push-ups': 8.5,
