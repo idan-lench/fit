@@ -130,14 +130,59 @@ const RUN_PACE_BRACKETS = [
   { maxPaceMinKm: Infinity, met: 7.0 }, // > 8:00/km — slow jog
 ];
 
-function runMet(durationMin, km) {
-  if (km > 0 && durationMin > 0) {
-    const paceMinKm = durationMin / km;
-    for (const { maxPaceMinKm, met } of RUN_PACE_BRACKETS) {
-      if (paceMinKm < maxPaceMinKm) return met;
-    }
+function metForPace(paceMinKm) {
+  for (const { maxPaceMinKm, met } of RUN_PACE_BRACKETS) {
+    if (paceMinKm < maxPaceMinKm) return met;
   }
   return 10.0; // fallback: ~6:00/km moderate pace
+}
+
+function runMet(durationMin, km) {
+  if (km > 0 && durationMin > 0) return metForPace(durationMin / km);
+  return 10.0;
+}
+
+// ---------- INTERVAL SEGMENTS ----------
+// An interval run can carry an ordered segments[] array, each segment a phase
+// of the run: { kind: 'warmup'|'work'|'recovery'|'cooldown', durationSec,
+// distanceM?, paceSecPerKm? }. Each segment's MET comes from its own pace.
+// Recovery segments with NO logged pace fall back to 60% of the average work
+// MET — the rule agreed for interval recoveries (active jog/walk between reps).
+const RECOVERY_MET_FACTOR = 0.6;
+
+function segPaceMinKm(seg) {
+  if (seg.paceSecPerKm > 0) return seg.paceSecPerKm / 60;
+  if (seg.distanceM > 0 && seg.durationSec > 0) return (seg.durationSec / 60) / (seg.distanceM / 1000);
+  return null;
+}
+
+function segMet(seg, avgWorkMet) {
+  const pace = segPaceMinKm(seg);
+  if (pace != null) return metForPace(pace);
+  if (seg.kind === 'recovery') return Math.round(RECOVERY_MET_FACTOR * avgWorkMet * 10) / 10;
+  return 10.0; // warmup/cooldown/work with no pace data → moderate run
+}
+
+function calcIntervalSegments(segments, WEIGHT_KG) {
+  // Average work MET first, so recoveries without a pace can derive from it.
+  const workMets = segments
+    .filter(s => s.kind === 'work')
+    .map(s => { const p = segPaceMinKm(s); return p != null ? metForPace(p) : null; })
+    .filter(m => m != null);
+  const avgWorkMet = workMets.length ? workMets.reduce((a, b) => a + b, 0) / workMets.length : 10.0;
+
+  let total = 0, totalSec = 0, totalKm = 0;
+  const counts = { warmup: 0, work: 0, recovery: 0, cooldown: 0 };
+  const metByKind = {};
+  for (const s of segments) {
+    const met = segMet(s, avgWorkMet);
+    total += met * 3.5 * WEIGHT_KG / 200 * ((s.durationSec || 0) / 60);
+    totalSec += s.durationSec || 0;
+    if (s.distanceM > 0) totalKm += s.distanceM / 1000;
+    if (counts[s.kind] != null) counts[s.kind]++;
+    metByKind[s.kind] = met;
+  }
+  return { total, totalMin: totalSec / 60, totalKm, avgWorkMet, counts, metByKind };
 }
 
 const CARDIO_STEPS_PER_KM = {
@@ -222,6 +267,15 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
 
   for (const a of (session.cardioActivities || [])) {
     if (!a?.type) continue;
+    // Interval run with structured segments → sum each phase (recovery without
+    // a logged pace falls back to 60% of work MET inside calcIntervalSegments).
+    if (a.type === 'interval' && Array.isArray(a.segments) && a.segments.length) {
+      const r = calcIntervalSegments(a.segments, WEIGHT_KG);
+      cardioBase += r.total;
+      stepsFromCardio += r.totalKm * (CARDIO_STEPS_PER_KM[a.type] ?? 1300);
+      cardioCalcs.push({ type: a.type, segmented: true, rawCal: r.total, ...r });
+      continue;
+    }
     const durationMin = parseDurationMin(a.duration);
     const km = parseFloat(a.distance) || 0;
     const isRun = a.type === 'run' || a.type === 'treadmill_run' || a.type === 'interval' || a.type === 'long-run';
@@ -256,14 +310,30 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
       reasoning: `MET ${met} × ${Math.round(activeSec / 60 * 10) / 10}min active${legNote} + ${sets} × 1min rest at MET ${restMet} = ${finalCal} kcal`,
     });
   }
-  for (const { type, met, durationMin, km, rawCal } of cardioCalcs) {
-    const finalCal = Math.round(rawCal);
+  for (const c of cardioCalcs) {
+    const finalCal = Math.round(c.rawCal);
+    breakdownSum += finalCal;
+
+    if (c.segmented) {
+      const parts = [];
+      if (c.counts.warmup)   parts.push(`${c.counts.warmup}× warmup`);
+      if (c.counts.work)     parts.push(`${c.counts.work}× work @ MET ${c.metByKind.work}`);
+      if (c.counts.recovery) parts.push(`${c.counts.recovery}× recovery @ MET ${c.metByKind.recovery} (60% of work)`);
+      if (c.counts.cooldown) parts.push(`${c.counts.cooldown}× cooldown`);
+      breakdown.push({
+        activity: 'interval',
+        calories: finalCal,
+        reasoning: `${Math.round(c.totalMin)} min total · ${parts.join(' + ')} = ${finalCal} kcal`,
+      });
+      continue;
+    }
+
+    const { type, met, durationMin, km } = c;
     const isRun = type === 'run' || type === 'treadmill_run' || type === 'interval' || type === 'long-run';
     const paceNote = isRun && km > 0 && durationMin > 0
       ? ` at ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
       : '';
     const kmNote = km ? ` · ${km} km${paceNote}` : '';
-    breakdownSum += finalCal;
     breakdown.push({
       activity: type,
       calories: finalCal,
