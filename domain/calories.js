@@ -6,7 +6,10 @@
 // Compendium MET values (session-averaged, active phase)
 const EXERCISE_MET = {
   'pull-ups': 10.0,
+  'wide pull-ups': 10.5,        // wider grip, harder leverage, more lat
   'chin-ups': 10.0,
+  'hammer pull-ups': 10.0,      // neutral grip, strong position
+  'wide hammer pull-ups': 10.5, // wide neutral grip
   'dips': 6.5,
   'parallel bars': 6.5,
   'push-ups': 8.0,
@@ -50,7 +53,10 @@ const EXERCISE_MET = {
 // Seconds per rep (typical concentric+eccentric cadence)
 const SECS_PER_REP = {
   'pull-ups': 2.0,
+  'wide pull-ups': 2.0,
   'chin-ups': 2.0,
+  'hammer pull-ups': 2.0,
+  'wide hammer pull-ups': 2.0,
   'dips': 2.0,
   'parallel bars': 2.0,
   'push-ups': 2.0,

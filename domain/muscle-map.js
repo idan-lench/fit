@@ -18,7 +18,10 @@ export const MUSCLE_MAP = {
   'parallel bars':       { triceps: 1.0, chest: 0.7, delts_front: 0.5 },
   // Upper pull
   'pull-ups':            { lats: 1.0, biceps: 0.7, traps: 0.4, forearms: 0.4 },
+  'wide pull-ups':       { lats: 1.0, biceps: 0.5, traps: 0.45, forearms: 0.4 },
   'chin-ups':            { biceps: 1.0, lats: 0.8, forearms: 0.4 },
+  'hammer pull-ups':     { lats: 0.9, biceps: 0.85, forearms: 0.55, traps: 0.4 },
+  'wide hammer pull-ups':{ lats: 1.0, biceps: 0.6, forearms: 0.5, traps: 0.45 },
   'inverted rows':       { lats: 0.8, traps: 0.7, biceps: 0.6, delts_rear: 0.5 },
   'trx low row':         { lats: 0.7, traps: 0.7, biceps: 0.6, delts_rear: 0.5 },
   'barbell rows':        { lats: 0.9, traps: 0.7, biceps: 0.5, delts_rear: 0.5 },
