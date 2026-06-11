@@ -203,13 +203,21 @@ export function rpeMultiplier(rpe) {
   return 0.85 + (rpe - 1) * (0.35 / 9);
 }
 
-// EPOC: rate and today/tomorrow split based on session hour.
-// Interval runs drive a larger oxygen debt, so their afterburn is higher
-// (12% / 15%) than strength or steady cardio (8% / 12%).
-function epocSplit(rpe, sessionHour, hasInterval) {
-  const rate = hasInterval
-    ? (rpe >= 9 ? 0.15 : rpe >= 7 ? 0.12 : 0)
-    : (rpe >= 9 ? 0.12 : rpe >= 7 ? 0.08 : 0);
+// EPOC afterburn rate + today/tomorrow split.
+// Strength is RPE-only. Runs/intervals take the HIGHER of an intensity-based
+// rate (from work MET) and the RPE-based rate — so a hard session earns its
+// afterburn even if rated low, and an easy one rated high still gets it.
+//   runMet = peak run/interval MET in the session (0 if no running).
+function epocSplit(rpe, sessionHour, runMet = 0) {
+  let rate;
+  if (runMet > 0) {
+    // MET >= 13.5 (≤4:30/km) → 15%; MET >= 11.5 (≤5:30/km) → 12%
+    const metRate = runMet >= 13.5 ? 0.15 : runMet >= 11.5 ? 0.12 : 0;
+    const rpeRate = rpe >= 9 ? 0.15 : rpe >= 7 ? 0.12 : 0;
+    rate = Math.max(metRate, rpeRate);
+  } else {
+    rate = rpe >= 9 ? 0.12 : rpe >= 7 ? 0.08 : 0;
+  }
   if (rate === 0) return { rate: 0, todayFraction: 1 };
   let todayFraction;
   if (sessionHour < 14)      todayFraction = 0.9;
@@ -295,8 +303,17 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
 
   // --- EPOC ---
   const hour = session.time ? parseInt(session.time.split(':')[0], 10) : 12;
-  const hasInterval = (session.cardioActivities || []).some(a => a?.type === 'interval');
-  const { rate: epocRate, todayFraction } = epocSplit(rpe, hour, hasInterval);
+  // Peak run/interval intensity drives the intensity-based afterburn. For a
+  // segmented interval that's the average work MET; for a plain run it's the
+  // pace-derived MET.
+  let maxRunMet = 0;
+  for (const c of cardioCalcs) {
+    const isRun = c.type === 'run' || c.type === 'treadmill_run' || c.type === 'interval' || c.type === 'long-run';
+    if (!isRun) continue;
+    const m = c.segmented ? c.avgWorkMet : c.met;
+    if (m > maxRunMet) maxRunMet = m;
+  }
+  const { rate: epocRate, todayFraction } = epocSplit(rpe, hour, maxRunMet);
   const epocTotal = adjusted * epocRate;
   const epocToday    = Math.round(epocTotal * todayFraction);
   const epocTomorrow = Math.round(epocTotal * (1 - todayFraction));
