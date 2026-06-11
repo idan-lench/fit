@@ -112,18 +112,17 @@ function switchTab(name) {
   save();
 }
 
-// On boot, return to the last tab if it's still "fresh" — same calendar day and
-// within 4 hours. Otherwise fall back to the Workout hub so a stale view (e.g. a
-// half-edited meal from lunch) doesn't greet you at night.
+// On boot, resume the last tab if it's still "fresh" — same calendar day and
+// within 4 hours. Otherwise (morning, long gap, or first run) open Insights so
+// you land on your summary rather than a stale view.
 function restoreLastTab() {
   const VALID = ['workout', 'meals', 'analysis', 'body', 'ai'];
   const tab = state.lastTab;
-  if (!VALID.includes(tab)) return switchTab('workout');
   const at = state.lastTabAt || 0;
-  const fresh = at
+  const fresh = VALID.includes(tab) && at
     && (Date.now() - at) < 4 * 60 * 60 * 1000
     && new Date(at).toDateString() === new Date().toDateString();
-  switchTab(fresh ? tab : 'workout');
+  switchTab(fresh ? tab : 'analysis');
 }
 
 
