@@ -172,17 +172,18 @@ function calcIntervalSegments(segments, WEIGHT_KG) {
   const avgWorkMet = workMets.length ? workMets.reduce((a, b) => a + b, 0) / workMets.length : 10.0;
 
   let total = 0, totalSec = 0, totalKm = 0;
-  const counts = { warmup: 0, work: 0, recovery: 0, cooldown: 0 };
-  const metByKind = {};
+  // Per-phase aggregates so the breakdown can show one row per phase.
+  const phases = {}; // kind -> { kcal, sec, count }
   for (const s of segments) {
     const met = segMet(s, avgWorkMet);
-    total += met * 3.5 * WEIGHT_KG / 200 * ((s.durationSec || 0) / 60);
+    const cal = met * 3.5 * WEIGHT_KG / 200 * ((s.durationSec || 0) / 60);
+    total += cal;
     totalSec += s.durationSec || 0;
     if (s.distanceM > 0) totalKm += s.distanceM / 1000;
-    if (counts[s.kind] != null) counts[s.kind]++;
-    metByKind[s.kind] = met;
+    const ph = phases[s.kind] || (phases[s.kind] = { kcal: 0, sec: 0, count: 0 });
+    ph.kcal += cal; ph.sec += s.durationSec || 0; ph.count++;
   }
-  return { total, totalMin: totalSec / 60, totalKm, avgWorkMet, counts, metByKind };
+  return { total, totalMin: totalSec / 60, totalKm, avgWorkMet, phases };
 }
 
 const CARDIO_STEPS_PER_KM = {
@@ -320,16 +321,23 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
     breakdownSum += finalCal;
 
     if (c.segmented) {
-      const parts = [];
-      if (c.counts.warmup)   parts.push(`${c.counts.warmup}× warmup`);
-      if (c.counts.work)     parts.push(`${c.counts.work}× work @ MET ${c.metByKind.work}`);
-      if (c.counts.recovery) parts.push(`${c.counts.recovery}× recovery @ MET ${c.metByKind.recovery} (60% of work)`);
-      if (c.counts.cooldown) parts.push(`${c.counts.cooldown}× cooldown`);
-      breakdown.push({
-        activity: 'interval',
-        calories: finalCal,
-        reasoning: `${Math.round(c.totalMin)} min total · ${parts.join(' + ')} = ${finalCal} kcal`,
-      });
+      // One breakdown row per phase (warm-up / work / recovery / cool-down).
+      const k = 3.5 * WEIGHT_KG / 200;
+      const order = [['warmup', 'Warm-up'], ['work', 'Intervals (work)'], ['recovery', 'Recovery'], ['cooldown', 'Cool-down']];
+      for (const [kind, label] of order) {
+        const ph = c.phases[kind];
+        if (!ph || ph.sec === 0) continue;
+        const cal = Math.round(ph.kcal);
+        const min = ph.sec / 60;
+        const met = Math.round(ph.kcal / (k * min) * 10) / 10; // effective (blended) MET
+        const countNote = ph.count > 1 ? `${ph.count}× ` : '';
+        const recNote = kind === 'recovery' ? ' (60% of work MET)' : '';
+        breakdown.push({
+          activity: label,
+          calories: cal,
+          reasoning: `${countNote}MET ${met} × ${Math.round(min * 10) / 10} min${recNote} = ${cal} kcal`,
+        });
+      }
       continue;
     }
 
