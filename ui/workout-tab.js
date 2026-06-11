@@ -558,34 +558,40 @@ function _intervalSummary(segs) {
 }
 
 // Turn the AI-extracted interval structure into an ordered segments[] array.
-// Recovery between work reps: use the screenshot's recovery laps if present;
-// else infer from total duration minus known laps; else default 1:1 with work.
-// Recovery pace is left null when unknown — the engine then uses 60% of work MET.
+// One recovery follows EACH work rep (including the last, before the cooldown),
+// so #recoveries == #intervals. Recovery duration: use the screenshot's recovery
+// laps if present; else infer from total duration minus known laps; else default
+// 1:1 with work. Recovery pace is left null when unknown — the engine then uses
+// 60% of work MET.
 function buildIntervalSegments(p) {
   if (!p || !Array.isArray(p.work)) return null;
   const work = p.work.filter(w => w && w.durationSec > 0);
   if (!work.length) return null;
 
-  const gaps = work.length - 1;
+  const recoveries = work.length; // one after each interval, including the last
+  const workDur = work[0].durationSec;
   let recDur = null, recPace = null;
   if (p.recovery?.durationSec > 0) {
     recDur = p.recovery.durationSec;
     recPace = p.recovery.paceSecPerKm || null;
-  } else if (p.totalDurationSec > 0 && gaps > 0) {
+  } else if (p.totalDurationSec > 0) {
     const known = (p.warmup?.durationSec || 0) + (p.cooldown?.durationSec || 0)
       + work.reduce((s, w) => s + (w.durationSec || 0), 0);
-    const recTotal = p.totalDurationSec - known;
-    if (recTotal > 0) recDur = Math.round(recTotal / gaps);
+    const per = (p.totalDurationSec - known) / recoveries;
+    // Only trust the total when it implies a plausible recovery (>= half the work
+    // interval). Many watches report MOVING time, which excludes recovery jogs and
+    // makes this ~0 — in that case fall through to the 1:1 default below.
+    if (per >= 0.5 * workDur) recDur = Math.round(per);
   }
-  if (recDur == null) recDur = work[0].durationSec; // fall back to 1:1 with work
+  if (recDur == null) recDur = workDur; // fall back to 1:1 with work
 
   const segs = [];
   if (p.warmup?.durationSec > 0) {
     segs.push({ kind: 'warmup', durationSec: p.warmup.durationSec, paceSecPerKm: p.warmup.paceSecPerKm || null, distanceM: p.warmup.distanceM || null });
   }
-  work.forEach((w, i) => {
+  work.forEach((w) => {
     segs.push({ kind: 'work', durationSec: w.durationSec, paceSecPerKm: w.paceSecPerKm || null, distanceM: w.distanceM || null });
-    if (i < work.length - 1) segs.push({ kind: 'recovery', durationSec: recDur, paceSecPerKm: recPace });
+    segs.push({ kind: 'recovery', durationSec: recDur, paceSecPerKm: recPace });
   });
   if (p.cooldown?.durationSec > 0) {
     segs.push({ kind: 'cooldown', durationSec: p.cooldown.durationSec, paceSecPerKm: p.cooldown.paceSecPerKm || null, distanceM: p.cooldown.distanceM || null });
@@ -867,7 +873,8 @@ export async function finishSession() {
   const pending = (state.current.cardioActivities || []).filter(a => (_cardioImages[a.id] || []).length);
   if (pending.length) {
     if (!getGeminiKey()) return toast('Set up Gemini API key to analyze screenshots');
-    toast(`Analyzing ${pending.length} screenshot${pending.length > 1 ? 's' : ''}…`, { persistent: true });
+    const imgCount = pending.reduce((n, a) => n + (_cardioImages[a.id] || []).length, 0);
+    toast(`Analyzing ${imgCount} screenshot${imgCount > 1 ? 's' : ''}…`, { persistent: true });
     try {
       for (const a of pending) await analyzeCardioImages(a);
       hideToast();
