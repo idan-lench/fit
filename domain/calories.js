@@ -5,10 +5,13 @@
 
 // Compendium MET values (session-averaged, active phase)
 const EXERCISE_MET = {
-  'pull-ups': 8.0,
-  'chin-ups': 8.0,
-  'dips': 5.0,
-  'parallel bars': 6.0,
+  'pull-ups': 10.0,
+  'wide pull-ups': 10.5,        // wider grip, harder leverage, more lat
+  'chin-ups': 10.0,
+  'hammer pull-ups': 10.0,      // neutral grip, strong position
+  'wide hammer pull-ups': 10.5, // wide neutral grip
+  'dips': 6.5,
+  'parallel bars': 6.5,
   'push-ups': 8.0,
   'ring push-ups': 9.0,
   'decline push-ups': 8.5,
@@ -26,7 +29,7 @@ const EXERCISE_MET = {
   'handstand (sec)': 8.0,
   'squats': 5.0,
   'lunges (each leg)': 5.0,
-  'bulgarian split squats': 5.0,
+  'bulgarian split squats': 6.0,
   'glute bridges': 4.0,
   'single-leg glute bridges': 4.0,
   'calf raises': 3.5,
@@ -50,7 +53,10 @@ const EXERCISE_MET = {
 // Seconds per rep (typical concentric+eccentric cadence)
 const SECS_PER_REP = {
   'pull-ups': 2.0,
+  'wide pull-ups': 2.0,
   'chin-ups': 2.0,
+  'hammer pull-ups': 2.0,
+  'wide hammer pull-ups': 2.0,
   'dips': 2.0,
   'parallel bars': 2.0,
   'push-ups': 2.0,
@@ -106,8 +112,8 @@ const CARDIO_MET = {
   swim: 8.0,             // legacy key — freestyle moderate fallback
   swim_freestyle: 8.0,   // front crawl moderate (Compendium 2011: 8.0)
   swim_butterfly: 13.8,  // most demanding stroke (Compendium: 13.8)
-  swim_breaststroke: 5.3,// general/recreational pace (Compendium: 5.3)
-  swim_backstroke: 4.8,  // general/recreational pace (Compendium: 4.8)
+  swim_breaststroke: 6.5, // continuous lap swimming (Compendium general 5.3, raised for sustained pace)
+  swim_backstroke: 6.0,   // continuous lap swimming (Compendium general 4.8, raised for sustained pace)
   hike: 6.0,
   movement: 5.0,   // movement/flexibility class
   treadmill_walk: 3.5,
@@ -121,8 +127,8 @@ const CARDIO_MET = {
 // Compendium of Physical Activities 2011 + Gemini cross-reference:
 // 15 km/h=13.3, 16 km/h=14.5, 18 km/h=16.0 | 9.7 km/h=10.0, 10.8=11.0, 12.1=11.8
 const RUN_PACE_BRACKETS = [
-  { maxPaceMinKm: 3.33, met: 16.0 },  // < 3:20/km  (>18 km/h) — max sprint
-  { maxPaceMinKm: 4.0,  met: 14.5 },  // 3:20–4:00/km (15–18 km/h) — sprint
+  { maxPaceMinKm: 3.33, met: 18.0 },  // < 3:20/km  (>18 km/h) — max sprint (Compendium ~19 at 19 km/h)
+  { maxPaceMinKm: 4.0,  met: 15.0 },  // 3:20–4:00/km (15–18 km/h) — sprint
   { maxPaceMinKm: 4.5,  met: 13.5 },  // 4:00–4:30/km (13–15 km/h) — fast/interval
   { maxPaceMinKm: 5.5,  met: 11.5 },  // 4:30–5:30/km (11–13 km/h) — tempo
   { maxPaceMinKm: 6.5,  met: 10.5 },  // 5:30–6:30/km (9–11 km/h) — moderate

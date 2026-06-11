@@ -307,7 +307,14 @@ export async function renderAnalysis() {
   }
   html += '<div class="muted small" style="text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Burned</div>';
   html += `<div class="row between" style="padding: 4px 0; border-bottom: 1px solid var(--line);"><span class="small">BMR (resting)</span><span class="small">${e.bmr.toLocaleString()} kcal</span></div>`;
-  if (stepsToday) html += `<div class="row between" style="padding: 4px 0; border-bottom: 1px solid var(--line);"><span class="small">Steps (${stepsToday.count.toLocaleString()})</span><span class="small">+${e.stepsBurn} kcal</span></div>`;
+  if (stepsToday) {
+    const cardioSteps = e.cardioSteps || 0;
+    const net = Math.max(0, stepsToday.count - cardioSteps);
+    const stepLabel = cardioSteps > 0
+      ? `Steps (${net.toLocaleString()}) <span class="muted">· −${cardioSteps.toLocaleString()} from cardio</span>`
+      : `Steps (${stepsToday.count.toLocaleString()})`;
+    html += `<div class="row between" style="padding: 4px 0; border-bottom: 1px solid var(--line);"><span class="small">${stepLabel}</span><span class="small">+${e.stepsBurn} kcal</span></div>`;
+  }
   for (const s of todaySessions) {
     if (s.caloriesBurned) {
       const label = (PLAN[s.day]?.label || s.day) + (s.cardioNote ? ' · ' + s.cardioNote.slice(0, 30) + (s.cardioNote.length > 30 ? '…' : '') : '');

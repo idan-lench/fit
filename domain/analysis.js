@@ -48,13 +48,14 @@ export async function computeDailyEnergy(date) {
 
   let burned = BMR;
   let stepsBurn = 0;
+  let cardioSteps = 0; // steps attributed to logged cardio (deducted to avoid double-count)
   let sessionBurn = 0;
   let epocCarryIn = 0;
   const stepsEntry = (state.steps || []).find(s => s.date === date);
   if (stepsEntry) {
-    const cardioSteps = (state.sessions || [])
+    cardioSteps = Math.round((state.sessions || [])
       .filter(s => s.date === date)
-      .reduce((sum, s) => sum + (s.stepsFromCardio || 0), 0);
+      .reduce((sum, s) => sum + (s.stepsFromCardio || 0), 0));
     const netSteps = Math.max(0, stepsEntry.count - cardioSteps);
     stepsBurn = Math.round(netSteps / STEPS_PER_KCAL);
     burned += stepsBurn;
@@ -74,7 +75,7 @@ export async function computeDailyEnergy(date) {
 
   return {
     eaten, burned, protein,
-    bmr: BMR, stepsBurn, sessionBurn, epocCarryIn,
+    bmr: BMR, stepsBurn, cardioSteps, sessionBurn, epocCarryIn,
     mealCount: todayMeals.length,
     estimatedCount: mealsWithCal.length
   };

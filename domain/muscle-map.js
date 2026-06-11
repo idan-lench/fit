@@ -18,7 +18,10 @@ export const MUSCLE_MAP = {
   'parallel bars':       { triceps: 1.0, chest: 0.7, delts_front: 0.5 },
   // Upper pull
   'pull-ups':            { lats: 1.0, biceps: 0.7, traps: 0.4, forearms: 0.4 },
+  'wide pull-ups':       { lats: 1.0, biceps: 0.5, traps: 0.45, forearms: 0.4 },
   'chin-ups':            { biceps: 1.0, lats: 0.8, forearms: 0.4 },
+  'hammer pull-ups':     { lats: 0.9, biceps: 0.85, forearms: 0.55, traps: 0.4 },
+  'wide hammer pull-ups':{ lats: 1.0, biceps: 0.6, forearms: 0.5, traps: 0.45 },
   'inverted rows':       { lats: 0.8, traps: 0.7, biceps: 0.6, delts_rear: 0.5 },
   'trx low row':         { lats: 0.7, traps: 0.7, biceps: 0.6, delts_rear: 0.5 },
   'barbell rows':        { lats: 0.9, traps: 0.7, biceps: 0.5, delts_rear: 0.5 },
@@ -34,10 +37,10 @@ export const MUSCLE_MAP = {
   'leg press':           { quads: 1.0, glutes: 0.6, hamstrings: 0.4 },
   // Core
   'handstand (sec)':     { delts_front: 1.0, triceps: 0.8, traps: 0.7, abs: 0.6, forearms: 0.5 },
-  'plank (sec)':         { abs: 1.0, delts_front: 0.3 },
-  'side plank (sec)':    { obliques: 1.0, abs: 0.5 },
-  'hanging leg raises':  { abs: 1.0, forearms: 0.4 },
-  'hanging knee tucks':  { abs: 0.9, forearms: 0.4 },
+  'plank (sec)':         { abs: 1.0, obliques: 0.5, serratus: 0.4, lower_back: 0.2, delts_front: 0.3 },
+  'side plank (sec)':    { obliques: 1.0, abs: 0.5, serratus: 0.4 },
+  'hanging leg raises':  { abs: 1.0, obliques: 0.4, serratus: 0.3, forearms: 0.4 },
+  'hanging knee tucks':  { abs: 0.9, obliques: 0.3, serratus: 0.3, forearms: 0.4 },
   'hanging knee to leg extension': { abs: 1.0, hip_flexor: 0.6, forearms: 0.4, quads: 0.3 },
   'hollow hold (sec)':   { abs: 1.0 },
   'crunches':            { abs: 1.0 },
@@ -58,6 +61,7 @@ const _BODY_MUSCLE_IDS = {
   forearms:    ['forearm-left', 'forearm-right', 'forearm-extensors-left', 'forearm-extensors-right', 'forearm-flexors-left', 'forearm-flexors-right'],
   abs:         ['abs-upper-left', 'abs-upper-right', 'abs-lower-left', 'abs-lower-right'],
   obliques:    ['obliques-left', 'obliques-right'],
+  serratus:    ['serratus-anterior-left', 'serratus-anterior-right'],
   traps:       ['traps-upper-left', 'traps-upper-right', 'traps-mid-left', 'traps-mid-right'],
   lats:        ['lats-upper-left', 'lats-upper-right', 'lats-mid-left', 'lats-mid-right', 'lats-lower-left', 'lats-lower-right'],
   lower_back:  ['lower-back-erectors-left', 'lower-back-erectors-right', 'lower-back-ql-left', 'lower-back-ql-right'],
@@ -106,6 +110,8 @@ function _buildBodyState(intensities) {
 }
 
 function _applyRedScale(containerEl) {
+  // body-muscles colours by intensity using a yellow→red palette; remap those to
+  // our red scale on every <path>.
   containerEl.querySelectorAll('path').forEach(p => {
     const fill = (p.getAttribute('fill') || '').toLowerCase();
     if (_libToRed[fill]) { p.setAttribute('fill', _libToRed[fill]); p.style.fill = _libToRed[fill]; }

@@ -827,6 +827,7 @@ export function dismissPlanExercise(name) {
 export function clearAllPlanExercises() {
   if (!state.current) return;
   state.current.dismissedPlanExercises = (PLAN[state.current.day]?.exercises || []).slice();
+  state.current.cardioRemoved = true; // also clear the cardio plan chip
   save();
   renderWorkout();
 }
