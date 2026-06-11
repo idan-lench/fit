@@ -202,9 +202,13 @@ export function rpeMultiplier(rpe) {
   return 0.85 + (rpe - 1) * (0.35 / 9);
 }
 
-// EPOC: rate and today/tomorrow split based on session hour
-function epocSplit(rpe, sessionHour) {
-  const rate = rpe >= 9 ? 0.12 : rpe >= 7 ? 0.08 : 0;
+// EPOC: rate and today/tomorrow split based on session hour.
+// Interval runs drive a larger oxygen debt, so their afterburn is higher
+// (12% / 15%) than strength or steady cardio (8% / 12%).
+function epocSplit(rpe, sessionHour, hasInterval) {
+  const rate = hasInterval
+    ? (rpe >= 9 ? 0.15 : rpe >= 7 ? 0.12 : 0)
+    : (rpe >= 9 ? 0.12 : rpe >= 7 ? 0.08 : 0);
   if (rate === 0) return { rate: 0, todayFraction: 1 };
   let todayFraction;
   if (sessionHour < 14)      todayFraction = 0.9;
@@ -290,7 +294,8 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
 
   // --- EPOC ---
   const hour = session.time ? parseInt(session.time.split(':')[0], 10) : 12;
-  const { rate: epocRate, todayFraction } = epocSplit(rpe, hour);
+  const hasInterval = (session.cardioActivities || []).some(a => a?.type === 'interval');
+  const { rate: epocRate, todayFraction } = epocSplit(rpe, hour, hasInterval);
   const epocTotal = adjusted * epocRate;
   const epocToday    = Math.round(epocTotal * todayFraction);
   const epocTomorrow = Math.round(epocTotal * (1 - todayFraction));
