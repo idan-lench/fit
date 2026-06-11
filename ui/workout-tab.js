@@ -523,6 +523,91 @@ export function openExercisePhotoAnalyze(idx) {
   document.getElementById('cardioPhotoInput').click();
 }
 
+// Format pace (seconds per km) → "m:ss".
+function _fmtPace(secPerKm) {
+  if (!secPerKm) return '';
+  const m = Math.floor(secPerKm / 60);
+  return `${m}:${String(Math.round(secPerKm % 60)).padStart(2, '0')}`;
+}
+
+// Human-readable summary of an interval segments[] array for the cardio card.
+function _intervalSummary(segs) {
+  const work = segs.filter(s => s.kind === 'work');
+  const rec = segs.filter(s => s.kind === 'recovery');
+  const warm = segs.find(s => s.kind === 'warmup');
+  const cool = segs.find(s => s.kind === 'cooldown');
+  const totalSec = segs.reduce((s, x) => s + (x.durationSec || 0), 0);
+  const paces = work.map(w => w.paceSecPerKm).filter(Boolean);
+  const paceNote = paces.length
+    ? ` @ ${_fmtPace(Math.min(...paces))}${Math.max(...paces) !== Math.min(...paces) ? `–${_fmtPace(Math.max(...paces))}` : ''}/km`
+    : '';
+  const recPace = rec.find(r => r.paceSecPerKm)?.paceSecPerKm;
+  const parts = [];
+  if (warm) parts.push(`warmup ${_fmtTimer((warm.durationSec || 0) * 1000)}`);
+  if (work.length) parts.push(`${work.length}× ${_fmtTimer((work[0].durationSec || 0) * 1000)} work${paceNote}`);
+  if (rec.length) parts.push(`${rec.length}× ${_fmtTimer((rec[0].durationSec || 0) * 1000)} recovery${recPace ? ` @ ${_fmtPace(recPace)}/km` : ' (jog, 60% MET)'}`);
+  if (cool) parts.push(`cooldown ${_fmtTimer((cool.durationSec || 0) * 1000)}`);
+  return `${escapeHtml(parts.join(' · '))} · <b>${_fmtTimer(totalSec * 1000)} total</b>`;
+}
+
+// Turn the AI-extracted interval structure into an ordered segments[] array.
+// Recovery between work reps: use the screenshot's recovery laps if present;
+// else infer from total duration minus known laps; else default 1:1 with work.
+// Recovery pace is left null when unknown — the engine then uses 60% of work MET.
+function buildIntervalSegments(p) {
+  if (!p || !Array.isArray(p.work)) return null;
+  const work = p.work.filter(w => w && w.durationSec > 0);
+  if (!work.length) return null;
+
+  const gaps = work.length - 1;
+  let recDur = null, recPace = null;
+  if (p.recovery?.durationSec > 0) {
+    recDur = p.recovery.durationSec;
+    recPace = p.recovery.paceSecPerKm || null;
+  } else if (p.totalDurationSec > 0 && gaps > 0) {
+    const known = (p.warmup?.durationSec || 0) + (p.cooldown?.durationSec || 0)
+      + work.reduce((s, w) => s + (w.durationSec || 0), 0);
+    const recTotal = p.totalDurationSec - known;
+    if (recTotal > 0) recDur = Math.round(recTotal / gaps);
+  }
+  if (recDur == null) recDur = work[0].durationSec; // fall back to 1:1 with work
+
+  const segs = [];
+  if (p.warmup?.durationSec > 0) {
+    segs.push({ kind: 'warmup', durationSec: p.warmup.durationSec, paceSecPerKm: p.warmup.paceSecPerKm || null, distanceM: p.warmup.distanceM || null });
+  }
+  work.forEach((w, i) => {
+    segs.push({ kind: 'work', durationSec: w.durationSec, paceSecPerKm: w.paceSecPerKm || null, distanceM: w.distanceM || null });
+    if (i < work.length - 1) segs.push({ kind: 'recovery', durationSec: recDur, paceSecPerKm: recPace });
+  });
+  if (p.cooldown?.durationSec > 0) {
+    segs.push({ kind: 'cooldown', durationSec: p.cooldown.durationSec, paceSecPerKm: p.cooldown.paceSecPerKm || null, distanceM: p.cooldown.distanceM || null });
+  }
+  return segs;
+}
+
+// Store segments on the activity + derive display fields (total duration/distance,
+// a human note). The engine reads a.segments; these fields are only for display.
+function applyIntervalSegments(a, segs) {
+  a.segments = segs;
+  const totalSec = segs.reduce((s, x) => s + (x.durationSec || 0), 0);
+  const totalKm = segs.reduce((s, x) => s + ((x.distanceM || 0) / 1000), 0);
+  a.duration = _fmtTimer(totalSec * 1000);
+  if (totalKm > 0) a.distance = `${Math.round(totalKm * 100) / 100} km`;
+  const work = segs.filter(s => s.kind === 'work');
+  const rec = segs.filter(s => s.kind === 'recovery').length;
+  a.notes = `${work.length}× intervals + ${rec}× recovery (auto-detected)`;
+}
+
+export function clearIntervalSegments(idx) {
+  const a = state.current?.cardioActivities?.[idx];
+  if (!a) return;
+  delete a.segments;
+  a.notes = '';
+  save();
+  renderWorkout();
+}
+
 export async function onCardioPhotoSelected(e) {
   const file = e.target.files[0];
   e.target.value = '';
@@ -536,7 +621,11 @@ export async function onCardioPhotoSelected(e) {
     const base64 = dataUrl.split(',')[1];
 
     const isExercise = typeof mode === 'object' && mode.exercise !== undefined;
-    const promptText = isExercise ? PROMPTS.exercisePhoto : PROMPTS.cardioPhoto;
+    const isIntervalActivity = typeof mode === 'number'
+      && state.current?.cardioActivities?.[mode]?.type === 'interval';
+    const promptText = isExercise ? PROMPTS.exercisePhoto
+      : isIntervalActivity ? PROMPTS.intervalPhoto
+      : PROMPTS.cardioPhoto;
     const reply = await geminiGenerate({
       contents: [{ role: 'user', parts: [
         { text: promptText },
@@ -568,6 +657,16 @@ export async function onCardioPhotoSelected(e) {
       } else {
         toast('Nothing detected in photo');
       }
+    } else if (isIntervalActivity) {
+      const a = state.current?.cardioActivities?.[mode];
+      if (!a) return;
+      const segs = buildIntervalSegments(parsed);
+      if (!segs) { toast('Could not read interval laps'); return; }
+      applyIntervalSegments(a, segs);
+      save();
+      renderWorkout();
+      const work = segs.filter(s => s.kind === 'work').length;
+      toast(`Detected ${work} intervals ✓`);
     } else {
       const a = state.current?.cardioActivities?.[mode];
       if (!a) return;
@@ -599,6 +698,14 @@ function renderCardioActivities() {
           <div class="grow"><b>${def.icon} ${def.label}</b></div>
           <button class="icon ghost" onclick="removeCardioActivity(${i})" aria-label="Remove">✕</button>
         </div>
+        ${Array.isArray(a.segments) && a.segments.length ? `
+        <div style="margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent2);">
+          <div class="row between" style="align-items: center;">
+            <div class="muted small" style="font-weight: 500;">Detected intervals</div>
+            <button class="ghost" onclick="clearIntervalSegments(${i})" style="padding: 2px 8px; font-size: 12px;">Clear</button>
+          </div>
+          <div class="small" style="margin-top: 4px;">${_intervalSummary(a.segments)}</div>
+        </div>` : ''}
         <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
           ${def.showDist ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Distance</label><input type="text" placeholder="e.g. 8 km" value="${escapeHtml(a.distance || '')}" oninput="updateCardioField(${i}, 'distance', this.value)"></div>` : ''}
           ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label>${a.duration
