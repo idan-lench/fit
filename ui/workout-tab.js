@@ -26,7 +26,14 @@ let _refiningSessionAt = null;
 let _sessionChatHistory = [];
 let _cardioPhotoIdx = null; // null = idle, 'note' = main cardio note, number = activity index
 let _sessionAttachedImages = [];
+let _cardioImages = {}; // { [activityId]: [{dataUrl, mimeType}] } — attached, analyzed on save (not persisted)
 let _cachedHistoryContext = null;
+
+// Ensure a cardio activity has a stable id for keying its attached images.
+function _cardioId(a) {
+  if (!a.id) a.id = 'c' + Date.now() + Math.random().toString(36).slice(2, 7);
+  return a.id;
+}
 
 export const getCurrentDay = () => currentDay;
 
@@ -485,7 +492,7 @@ export function closeCardioPicker() {
 export function addCardioActivity(typeKey) {
   if (!state.current) startWorkout('custom');
   state.current.cardioActivities = state.current.cardioActivities || [];
-  state.current.cardioActivities.push({ type: typeKey, distance: '', duration: '', notes: '' });
+  state.current.cardioActivities.push({ id: 'c' + Date.now() + Math.random().toString(36).slice(2, 7), type: typeKey, distance: '', duration: '', notes: '' });
   save();
   closeCardioPicker();
   renderWorkout();
@@ -608,24 +615,46 @@ export function clearIntervalSegments(idx) {
   renderWorkout();
 }
 
+// Open the image picker for a cardio activity (attach mode — analyzed on save).
+export function openCardioImageAttach(idx) {
+  const a = state.current?.cardioActivities?.[idx];
+  if (!a) return;
+  _cardioPhotoIdx = { attachId: _cardioId(a) };
+  document.getElementById('cardioPhotoInput').click();
+}
+
+export function removeCardioImage(activityId, i) {
+  (_cardioImages[activityId] || []).splice(i, 1);
+  renderCardioActivities();
+}
+
 export async function onCardioPhotoSelected(e) {
-  const file = e.target.files[0];
+  const files = Array.from(e.target.files);
   e.target.value = '';
-  if (!file || _cardioPhotoIdx === null) return;
+  if (!files.length || _cardioPhotoIdx === null) return;
   const mode = _cardioPhotoIdx;
   _cardioPhotoIdx = null;
+
+  // Cardio activity attach: store image thumbnails now, analyze on save.
+  if (mode && mode.attachId !== undefined) {
+    const id = mode.attachId;
+    _cardioImages[id] = _cardioImages[id] || [];
+    for (const file of files) {
+      const blob = await downscale(file, 1280);
+      _cardioImages[id].push({ dataUrl: await blobToDataUrl(blob), mimeType: blob.type || 'image/jpeg' });
+    }
+    renderCardioActivities();
+    return;
+  }
+
+  // Exercise / cardio-note photos still analyze immediately (single image).
+  const file = files[0];
   toast('Analyzing…', { persistent: true });
   try {
     const blob = await downscale(file, 1280);
-    const dataUrl = await blobToDataUrl(blob);
-    const base64 = dataUrl.split(',')[1];
-
+    const base64 = (await blobToDataUrl(blob)).split(',')[1];
     const isExercise = typeof mode === 'object' && mode.exercise !== undefined;
-    const isIntervalActivity = typeof mode === 'number'
-      && state.current?.cardioActivities?.[mode]?.type === 'interval';
-    const promptText = isExercise ? PROMPTS.exercisePhoto
-      : isIntervalActivity ? PROMPTS.intervalPhoto
-      : PROMPTS.cardioPhoto;
+    const promptText = isExercise ? PROMPTS.exercisePhoto : PROMPTS.cardioPhoto;
     const reply = await geminiGenerate({
       contents: [{ role: 'user', parts: [
         { text: promptText },
@@ -639,48 +668,42 @@ export async function onCardioPhotoSelected(e) {
     if (isExercise) {
       const entry = state.current?.entries?.[mode.exercise];
       if (!entry) return;
-      if (parsed.notes) {
-        entry.note = parsed.notes;
-        save();
-        renderWorkout();
-        toast('Filled in ✓');
-      } else {
-        toast('Nothing detected in photo');
-      }
+      if (parsed.notes) { entry.note = parsed.notes; save(); renderWorkout(); toast('Filled in ✓'); }
+      else toast('Nothing detected in photo');
     } else if (mode === 'note') {
       const parts = [parsed.distance, parsed.duration, parsed.notes].filter(Boolean);
-      if (parts.length) {
-        if (state.current) state.current.cardioNote = parts.join(' · ');
-        save();
-        renderWorkout();
-        toast('Filled in ✓');
-      } else {
-        toast('Nothing detected in photo');
-      }
-    } else if (isIntervalActivity) {
-      const a = state.current?.cardioActivities?.[mode];
-      if (!a) return;
-      const segs = buildIntervalSegments(parsed);
-      if (!segs) { toast('Could not read interval laps'); return; }
-      applyIntervalSegments(a, segs);
-      save();
-      renderWorkout();
-      const work = segs.filter(s => s.kind === 'work').length;
-      toast(`Detected ${work} intervals ✓`);
-    } else {
-      const a = state.current?.cardioActivities?.[mode];
-      if (!a) return;
-      if (parsed.distance) a.distance = parsed.distance;
-      if (parsed.duration) a.duration = parsed.duration;
-      if (parsed.notes)    a.notes    = parsed.notes;
-      save();
-      renderWorkout();
-      toast('Filled in ✓');
+      if (parts.length) { if (state.current) state.current.cardioNote = parts.join(' · '); save(); renderWorkout(); toast('Filled in ✓'); }
+      else toast('Nothing detected in photo');
     }
   } catch (err) {
     hideToast();
     toast('Failed: ' + (err.message || 'unknown'));
   }
+}
+
+// Analyze a cardio activity's attached screenshots (interval → segments via the
+// interval prompt; other cardio → distance/duration/notes). Sends all attached
+// images in one call so a lap table split across screenshots is read together.
+async function analyzeCardioImages(a) {
+  const imgs = _cardioImages[a.id] || [];
+  if (!imgs.length) return;
+  const isInterval = a.type === 'interval';
+  const promptText = isInterval ? PROMPTS.intervalPhoto : PROMPTS.cardioPhoto;
+  const parts = [{ text: promptText }, ...imgs.map(img => ({
+    inline_data: { mime_type: img.mimeType || 'image/jpeg', data: img.dataUrl.split(',')[1] }
+  }))];
+  const reply = await geminiGenerate({ contents: [{ role: 'user', parts }] });
+  const parsed = parseJSONResponse(reply);
+  if (!parsed) return;
+  if (isInterval) {
+    const segs = buildIntervalSegments(parsed);
+    if (segs) applyIntervalSegments(a, segs);
+  } else {
+    if (parsed.distance) a.distance = parsed.distance;
+    if (parsed.duration) a.duration = parsed.duration;
+    if (parsed.notes)    a.notes    = parsed.notes;
+  }
+  delete _cardioImages[a.id]; // consumed
 }
 
 function renderCardioActivities() {
@@ -692,6 +715,16 @@ function renderCardioActivities() {
   const activities = state.current.cardioActivities || [];
   list.innerHTML = activities.map((a, i) => {
     const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
+    const id = _cardioId(a);
+    const imgs = _cardioImages[id] || [];
+    const thumbs = imgs.length ? `
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; align-items:center;">
+          ${imgs.map((img, k) => `<div style="position:relative; display:inline-block;">
+            <img src="${img.dataUrl}" style="height:60px; width:60px; object-fit:cover; border-radius:8px; border:1px solid var(--line);">
+            <button onclick="removeCardioImage('${id}', ${k})" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;padding:0;cursor:pointer;line-height:18px;">✕</button>
+          </div>`).join('')}
+          <span class="muted small">Analyzed on save</span>
+        </div>` : '';
     return `
       <div class="ex" style="position: relative; padding: 12px 14px;">
         <div class="row between">
@@ -716,9 +749,10 @@ function renderCardioActivities() {
         <div style="margin-top: 8px;">
           <label class="muted small" style="display: block; margin-bottom: 4px;">Notes</label>
           <div class="row" style="gap: 6px; align-items: stretch;">
-            <button class="chat-icon-btn" onclick="openCardioPhotoAnalyze(${i})" aria-label="Attach photo" title="Attach a screenshot to auto-fill fields"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
+            <button class="chat-icon-btn" onclick="openCardioImageAttach(${i})" aria-label="Attach screenshot" title="Attach screenshot(s) — analyzed when you save"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
             <textarea placeholder="pace, RPE, terrain…" rows="1" enterkeyhint="enter" oninput="updateCardioField(${i}, 'notes', this.value); autoResizeTA(this)" style="flex: 1; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(a.notes || '')}</textarea>
           </div>
+          ${thumbs}
         </div>
       </div>
     `;
@@ -823,10 +857,27 @@ export function addCustomExerciseText() {
 }
 
 // ---------- SESSION LIFECYCLE ----------
-export function finishSession() {
+export async function finishSession() {
   if (!state.current) return toast('Nothing to save');
   const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote || (state.current.cardioActivities || []).length > 0;
   if (!hasAny) return toast('Log at least one set');
+
+  // Analyze any attached cardio screenshots now (interval → segments, else
+  // distance/duration), so the duration check sees the filled-in values.
+  const pending = (state.current.cardioActivities || []).filter(a => (_cardioImages[a.id] || []).length);
+  if (pending.length) {
+    if (!getGeminiKey()) return toast('Set up Gemini API key to analyze screenshots');
+    toast(`Analyzing ${pending.length} screenshot${pending.length > 1 ? 's' : ''}…`, { persistent: true });
+    try {
+      for (const a of pending) await analyzeCardioImages(a);
+      hideToast();
+      save();
+      renderWorkout();
+    } catch (err) {
+      hideToast();
+      return toast('Analysis failed: ' + (err.message || 'unknown'));
+    }
+  }
 
   // Mandatory: block save if any cardio activity has no duration
   const missingCardio = (state.current.cardioActivities || []).filter(a => !a.duration?.trim());
