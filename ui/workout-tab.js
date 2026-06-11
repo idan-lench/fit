@@ -218,14 +218,14 @@ function _showDurationPrompt(missingCardios) {
     const idx = state.current.cardioActivities.indexOf(a);
     const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
     const timerPills = stoppedTimers.length
-      ? `<div style="position:absolute; right:6px; top:50%; transform:translateY(-50%); display:flex; gap:6px;">
-          ${stoppedTimers.map(t => `<button type="button" class="set-pill" style="background:var(--card); color:var(--accent2); border:1.5px solid var(--accent2); gap:4px; cursor:pointer;" onclick="useTimerForDuration(${idx}, ${t.durationSec})">⏱ ${_fmtTimer(t.durationSec * 1000)} · add</button>`).join('')}
+      ? `<div data-timer-pills style="position:absolute; right:7px; top:7px; bottom:7px; display:flex; align-items:center; gap:6px;">
+          ${stoppedTimers.map(t => `<button type="button" class="set-pill" style="display:inline-flex; align-items:center; height:100%; padding:0 11px; font-size:13px; background:var(--card); color:var(--accent2); border:1.5px solid var(--accent2); gap:4px; cursor:pointer;" onclick="useTimerForDuration(${idx}, ${t.durationSec})">⏱ ${_fmtTimer(t.durationSec * 1000)} · add</button>`).join('')}
         </div>`
       : '';
     return `<div style="margin-bottom: 12px;">
       <label class="muted small" style="display:block; margin-bottom: 4px;">${def.icon} ${def.label}</label>
       <div style="position:relative;">
-        <input type="text" data-cardio-idx="${idx}" placeholder="e.g. 45:00 or 30 min" style="width:100%; padding-right:${stoppedTimers.length ? '110px' : ''};">
+        <input type="text" data-cardio-idx="${idx}" placeholder="e.g. 45:00 or 30 min" style="width:100%; padding-right:${stoppedTimers.length ? '110px' : ''};" oninput="onDurationInput(this)">
         ${timerPills}
       </div>
     </div>`;
@@ -239,8 +239,18 @@ export function useTimerForDuration(cardioIdx, durationSec) {
     input.value = _fmtTimer(durationSec * 1000);
     input.style.paddingRight = '';
     // Remove the green timer pill(s) for this field once added
-    input.parentElement?.querySelector('div')?.remove();
+    input.parentElement?.querySelector('[data-timer-pills]')?.remove();
   }
+}
+
+// Hide the "use timer" pill while the user is typing a duration manually;
+// bring it back (and re-pad the input) if they clear the field again.
+export function onDurationInput(input) {
+  const pills = input.parentElement?.querySelector('[data-timer-pills]');
+  if (!pills) return;
+  const typed = !!input.value.trim();
+  pills.style.display = typed ? 'none' : 'flex';
+  input.style.paddingRight = typed ? '' : '110px';
 }
 
 export function closeDurationPrompt() {
@@ -747,8 +757,8 @@ function renderCardioActivities() {
         </div>` : ''}
         <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
           ${def.showDist ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Distance</label><input type="text" placeholder="e.g. 8 km" value="${escapeHtml(a.distance || '')}" oninput="updateCardioField(${i}, 'distance', this.value)"></div>` : ''}
-          ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label>${a.duration
-            ? `<div style="margin-top: 6px;"><span class="set-pill" style="background:transparent; color:var(--accent2); border:1.5px solid var(--accent2); gap:4px;">⏱ ${escapeHtml(a.duration)} <button onclick="clearCardioDuration(${i})" style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;color:var(--muted);line-height:1;" aria-label="Clear duration">×</button></span></div>`
+          ${def.showDur ? `<div style="flex: 1; min-width: 130px;"><label class="muted small">Duration</label>${a.duration
+            ? `<div style="margin-top: 6px;"><span class="set-pill" style="display:inline-flex; align-items:center; white-space:nowrap; max-width:100%; background:transparent; color:var(--accent2); border:1.5px solid var(--accent2); gap:4px;">⏱ ${escapeHtml(a.duration)} <button onclick="clearCardioDuration(${i})" style="background:none;border:none;cursor:pointer;padding:0;font-size:15px;color:var(--muted);line-height:1;" aria-label="Clear duration">×</button></span></div>`
             : `<input type="text" placeholder="e.g. 45 min" value="" oninput="updateCardioField(${i}, 'duration', this.value)">`
           }</div>` : ''}
         </div>
