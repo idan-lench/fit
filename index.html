@@ -95,7 +95,20 @@
     <div id="exerciseList"></div>
 
     <div id="sessionFeedbackCard" style="display: none; margin-top: 12px; padding: 14px 16px; background: var(--panel2); border-radius: 12px;">
-      <div class="muted small" style="font-weight: 500; margin-bottom: 10px;">How did it go?</div>
+      <div class="row between" style="align-items: center; margin-bottom: 10px;">
+        <div class="muted small" style="font-weight: 500;">How did it go?</div>
+        <button class="icon ghost" id="effortHelpBtn" aria-label="What does effort mean?" style="width: 22px; height: 22px; padding: 0; font-size: 13px; font-weight: 600; border: 1.5px solid var(--line); border-radius: 50%; line-height: 1;">?</button>
+      </div>
+      <div id="effortHelpBox" style="display: none; margin-bottom: 12px; padding: 10px 12px; background: var(--bg); border-radius: 8px;">
+        <div class="muted small" style="margin-bottom: 8px;">Rate the session's overall effort — strength by <b>reps left in the tank</b>, cardio by <b>how well you can talk</b>.</div>
+        <div class="small" style="display: grid; gap: 4px;">
+          <div>😌 <b>Recovery</b> — very light, lots left</div>
+          <div>🙂 <b>Easy</b> — comfortable, easy to talk</div>
+          <div>😐 <b>Moderate</b> — ~4 reps left · short sentences</div>
+          <div>😤 <b>Hard</b> — ~2 reps left · single words</div>
+          <div>🥵 <b>Crushed</b> — at failure · can't speak</div>
+        </div>
+      </div>
       <input type="range" id="effortInput" min="1" max="9" step="1" value="5" style="width: 100%; accent-color: var(--accent);">
       <div id="effortEmojiRow" style="display: flex; justify-content: space-between; margin-top: 6px; text-align: center; pointer-events: none;">
         <div><div style="font-size: 22px;">😌</div><div class="muted small" style="font-size: 10px;">Recovery</div></div>
