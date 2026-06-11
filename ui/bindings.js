@@ -32,7 +32,7 @@ import {
   closeExercisePicker, addCustomExerciseText, closeTimerAttach,
   updateSessionDate, updateSessionTime, renderExerciseList,
   refineSessionEstimate, requestSessionEstimateUpdate, closeSessionRefine,
-  sessionAttachFiles, onCardioPhotoSelected, updateEffortDisplay,
+  sessionAttachFiles, onCardioPhotoSelected, updateEffortDisplay, toggleEffortHelp,
 } from './workout-tab.js';
 
 export const _setup = true; // dummy export so flattenModules includes this file
@@ -79,6 +79,7 @@ on('finishSessionBtn',      'click', finishSession);
 on('resetSessionBtn',       'click', cancelSession);
 // effort slider: pos 1–9 maps to RPE 2–10 (odd positions = between-emoji values)
 on('effortInput', 'input', () => updateEffortDisplay());
+on('effortHelpBtn', 'click', toggleEffortHelp);
 
 // ── BODY TAB ──────────────────────────────────────────────────────────────────
 on('saveWaistBtn',     'click',  addWaist);
