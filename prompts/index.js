@@ -11,6 +11,7 @@ import { mealTemplateDelta } from './meal-template-delta.js';
 import { sessionChatSystem } from './session-chat-system.js';
 import { sessionEstimateUpdate } from './session-estimate-update.js';
 import { cardioPhoto } from './cardio-photo.js';
+import { intervalPhoto } from './interval-photo.js';
 import { exercisePhoto } from './exercise-photo.js';
 import { trainerSystem } from './trainer.js';
 
@@ -30,6 +31,7 @@ export const PROMPTS = {
   sessionChatSystem,
   sessionEstimateUpdate,
   cardioPhoto,
+  intervalPhoto,
   exercisePhoto,
   trainerSystem,
 };

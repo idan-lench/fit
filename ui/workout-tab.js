@@ -26,7 +26,14 @@ let _refiningSessionAt = null;
 let _sessionChatHistory = [];
 let _cardioPhotoIdx = null; // null = idle, 'note' = main cardio note, number = activity index
 let _sessionAttachedImages = [];
+let _cardioImages = {}; // { [activityId]: [{dataUrl, mimeType}] } — attached, analyzed on save (not persisted)
 let _cachedHistoryContext = null;
+
+// Ensure a cardio activity has a stable id for keying its attached images.
+function _cardioId(a) {
+  if (!a.id) a.id = 'c' + Date.now() + Math.random().toString(36).slice(2, 7);
+  return a.id;
+}
 
 export const getCurrentDay = () => currentDay;
 
@@ -485,7 +492,7 @@ export function closeCardioPicker() {
 export function addCardioActivity(typeKey) {
   if (!state.current) startWorkout('custom');
   state.current.cardioActivities = state.current.cardioActivities || [];
-  state.current.cardioActivities.push({ type: typeKey, distance: '', duration: '', notes: '' });
+  state.current.cardioActivities.push({ id: 'c' + Date.now() + Math.random().toString(36).slice(2, 7), type: typeKey, distance: '', duration: '', notes: '' });
   save();
   closeCardioPicker();
   renderWorkout();
@@ -523,18 +530,135 @@ export function openExercisePhotoAnalyze(idx) {
   document.getElementById('cardioPhotoInput').click();
 }
 
+// Format pace (seconds per km) → "m:ss".
+function _fmtPace(secPerKm) {
+  if (!secPerKm) return '';
+  const m = Math.floor(secPerKm / 60);
+  return `${m}:${String(Math.round(secPerKm % 60)).padStart(2, '0')}`;
+}
+
+// Human-readable summary of an interval segments[] array for the cardio card.
+function _intervalSummary(segs) {
+  const work = segs.filter(s => s.kind === 'work');
+  const rec = segs.filter(s => s.kind === 'recovery');
+  const warm = segs.find(s => s.kind === 'warmup');
+  const cool = segs.find(s => s.kind === 'cooldown');
+  const totalSec = segs.reduce((s, x) => s + (x.durationSec || 0), 0);
+  const paces = work.map(w => w.paceSecPerKm).filter(Boolean);
+  const paceNote = paces.length
+    ? ` @ ${_fmtPace(Math.min(...paces))}${Math.max(...paces) !== Math.min(...paces) ? `–${_fmtPace(Math.max(...paces))}` : ''}/km`
+    : '';
+  const recPace = rec.find(r => r.paceSecPerKm)?.paceSecPerKm;
+  const parts = [];
+  if (warm) parts.push(`warmup ${_fmtTimer((warm.durationSec || 0) * 1000)}`);
+  if (work.length) parts.push(`${work.length}× ${_fmtTimer((work[0].durationSec || 0) * 1000)} work${paceNote}`);
+  if (rec.length) parts.push(`${rec.length}× ${_fmtTimer((rec[0].durationSec || 0) * 1000)} recovery${recPace ? ` @ ${_fmtPace(recPace)}/km` : ' (jog, 60% MET)'}`);
+  if (cool) parts.push(`cooldown ${_fmtTimer((cool.durationSec || 0) * 1000)}`);
+  return `${escapeHtml(parts.join(' · '))} · <b>${_fmtTimer(totalSec * 1000)} total</b>`;
+}
+
+// Turn the AI-extracted interval structure into an ordered segments[] array.
+// One recovery follows EACH work rep (including the last, before the cooldown),
+// so #recoveries == #intervals. Recovery duration: use the screenshot's recovery
+// laps if present; else infer from total duration minus known laps; else default
+// 1:1 with work. Recovery pace is left null when unknown — the engine then uses
+// 60% of work MET.
+function buildIntervalSegments(p) {
+  if (!p || !Array.isArray(p.work)) return null;
+  const work = p.work.filter(w => w && w.durationSec > 0);
+  if (!work.length) return null;
+
+  const recoveries = work.length; // one after each interval, including the last
+  const workDur = work[0].durationSec;
+  let recDur = null, recPace = null;
+  if (p.recovery?.durationSec > 0) {
+    recDur = p.recovery.durationSec;
+    recPace = p.recovery.paceSecPerKm || null;
+  } else if (p.totalDurationSec > 0) {
+    const known = (p.warmup?.durationSec || 0) + (p.cooldown?.durationSec || 0)
+      + work.reduce((s, w) => s + (w.durationSec || 0), 0);
+    const per = (p.totalDurationSec - known) / recoveries;
+    // Only trust the total when it implies a plausible recovery (>= half the work
+    // interval). Many watches report MOVING time, which excludes recovery jogs and
+    // makes this ~0 — in that case fall through to the 1:1 default below.
+    if (per >= 0.5 * workDur) recDur = Math.round(per);
+  }
+  if (recDur == null) recDur = workDur; // fall back to 1:1 with work
+
+  const segs = [];
+  if (p.warmup?.durationSec > 0) {
+    segs.push({ kind: 'warmup', durationSec: p.warmup.durationSec, paceSecPerKm: p.warmup.paceSecPerKm || null, distanceM: p.warmup.distanceM || null });
+  }
+  work.forEach((w) => {
+    segs.push({ kind: 'work', durationSec: w.durationSec, paceSecPerKm: w.paceSecPerKm || null, distanceM: w.distanceM || null });
+    segs.push({ kind: 'recovery', durationSec: recDur, paceSecPerKm: recPace });
+  });
+  if (p.cooldown?.durationSec > 0) {
+    segs.push({ kind: 'cooldown', durationSec: p.cooldown.durationSec, paceSecPerKm: p.cooldown.paceSecPerKm || null, distanceM: p.cooldown.distanceM || null });
+  }
+  return segs;
+}
+
+// Store segments on the activity + derive display fields (total duration/distance,
+// a human note). The engine reads a.segments; these fields are only for display.
+function applyIntervalSegments(a, segs) {
+  a.segments = segs;
+  const totalSec = segs.reduce((s, x) => s + (x.durationSec || 0), 0);
+  const totalKm = segs.reduce((s, x) => s + ((x.distanceM || 0) / 1000), 0);
+  a.duration = _fmtTimer(totalSec * 1000);
+  if (totalKm > 0) a.distance = `${Math.round(totalKm * 100) / 100} km`;
+  const work = segs.filter(s => s.kind === 'work');
+  const rec = segs.filter(s => s.kind === 'recovery').length;
+  a.notes = `${work.length}× intervals + ${rec}× recovery (auto-detected)`;
+}
+
+export function clearIntervalSegments(idx) {
+  const a = state.current?.cardioActivities?.[idx];
+  if (!a) return;
+  delete a.segments;
+  a.notes = '';
+  save();
+  renderWorkout();
+}
+
+// Open the image picker for a cardio activity (attach mode — analyzed on save).
+export function openCardioImageAttach(idx) {
+  const a = state.current?.cardioActivities?.[idx];
+  if (!a) return;
+  _cardioPhotoIdx = { attachId: _cardioId(a) };
+  document.getElementById('cardioPhotoInput').click();
+}
+
+export function removeCardioImage(activityId, i) {
+  (_cardioImages[activityId] || []).splice(i, 1);
+  renderCardioActivities();
+}
+
 export async function onCardioPhotoSelected(e) {
-  const file = e.target.files[0];
+  const files = Array.from(e.target.files);
   e.target.value = '';
-  if (!file || _cardioPhotoIdx === null) return;
+  if (!files.length || _cardioPhotoIdx === null) return;
   const mode = _cardioPhotoIdx;
   _cardioPhotoIdx = null;
+
+  // Cardio activity attach: store image thumbnails now, analyze on save.
+  if (mode && mode.attachId !== undefined) {
+    const id = mode.attachId;
+    _cardioImages[id] = _cardioImages[id] || [];
+    for (const file of files) {
+      const blob = await downscale(file, 1280);
+      _cardioImages[id].push({ dataUrl: await blobToDataUrl(blob), mimeType: blob.type || 'image/jpeg' });
+    }
+    renderCardioActivities();
+    return;
+  }
+
+  // Exercise / cardio-note photos still analyze immediately (single image).
+  const file = files[0];
   toast('Analyzing…', { persistent: true });
   try {
     const blob = await downscale(file, 1280);
-    const dataUrl = await blobToDataUrl(blob);
-    const base64 = dataUrl.split(',')[1];
-
+    const base64 = (await blobToDataUrl(blob)).split(',')[1];
     const isExercise = typeof mode === 'object' && mode.exercise !== undefined;
     const promptText = isExercise ? PROMPTS.exercisePhoto : PROMPTS.cardioPhoto;
     const reply = await geminiGenerate({
@@ -550,38 +674,42 @@ export async function onCardioPhotoSelected(e) {
     if (isExercise) {
       const entry = state.current?.entries?.[mode.exercise];
       if (!entry) return;
-      if (parsed.notes) {
-        entry.note = parsed.notes;
-        save();
-        renderWorkout();
-        toast('Filled in ✓');
-      } else {
-        toast('Nothing detected in photo');
-      }
+      if (parsed.notes) { entry.note = parsed.notes; save(); renderWorkout(); toast('Filled in ✓'); }
+      else toast('Nothing detected in photo');
     } else if (mode === 'note') {
       const parts = [parsed.distance, parsed.duration, parsed.notes].filter(Boolean);
-      if (parts.length) {
-        if (state.current) state.current.cardioNote = parts.join(' · ');
-        save();
-        renderWorkout();
-        toast('Filled in ✓');
-      } else {
-        toast('Nothing detected in photo');
-      }
-    } else {
-      const a = state.current?.cardioActivities?.[mode];
-      if (!a) return;
-      if (parsed.distance) a.distance = parsed.distance;
-      if (parsed.duration) a.duration = parsed.duration;
-      if (parsed.notes)    a.notes    = parsed.notes;
-      save();
-      renderWorkout();
-      toast('Filled in ✓');
+      if (parts.length) { if (state.current) state.current.cardioNote = parts.join(' · '); save(); renderWorkout(); toast('Filled in ✓'); }
+      else toast('Nothing detected in photo');
     }
   } catch (err) {
     hideToast();
     toast('Failed: ' + (err.message || 'unknown'));
   }
+}
+
+// Analyze a cardio activity's attached screenshots (interval → segments via the
+// interval prompt; other cardio → distance/duration/notes). Sends all attached
+// images in one call so a lap table split across screenshots is read together.
+async function analyzeCardioImages(a) {
+  const imgs = _cardioImages[a.id] || [];
+  if (!imgs.length) return;
+  const isInterval = a.type === 'interval';
+  const promptText = isInterval ? PROMPTS.intervalPhoto : PROMPTS.cardioPhoto;
+  const parts = [{ text: promptText }, ...imgs.map(img => ({
+    inline_data: { mime_type: img.mimeType || 'image/jpeg', data: img.dataUrl.split(',')[1] }
+  }))];
+  const reply = await geminiGenerate({ contents: [{ role: 'user', parts }] });
+  const parsed = parseJSONResponse(reply);
+  if (!parsed) return;
+  if (isInterval) {
+    const segs = buildIntervalSegments(parsed);
+    if (segs) applyIntervalSegments(a, segs);
+  } else {
+    if (parsed.distance) a.distance = parsed.distance;
+    if (parsed.duration) a.duration = parsed.duration;
+    if (parsed.notes)    a.notes    = parsed.notes;
+  }
+  delete _cardioImages[a.id]; // consumed
 }
 
 function renderCardioActivities() {
@@ -593,12 +721,30 @@ function renderCardioActivities() {
   const activities = state.current.cardioActivities || [];
   list.innerHTML = activities.map((a, i) => {
     const def = CARDIO_TYPES.find(c => c.key === a.type) || CARDIO_TYPES[CARDIO_TYPES.length - 1];
+    const id = _cardioId(a);
+    const imgs = _cardioImages[id] || [];
+    const thumbs = imgs.length ? `
+        <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; align-items:center;">
+          ${imgs.map((img, k) => `<div style="position:relative; display:inline-block;">
+            <img src="${img.dataUrl}" style="height:60px; width:60px; object-fit:cover; border-radius:8px; border:1px solid var(--line);">
+            <button onclick="removeCardioImage('${id}', ${k})" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;padding:0;cursor:pointer;line-height:18px;">✕</button>
+          </div>`).join('')}
+          <span class="muted small">Analyzed on save</span>
+        </div>` : '';
     return `
       <div class="ex" style="position: relative; padding: 12px 14px;">
         <div class="row between">
           <div class="grow"><b>${def.icon} ${def.label}</b></div>
           <button class="icon ghost" onclick="removeCardioActivity(${i})" aria-label="Remove">✕</button>
         </div>
+        ${Array.isArray(a.segments) && a.segments.length ? `
+        <div style="margin-top: 8px; padding: 8px 10px; background: var(--bg); border-radius: 8px; border-left: 3px solid var(--accent2);">
+          <div class="row between" style="align-items: center;">
+            <div class="muted small" style="font-weight: 500;">Detected intervals</div>
+            <button class="ghost" onclick="clearIntervalSegments(${i})" style="padding: 2px 8px; font-size: 12px;">Clear</button>
+          </div>
+          <div class="small" style="margin-top: 4px;">${_intervalSummary(a.segments)}</div>
+        </div>` : ''}
         <div class="row" style="gap: 8px; margin-top: 8px; flex-wrap: wrap;">
           ${def.showDist ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Distance</label><input type="text" placeholder="e.g. 8 km" value="${escapeHtml(a.distance || '')}" oninput="updateCardioField(${i}, 'distance', this.value)"></div>` : ''}
           ${def.showDur ? `<div style="flex: 1; min-width: 100px;"><label class="muted small">Duration</label>${a.duration
@@ -609,9 +755,10 @@ function renderCardioActivities() {
         <div style="margin-top: 8px;">
           <label class="muted small" style="display: block; margin-bottom: 4px;">Notes</label>
           <div class="row" style="gap: 6px; align-items: stretch;">
-            <button class="chat-icon-btn" onclick="openCardioPhotoAnalyze(${i})" aria-label="Attach photo" title="Attach a screenshot to auto-fill fields"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
+            <button class="chat-icon-btn" onclick="openCardioImageAttach(${i})" aria-label="Attach screenshot" title="Attach screenshot(s) — analyzed when you save"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg></button>
             <textarea placeholder="pace, RPE, terrain…" rows="1" enterkeyhint="enter" oninput="updateCardioField(${i}, 'notes', this.value); autoResizeTA(this)" style="flex: 1; resize: none; overflow-y: auto; max-height: 140px; min-height: 36px; line-height: 1.4;">${escapeHtml(a.notes || '')}</textarea>
           </div>
+          ${thumbs}
         </div>
       </div>
     `;
@@ -716,10 +863,28 @@ export function addCustomExerciseText() {
 }
 
 // ---------- SESSION LIFECYCLE ----------
-export function finishSession() {
+export async function finishSession() {
   if (!state.current) return toast('Nothing to save');
   const hasAny = state.current.entries.some(e => e.sets.length) || state.current.cardioNote || (state.current.cardioActivities || []).length > 0;
   if (!hasAny) return toast('Log at least one set');
+
+  // Analyze any attached cardio screenshots now (interval → segments, else
+  // distance/duration), so the duration check sees the filled-in values.
+  const pending = (state.current.cardioActivities || []).filter(a => (_cardioImages[a.id] || []).length);
+  if (pending.length) {
+    if (!getGeminiKey()) return toast('Set up Gemini API key to analyze screenshots');
+    const imgCount = pending.reduce((n, a) => n + (_cardioImages[a.id] || []).length, 0);
+    toast(`Analyzing ${imgCount} screenshot${imgCount > 1 ? 's' : ''}…`, { persistent: true });
+    try {
+      for (const a of pending) await analyzeCardioImages(a);
+      hideToast();
+      save();
+      renderWorkout();
+    } catch (err) {
+      hideToast();
+      return toast('Analysis failed: ' + (err.message || 'unknown'));
+    }
+  }
 
   // Mandatory: block save if any cardio activity has no duration
   const missingCardio = (state.current.cardioActivities || []).filter(a => !a.duration?.trim());

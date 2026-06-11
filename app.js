@@ -47,11 +47,11 @@ import {
   shiftWorkoutDate, loadWorkoutPlan, startWorkout, addCardioPlan,
   closeTimerAttach, attachTimerTo, detachTimerFrom, attachTimerToAll,
   pauseTimer, resumeTimer, stopTimer, discardTimer, attachTimer,
-  clearExerciseDuration, clearCardioDuration, useTimerForDuration,
+  clearExerciseDuration, clearCardioDuration, useTimerForDuration, clearIntervalSegments,
   openSet, editSet, closeSet, bumpReps, confirmSet, deleteCurrentSet, removeSet, removeExercise, updateExerciseNote, openExercisePhotoAnalyze,
   removeCardio, openCardioPicker, closeCardioPicker, addCardioActivity, removeCardioActivity, updateCardioField,
   renderExerciseList, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, addCustomExercise, closeExercisePicker, pickExercise, addCustomExerciseText,
-  openCardioPhotoAnalyze,
+  openCardioPhotoAnalyze, openCardioImageAttach, removeCardioImage,
   finishSession, cancelSession, editSession, setSessionTime, deleteSession, reanalyzeSession, updateSessionDate, updateSessionTime,
   openSessionRefine, closeSessionRefine, refineSessionEstimate, requestSessionEstimateUpdate, applySessionRefine, discardSessionRefine,
   sessionAttachFiles, renderSessionAttachPreview, _removeSessionAttach,
@@ -321,9 +321,9 @@ document.addEventListener('visibilitychange', () => {
 // Static index.html handlers are wired by ui/bindings.js and do NOT appear here.
 Object.assign(window, {
   // Dynamic innerHTML handlers (workout-tab.js render functions)
-  addCardioActivity, addCardioPlan, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, openCardioPhotoAnalyze, applySessionRefine,
+  addCardioActivity, addCardioPlan, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, openCardioPhotoAnalyze, openCardioImageAttach, removeCardioImage, applySessionRefine,
   attachTimerTo, detachTimerFrom, attachTimerToAll, attachTimer, pauseTimer, resumeTimer, stopTimer, discardTimer,
-  clearExerciseDuration, clearCardioDuration, useTimerForDuration, autoResizeTA,
+  clearExerciseDuration, clearCardioDuration, useTimerForDuration, clearIntervalSegments, autoResizeTA,
   deleteSession, reanalyzeSession, discardSessionRefine,
   editSession, editStepsEntry, editWaist,
   openSet, editSet, deleteCurrentSet, openSessionRefine, openTemplateEdit,

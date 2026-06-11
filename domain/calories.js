@@ -130,14 +130,60 @@ const RUN_PACE_BRACKETS = [
   { maxPaceMinKm: Infinity, met: 7.0 }, // > 8:00/km — slow jog
 ];
 
-function runMet(durationMin, km) {
-  if (km > 0 && durationMin > 0) {
-    const paceMinKm = durationMin / km;
-    for (const { maxPaceMinKm, met } of RUN_PACE_BRACKETS) {
-      if (paceMinKm < maxPaceMinKm) return met;
-    }
+function metForPace(paceMinKm) {
+  for (const { maxPaceMinKm, met } of RUN_PACE_BRACKETS) {
+    if (paceMinKm < maxPaceMinKm) return met;
   }
   return 10.0; // fallback: ~6:00/km moderate pace
+}
+
+function runMet(durationMin, km) {
+  if (km > 0 && durationMin > 0) return metForPace(durationMin / km);
+  return 10.0;
+}
+
+// ---------- INTERVAL SEGMENTS ----------
+// An interval run can carry an ordered segments[] array, each segment a phase
+// of the run: { kind: 'warmup'|'work'|'recovery'|'cooldown', durationSec,
+// distanceM?, paceSecPerKm? }. Each segment's MET comes from its own pace.
+// Recovery segments with NO logged pace fall back to 60% of the average work
+// MET — the rule agreed for interval recoveries (active jog/walk between reps).
+const RECOVERY_MET_FACTOR = 0.6;
+
+function segPaceMinKm(seg) {
+  if (seg.paceSecPerKm > 0) return seg.paceSecPerKm / 60;
+  if (seg.distanceM > 0 && seg.durationSec > 0) return (seg.durationSec / 60) / (seg.distanceM / 1000);
+  return null;
+}
+
+function segMet(seg, avgWorkMet) {
+  const pace = segPaceMinKm(seg);
+  if (pace != null) return metForPace(pace);
+  if (seg.kind === 'recovery') return Math.round(RECOVERY_MET_FACTOR * avgWorkMet * 10) / 10;
+  return 10.0; // warmup/cooldown/work with no pace data → moderate run
+}
+
+function calcIntervalSegments(segments, WEIGHT_KG) {
+  // Average work MET first, so recoveries without a pace can derive from it.
+  const workMets = segments
+    .filter(s => s.kind === 'work')
+    .map(s => { const p = segPaceMinKm(s); return p != null ? metForPace(p) : null; })
+    .filter(m => m != null);
+  const avgWorkMet = workMets.length ? workMets.reduce((a, b) => a + b, 0) / workMets.length : 10.0;
+
+  let total = 0, totalSec = 0, totalKm = 0;
+  // Per-phase aggregates so the breakdown can show one row per phase.
+  const phases = {}; // kind -> { kcal, sec, count }
+  for (const s of segments) {
+    const met = segMet(s, avgWorkMet);
+    const cal = met * 3.5 * WEIGHT_KG / 200 * ((s.durationSec || 0) / 60);
+    total += cal;
+    totalSec += s.durationSec || 0;
+    if (s.distanceM > 0) totalKm += s.distanceM / 1000;
+    const ph = phases[s.kind] || (phases[s.kind] = { kcal: 0, sec: 0, count: 0 });
+    ph.kcal += cal; ph.sec += s.durationSec || 0; ph.count++;
+  }
+  return { total, totalMin: totalSec / 60, totalKm, avgWorkMet, phases };
 }
 
 const CARDIO_STEPS_PER_KM = {
@@ -157,9 +203,21 @@ export function rpeMultiplier(rpe) {
   return 0.85 + (rpe - 1) * (0.35 / 9);
 }
 
-// EPOC: rate and today/tomorrow split based on session hour
-function epocSplit(rpe, sessionHour) {
-  const rate = rpe >= 9 ? 0.12 : rpe >= 7 ? 0.08 : 0;
+// EPOC afterburn rate + today/tomorrow split.
+// Strength is RPE-only. Runs/intervals take the HIGHER of an intensity-based
+// rate (from work MET) and the RPE-based rate — so a hard session earns its
+// afterburn even if rated low, and an easy one rated high still gets it.
+//   runMet = peak run/interval MET in the session (0 if no running).
+function epocSplit(rpe, sessionHour, runMet = 0) {
+  let rate;
+  if (runMet > 0) {
+    // MET >= 13.5 (≤4:30/km) → 15%; MET >= 11.5 (≤5:30/km) → 12%
+    const metRate = runMet >= 13.5 ? 0.15 : runMet >= 11.5 ? 0.12 : 0;
+    const rpeRate = rpe >= 9 ? 0.15 : rpe >= 7 ? 0.12 : 0;
+    rate = Math.max(metRate, rpeRate);
+  } else {
+    rate = rpe >= 9 ? 0.12 : rpe >= 7 ? 0.08 : 0;
+  }
   if (rate === 0) return { rate: 0, todayFraction: 1 };
   let todayFraction;
   if (sessionHour < 14)      todayFraction = 0.9;
@@ -222,6 +280,15 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
 
   for (const a of (session.cardioActivities || [])) {
     if (!a?.type) continue;
+    // Interval run with structured segments → sum each phase (recovery without
+    // a logged pace falls back to 60% of work MET inside calcIntervalSegments).
+    if (a.type === 'interval' && Array.isArray(a.segments) && a.segments.length) {
+      const r = calcIntervalSegments(a.segments, WEIGHT_KG);
+      cardioBase += r.total;
+      stepsFromCardio += r.totalKm * (CARDIO_STEPS_PER_KM[a.type] ?? 1300);
+      cardioCalcs.push({ type: a.type, segmented: true, rawCal: r.total, ...r });
+      continue;
+    }
     const durationMin = parseDurationMin(a.duration);
     const km = parseFloat(a.distance) || 0;
     const isRun = a.type === 'run' || a.type === 'treadmill_run' || a.type === 'interval' || a.type === 'long-run';
@@ -236,7 +303,17 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
 
   // --- EPOC ---
   const hour = session.time ? parseInt(session.time.split(':')[0], 10) : 12;
-  const { rate: epocRate, todayFraction } = epocSplit(rpe, hour);
+  // Peak run/interval intensity drives the intensity-based afterburn. For a
+  // segmented interval that's the average work MET; for a plain run it's the
+  // pace-derived MET.
+  let maxRunMet = 0;
+  for (const c of cardioCalcs) {
+    const isRun = c.type === 'run' || c.type === 'treadmill_run' || c.type === 'interval' || c.type === 'long-run';
+    if (!isRun) continue;
+    const m = c.segmented ? c.avgWorkMet : c.met;
+    if (m > maxRunMet) maxRunMet = m;
+  }
+  const { rate: epocRate, todayFraction } = epocSplit(rpe, hour, maxRunMet);
   const epocTotal = adjusted * epocRate;
   const epocToday    = Math.round(epocTotal * todayFraction);
   const epocTomorrow = Math.round(epocTotal * (1 - todayFraction));
@@ -256,14 +333,37 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
       reasoning: `MET ${met} × ${Math.round(activeSec / 60 * 10) / 10}min active${legNote} + ${sets} × 1min rest at MET ${restMet} = ${finalCal} kcal`,
     });
   }
-  for (const { type, met, durationMin, km, rawCal } of cardioCalcs) {
-    const finalCal = Math.round(rawCal);
+  for (const c of cardioCalcs) {
+    const finalCal = Math.round(c.rawCal);
+    breakdownSum += finalCal;
+
+    if (c.segmented) {
+      // One breakdown row per phase (warm-up / work / recovery / cool-down).
+      const k = 3.5 * WEIGHT_KG / 200;
+      const order = [['warmup', 'Warm-up'], ['work', 'Intervals (work)'], ['recovery', 'Recovery'], ['cooldown', 'Cool-down']];
+      for (const [kind, label] of order) {
+        const ph = c.phases[kind];
+        if (!ph || ph.sec === 0) continue;
+        const cal = Math.round(ph.kcal);
+        const min = ph.sec / 60;
+        const met = Math.round(ph.kcal / (k * min) * 10) / 10; // effective (blended) MET
+        const countNote = ph.count > 1 ? `${ph.count}× ` : '';
+        const recNote = kind === 'recovery' ? ' (60% of work MET)' : '';
+        breakdown.push({
+          activity: label,
+          calories: cal,
+          reasoning: `${countNote}MET ${met} × ${Math.round(min * 10) / 10} min${recNote} = ${cal} kcal`,
+        });
+      }
+      continue;
+    }
+
+    const { type, met, durationMin, km } = c;
     const isRun = type === 'run' || type === 'treadmill_run' || type === 'interval' || type === 'long-run';
     const paceNote = isRun && km > 0 && durationMin > 0
       ? ` at ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
       : '';
     const kmNote = km ? ` · ${km} km${paceNote}` : '';
-    breakdownSum += finalCal;
     breakdown.push({
       activity: type,
       calories: finalCal,
