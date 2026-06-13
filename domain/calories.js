@@ -148,6 +148,69 @@ function runMet(durationMin, km) {
   return 10.0;
 }
 
+// ---------- SWIM ----------
+// Swim MET = constant stroke×effort matrix (absolute physiology, level-independent)
+// resolved by a level-dependent pace table. Pace is sec per 100m; the swimmer's
+// level decides whether that pace counts as easy / moderate / hard.
+const SWIM_MET = {
+  freestyle:    { easy: 7.5,  moderate: 9.0,  hard: 10.5 },
+  backstroke:   { easy: 7.0,  moderate: 8.5,  hard: 10.0 },
+  breaststroke: { easy: 8.0,  moderate: 9.5,  hard: 11.0 },
+  butterfly:    { easy: 11.0, moderate: 13.0, hard: 15.0 }, // even "easy" fly is hard
+};
+
+// Pace thresholds in sec/100m. pace > easyAbove → easy; pace < hardBelow → hard;
+// between → moderate. (Slower = bigger number = easier.)
+const SWIM_PACE = {
+  beginner: {
+    freestyle:    { easyAbove: 165, hardBelow: 135 }, // >2:45 / <2:15
+    backstroke:   { easyAbove: 180, hardBelow: 150 }, // >3:00 / <2:30
+    breaststroke: { easyAbove: 180, hardBelow: 140 }, // >3:00 / <2:20
+    butterfly:    { easyAbove: 210, hardBelow: 165 }, // >3:30 / <2:45
+  },
+  intermediate: {
+    freestyle:    { easyAbove: 140, hardBelow: 105 }, // >2:20 / <1:45
+    backstroke:   { easyAbove: 150, hardBelow: 115 }, // >2:30 / <1:55
+    breaststroke: { easyAbove: 155, hardBelow: 115 }, // >2:35 / <1:55
+    butterfly:    { easyAbove: 165, hardBelow: 120 }, // >2:45 / <2:00
+  },
+  advanced: {
+    freestyle:    { easyAbove: 110, hardBelow: 85 },  // >1:50 / <1:25
+    backstroke:   { easyAbove: 120, hardBelow: 95 },  // >2:00 / <1:35
+    breaststroke: { easyAbove: 125, hardBelow: 95 },  // >2:05 / <1:35
+    butterfly:    { easyAbove: 130, hardBelow: 90 },  // >2:10 / <1:30
+  },
+};
+
+// Swim activity types map swim_<stroke>; legacy 'swim' → freestyle.
+function swimStroke(type) {
+  if (type === 'swim') return 'freestyle';
+  return type.replace('swim_', '');
+}
+
+// Distance for swims is in meters (entered as "1500", "1500 m" or "1.5 km").
+function parseDistanceMeters(str) {
+  if (!str) return 0;
+  const s = String(str).toLowerCase();
+  const n = parseFloat(s) || 0;
+  if (s.includes('km')) return n * 1000;
+  if (/\bm\b|meter/.test(s)) return n;
+  return n < 20 ? n * 1000 : n; // bare "1.5" → 1500m, "1500" → 1500m
+}
+
+// Resolve a swim's MET: pace (sec/100m) → category via the level table → matrix.
+// Missing pace (no distance or duration) falls back to Moderate.
+function swimMet(stroke, paceSecPer100, level) {
+  const matrix = SWIM_MET[stroke] || SWIM_MET.freestyle;
+  const t = (SWIM_PACE[level] || SWIM_PACE.intermediate)[stroke];
+  let category = 'moderate';
+  if (t && paceSecPer100 > 0) {
+    if (paceSecPer100 > t.easyAbove) category = 'easy';
+    else if (paceSecPer100 < t.hardBelow) category = 'hard';
+  }
+  return { met: matrix[category], category };
+}
+
 // ---------- INTERVAL SEGMENTS ----------
 // An interval run can carry an ordered segments[] array, each segment a phase
 // of the run: { kind: 'warmup'|'work'|'recovery'|'cooldown', durationSec,
@@ -252,7 +315,7 @@ function parseDurationMin(str) {
  * @param {object} opts     - { rpe, weightKg }
  * @returns {{ caloriesBurned, epocToday, epocTomorrow, stepsFromCardio, breakdown }}
  */
-export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {}) {
+export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swimLevel = 'intermediate' } = {}) {
   const WEIGHT_KG = weightKg;
 
   // --- Strength ---
@@ -298,6 +361,19 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
     const durationMin = parseDurationMin(a.duration);
     const km = parseFloat(a.distance) || 0;
     const isRun = a.type === 'run' || a.type === 'treadmill_run' || a.type === 'interval' || a.type === 'long-run';
+
+    // Swim: MET from pace (sec/100m) resolved through the swimmer's level.
+    if (a.type === 'swim' || a.type.startsWith('swim_')) {
+      const stroke = swimStroke(a.type);
+      const distM = parseDistanceMeters(a.distance);
+      const paceSecPer100 = (distM > 0 && durationMin > 0) ? (durationMin * 6000 / distM) : 0;
+      const { met, category } = swimMet(stroke, paceSecPer100, swimLevel);
+      const rawCal = met * 3.5 * WEIGHT_KG / 200 * durationMin;
+      cardioBase += rawCal;
+      cardioCalcs.push({ type: a.type, met, durationMin, km, rawCal, swim: { stroke, level: swimLevel, category, paceSecPer100: Math.round(paceSecPer100) } });
+      continue;
+    }
+
     const met = isRun ? runMet(durationMin, km) : (CARDIO_MET[a.type] ?? 6.0);
     const rawCal = met * 3.5 * WEIGHT_KG / 200 * durationMin;
     cardioBase += rawCal;
@@ -361,6 +437,20 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58 } = {
           reasoning: `${countNote}MET ${met} × ${Math.round(min * 10) / 10} min${recNote} = ${cal} kcal`,
         });
       }
+      continue;
+    }
+
+    if (c.swim) {
+      // State the level each time so the user can see it and ask to change it.
+      const { stroke, level, category, paceSecPer100 } = c.swim;
+      const paceStr = paceSecPer100 > 0
+        ? `${Math.floor(paceSecPer100 / 60)}:${String(paceSecPer100 % 60).padStart(2, '0')}/100m`
+        : 'pace n/a';
+      breakdown.push({
+        activity: c.type,
+        calories: finalCal,
+        reasoning: `${level} swimmer · ${stroke} @ ${paceStr} → ${category} · MET ${c.met} × ${c.durationMin} min = ${finalCal} kcal`,
+      });
       continue;
     }
 

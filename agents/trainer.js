@@ -114,7 +114,8 @@ export async function runTrainer(session, inputs) {
   const { rpe } = inputs;
 
   const weightKg = latestWeightKg(state.weights) ?? state.profile?.weightKg ?? 58;
-  const calories = calculateSessionCalories(session, { rpe, weightKg });
+  const swimLevel = state.profile?.swimLevel || 'intermediate';
+  const calories = calculateSessionCalories(session, { rpe, weightKg, swimLevel });
 
   const userMessage = buildUserMessage({ session, rpe, calories });
 

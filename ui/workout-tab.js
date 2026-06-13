@@ -306,6 +306,17 @@ export function saveDurations() {
   finishSession();
 }
 
+// Captured once on the first swim; drives swim MET via the pace tables. The
+// burn breakdown shows the level each time so the user can change it via chat.
+export function setSwimLevel(level) {
+  if (!state.profile) return;
+  state.profile.swimLevel = level;
+  save();
+  window.refreshProfile?.();
+  document.getElementById('swimLevelModal')?.classList.remove('show');
+  finishSession();
+}
+
 export function clearExerciseDuration(idx) {
   const e = state.current?.entries?.[idx];
   if (!e) return;
@@ -923,6 +934,14 @@ export async function finishSession() {
   const missingCardio = (state.current.cardioActivities || []).filter(a => !a.duration?.trim());
   if (missingCardio.length > 0) {
     _showDurationPrompt(missingCardio);
+    return;
+  }
+
+  // First swim ever → ask the swimmer's level once (drives swim MET), then continue.
+  // Stored on the profile; editable later via chat.
+  const hasSwim = (state.current.cardioActivities || []).some(a => a.type === 'swim' || a.type?.startsWith('swim_'));
+  if (hasSwim && !state.profile?.swimLevel) {
+    document.getElementById('swimLevelModal')?.classList.add('show');
     return;
   }
 
