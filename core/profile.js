@@ -7,6 +7,7 @@ export const DEFAULT_PROFILE = {
   heightCm: 168,
   ageYears: 44,
   sex: 'male',
+  swimLevel: null, // 'beginner' | 'intermediate' | 'advanced' — captured on first swim, editable via chat
   goals: {
     steps: 10000,
     waistCm: 75,
