@@ -320,7 +320,11 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
 
   // --- Strength ---
   // Active: exercise MET × active time
-  // Rest:   exercise MET × 0.45 × 1 min per set (first minute only, after that uncounted)
+  // Rest:   flat 2.3 MET × 1 min per set (first minute only). Recovery between
+  //   strength sets is passive (sitting/standing) regardless of how hard the set
+  //   was, so it's ~2.3 MET — not a % of the active MET (which over-credits
+  //   high-MET moves, e.g. a pull-up rest would read like moderate cycling).
+  const STRENGTH_REST_MET = 2.3;
   let strengthBase = 0;
   const exCalcs = [];
 
@@ -337,7 +341,7 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
     }
     const activeSec = reps * secsPerRep * legFactor;
     const activeCal = met * 3.5 * WEIGHT_KG / 200 * (activeSec / 60);
-    const restCal   = met * 0.45 * 3.5 * WEIGHT_KG / 200 * sets; // 1 min/set at 45% of exercise MET
+    const restCal   = STRENGTH_REST_MET * 3.5 * WEIGHT_KG / 200 * sets; // 1 min/set, flat 2.3 MET
     strengthBase += activeCal + restCal;
     exCalcs.push({ name: entry.name, met, activeSec, sets, legFactor, activeCal, restCal });
   }
@@ -407,7 +411,7 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
   for (const { name, met, activeSec, sets, legFactor, activeCal, restCal } of exCalcs) {
     const finalCal = Math.round(activeCal + restCal);
     const legNote = legFactor === 2 ? ' (per-leg ×2)' : '';
-    const restMet = (met * 0.45).toFixed(1);
+    const restMet = STRENGTH_REST_MET.toFixed(1);
     breakdownSum += finalCal;
     breakdown.push({
       activity: name,
