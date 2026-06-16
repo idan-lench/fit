@@ -6,7 +6,7 @@ import { PLAN, WEEKLY_PLAN, getPlanKeyForDate } from '../domain/plan.js';
 import { EXERCISE_LIBRARY, lastSetsFor } from '../domain/exercises.js';
 import { CARDIO_TYPES, formatCardioActivitiesForAI } from '../domain/cardio.js';
 import { renderMuscleHeatmapSvg } from '../domain/muscle-map.js';
-import { isCurrentFresh, autoAnalyzeSession, updateWorkoutHistory, buildWorkoutHistoryContext } from '../domain/workouts.js';
+import { isCurrentFresh, updateWorkoutHistory, buildWorkoutHistoryContext } from '../domain/workouts.js';
 import { runTrainer, computeSessionCalories } from '../agents/trainer.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { downscale } from './shared/image.js';
@@ -84,6 +84,17 @@ export function shiftWorkoutDate(delta) {
   const shifted = [dt.getFullYear(), String(dt.getMonth()+1).padStart(2,'0'), String(dt.getDate()).padStart(2,'0')].join('-');
   workoutViewDate = shifted === todayISO() ? null : shifted;
   renderWorkout();
+}
+
+// "just now" / "5m ago" / "2h ago" / "3d ago" from a ms timestamp.
+function relativeTimeShort(ts) {
+  if (!ts) return '';
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1)  return 'synced just now';
+  if (mins < 60) return `synced ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `synced ${hrs}h ago`;
+  return `synced ${Math.floor(hrs / 24)}d ago`;
 }
 
 function formatWorkoutDateLabel(dateISO) {
@@ -1042,9 +1053,23 @@ export async function finishSession() {
             renderHistory();
           }
         } catch {
-          // fall back to legacy analysis
-          const ok = await autoAnalyzeSession(savedAt);
-          if (ok) renderHistory();
+          // runTrainer should not throw (LLM failure is handled inside it), but
+          // if the engine itself errors, keep numbers deterministic — never fall
+          // back to the legacy LLM-estimated total.
+          try {
+            const calc = computeSessionCalories(s, rpe);
+            s.caloriesBurned  = calc.caloriesBurned;
+            s.epocToday       = calc.epocToday;
+            s.epocTomorrow    = calc.epocTomorrow;
+            s.stepsFromCardio = calc.stepsFromCardio;
+            s.burnBreakdown   = calc.breakdown;
+            s.burnQuestions   = calc.questions || [];
+            s.burnNotes       = null;
+            s.rpe             = rpe;
+            updateWorkoutHistory(s);
+            save();
+            renderHistory();
+          } catch {}
         }
       }, 800);
     }
@@ -1506,6 +1531,19 @@ export function renderWorkout() {
     }
   }
   if (stepsInput) stepsInput.value = stepsRec ? stepsRec.count : '';
+
+  // Persistent "last synced" hint under the steps row. Manual sync temporarily
+  // overrides this with live status; it returns to this on the next render.
+  const fitStatus = document.getElementById('fitSyncStatus');
+  if (fitStatus) {
+    if (state.fitLastSync) {
+      fitStatus.textContent = `🏃 Fit ${relativeTimeShort(state.fitLastSync)}`;
+      fitStatus.style.display = 'block';
+    } else {
+      fitStatus.textContent = '';
+      fitStatus.style.display = 'none';
+    }
+  }
 
   const banner = document.getElementById('workoutPlanBanner');
   const empty = document.getElementById('workoutEmptyState');

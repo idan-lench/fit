@@ -136,17 +136,23 @@ export function computeSessionCalories(session, rpe) {
 export async function runTrainer(session, inputs) {
   const { rpe } = inputs;
 
+  // The calorie numbers are ALWAYS the deterministic engine's. The LLM only
+  // adds feedback/consistency — so if the LLM call fails, we keep the engine
+  // numbers and return without feedback. We never let an LLM set a kcal value.
   const calories = computeSessionCalories(session, rpe);
 
-  const userMessage = buildUserMessage({ session, rpe, calories });
-
-  const reply = await geminiGenerate({
-    systemInstruction: PROMPTS.trainerSystem,
-    contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-    temperature: 0,
-  });
-
-  const llm = parseJSONResponse(reply);
+  let llm = null;
+  try {
+    const userMessage = buildUserMessage({ session, rpe, calories });
+    const reply = await geminiGenerate({
+      systemInstruction: PROMPTS.trainerSystem,
+      contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+      temperature: 0,
+    });
+    llm = parseJSONResponse(reply);
+  } catch {
+    llm = null; // LLM feedback unavailable — numbers stand on their own.
+  }
 
   return {
     ...calories,

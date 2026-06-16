@@ -314,6 +314,16 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// Periodic silent Fit sync every 30 min while the tab is open. Skips when the
+// tab is hidden (the visibilitychange handler above already syncs on return),
+// so we don't burn API calls in the background.
+const FIT_SYNC_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(async () => {
+  if (document.hidden) return;
+  const u = await autoSilentFitSync();
+  if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+}, FIT_SYNC_INTERVAL_MS);
+
 // ---------- window bridge for dynamic handlers ----------
 // Functions called from innerHTML onClick strings in render functions (workout/meals/body tabs)
 // or cross-module window.X?.() calls cannot use direct imports — they need to be on window.

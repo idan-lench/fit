@@ -244,6 +244,7 @@ export async function syncGoogleFit() {
       state.steps = state.steps || [];
       state.steps = state.steps.filter(s => s.date !== date);
       state.steps.push({ date, count: steps, source: 'gfit' });
+      state.fitLastSync = Date.now();
       save();
     }
 
