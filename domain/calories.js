@@ -127,13 +127,15 @@ const CARDIO_MET = {
 // Compendium of Physical Activities 2011 + Gemini cross-reference:
 // 15 km/h=13.3, 16 km/h=14.5, 18 km/h=16.0 | 9.7 km/h=10.0, 10.8=11.0, 12.1=11.8
 const RUN_PACE_BRACKETS = [
-  { maxPaceMinKm: 3.33, met: 18.0 },  // < 3:20/km  (>18 km/h) — max sprint (Compendium ~19 at 19 km/h)
+  { maxPaceMinKm: 3.33, met: 18.0 },  // < 3:20/km  (>18 km/h) — max sprint
   { maxPaceMinKm: 4.0,  met: 15.0 },  // 3:20–4:00/km (15–18 km/h) — sprint
   { maxPaceMinKm: 4.5,  met: 13.5 },  // 4:00–4:30/km (13–15 km/h) — fast/interval
-  { maxPaceMinKm: 5.5,  met: 11.5 },  // 4:30–5:30/km (11–13 km/h) — tempo
-  { maxPaceMinKm: 6.5,  met: 10.5 },  // 5:30–6:30/km (9–11 km/h) — moderate
+  { maxPaceMinKm: 5.0,  met: 12.0 },  // 4:30–5:00/km (12–13 km/h) — threshold
+  { maxPaceMinKm: 5.5,  met: 11.5 },  // 5:00–5:30/km (11–12 km/h) — tempo
+  { maxPaceMinKm: 6.0,  met: 10.5 },  // 5:30–6:00/km (10–11 km/h) — moderate
+  { maxPaceMinKm: 6.5,  met: 9.5  },  // 6:00–6:30/km (9–10 km/h) — moderate-easy
   { maxPaceMinKm: 8.0,  met: 8.5  },  // 6:30–8:00/km (7.5–9 km/h) — easy/long run
-  { maxPaceMinKm: Infinity, met: 7.0 }, // > 8:00/km — slow jog
+  { maxPaceMinKm: Infinity, met: 7.5 }, // > 8:00/km — slow jog
 ];
 
 function metForPace(paceMinKm) {
@@ -149,36 +151,58 @@ function runMet(durationMin, km) {
 }
 
 // ---------- SWIM ----------
-// Swim MET = constant stroke×effort matrix (absolute physiology, level-independent)
-// resolved by a level-dependent pace table. Pace is sec per 100m; the swimmer's
-// level decides whether that pace counts as easy / moderate / hard.
+// Swim MET depends on BOTH the swimmer's level and how hard the pace was for that
+// level. A given pace is "easy/moderate/hard" relative to the level (SWIM_PACE),
+// and the MET for that category also scales with level — a beginner's "moderate"
+// (a slow ~4:00/100m cruise) is genuinely lighter than an advanced swimmer's
+// "moderate" (a fast ~2:00/100m effort). This avoids over-crediting a slow swim
+// just because the swimmer self-identifies at a higher level.
+// Stroke offsets vs freestyle: backstroke −0.5, breaststroke +0.5; butterfly has
+// its own (much higher) scale since even a slow fly is metabolically expensive.
 const SWIM_MET = {
-  freestyle:    { easy: 7.5,  moderate: 9.0,  hard: 10.5 },
-  backstroke:   { easy: 7.0,  moderate: 8.5,  hard: 10.0 },
-  breaststroke: { easy: 8.0,  moderate: 9.5,  hard: 11.0 },
-  butterfly:    { easy: 11.0, moderate: 13.0, hard: 15.0 }, // even "easy" fly is hard
+  beginner: {
+    freestyle:    { easy: 5.5, moderate: 6.5, hard: 7.5  },
+    backstroke:   { easy: 5.0, moderate: 6.0, hard: 7.0  },
+    breaststroke: { easy: 6.0, moderate: 7.0, hard: 8.0  },
+    butterfly:    { easy: 8.0, moderate: 9.5, hard: 11.0 },
+  },
+  intermediate: {
+    freestyle:    { easy: 6.5, moderate: 7.0,  hard: 9.0  },
+    backstroke:   { easy: 6.0, moderate: 6.5,  hard: 8.5  },
+    breaststroke: { easy: 7.0, moderate: 7.5,  hard: 9.5  },
+    butterfly:    { easy: 9.5, moderate: 11.0, hard: 13.0 },
+  },
+  advanced: {
+    freestyle:    { easy: 8.0,  moderate: 10.0, hard: 12.5 },
+    backstroke:   { easy: 7.5,  moderate: 9.5,  hard: 12.0 },
+    breaststroke: { easy: 8.5,  moderate: 10.5, hard: 13.0 },
+    butterfly:    { easy: 11.0, moderate: 13.0, hard: 15.0 },
+  },
 };
 
 // Pace thresholds in sec/100m. pace > easyAbove → easy; pace < hardBelow → hard;
 // between → moderate. (Slower = bigger number = easier.)
+// Bands are anchored on each level's TYPICAL sustained pace (= the moderate centre):
+// beginner ~4:00/100m, intermediate ~3:00, advanced ~2:00. Stroke offsets vs
+// freestyle: backstroke +15s, breaststroke +20s, butterfly +30s (all slower).
 const SWIM_PACE = {
   beginner: {
-    freestyle:    { easyAbove: 165, hardBelow: 135 }, // >2:45 / <2:15
-    backstroke:   { easyAbove: 180, hardBelow: 150 }, // >3:00 / <2:30
-    breaststroke: { easyAbove: 180, hardBelow: 140 }, // >3:00 / <2:20
-    butterfly:    { easyAbove: 210, hardBelow: 165 }, // >3:30 / <2:45
+    freestyle:    { easyAbove: 280, hardBelow: 200 }, // >4:40 / <3:20
+    backstroke:   { easyAbove: 295, hardBelow: 215 }, // >4:55 / <3:35
+    breaststroke: { easyAbove: 300, hardBelow: 220 }, // >5:00 / <3:40
+    butterfly:    { easyAbove: 310, hardBelow: 230 }, // >5:10 / <3:50
   },
   intermediate: {
-    freestyle:    { easyAbove: 140, hardBelow: 105 }, // >2:20 / <1:45
-    backstroke:   { easyAbove: 150, hardBelow: 115 }, // >2:30 / <1:55
-    breaststroke: { easyAbove: 155, hardBelow: 115 }, // >2:35 / <1:55
-    butterfly:    { easyAbove: 165, hardBelow: 120 }, // >2:45 / <2:00
+    freestyle:    { easyAbove: 210, hardBelow: 150 }, // >3:30 / <2:30
+    backstroke:   { easyAbove: 225, hardBelow: 165 }, // >3:45 / <2:45
+    breaststroke: { easyAbove: 230, hardBelow: 170 }, // >3:50 / <2:50
+    butterfly:    { easyAbove: 240, hardBelow: 180 }, // >4:00 / <3:00
   },
   advanced: {
-    freestyle:    { easyAbove: 110, hardBelow: 85 },  // >1:50 / <1:25
-    backstroke:   { easyAbove: 120, hardBelow: 95 },  // >2:00 / <1:35
-    breaststroke: { easyAbove: 125, hardBelow: 95 },  // >2:05 / <1:35
-    butterfly:    { easyAbove: 130, hardBelow: 90 },  // >2:10 / <1:30
+    freestyle:    { easyAbove: 140, hardBelow: 100 }, // >2:20 / <1:40
+    backstroke:   { easyAbove: 155, hardBelow: 115 }, // >2:35 / <1:55
+    breaststroke: { easyAbove: 160, hardBelow: 120 }, // >2:40 / <2:00
+    butterfly:    { easyAbove: 170, hardBelow: 130 }, // >2:50 / <2:10
   },
 };
 
@@ -198,11 +222,12 @@ function parseDistanceMeters(str) {
   return n < 20 ? n * 1000 : n; // bare "1.5" → 1500m, "1500" → 1500m
 }
 
-// Resolve a swim's MET: pace (sec/100m) → category via the level table → matrix.
-// Missing pace (no distance or duration) falls back to Moderate.
+// Resolve a swim's MET: pace (sec/100m) → category via the level table → the
+// level×stroke MET matrix. Missing pace (no distance or duration) → Moderate.
 function swimMet(stroke, paceSecPer100, level) {
-  const matrix = SWIM_MET[stroke] || SWIM_MET.freestyle;
-  const t = (SWIM_PACE[level] || SWIM_PACE.intermediate)[stroke];
+  const lvl = SWIM_MET[level] ? level : 'intermediate';
+  const matrix = SWIM_MET[lvl][stroke] || SWIM_MET[lvl].freestyle;
+  const t = (SWIM_PACE[lvl] || SWIM_PACE.intermediate)[stroke];
   let category = 'moderate';
   if (t && paceSecPer100 > 0) {
     if (paceSecPer100 > t.easyAbove) category = 'easy';
@@ -306,6 +331,130 @@ function parseDurationMin(str) {
   return m ? parseFloat(m[1]) : 0;
 }
 
+// Compound exercises move large muscle groups + carry bodyweight through space
+// → higher load factor (0.45). Isolation exercises have lower systemic demand → 0.25.
+const COMPOUND_EXERCISES = new Set([
+  'pull-ups','wide pull-ups','chin-ups','hammer pull-ups','wide hammer pull-ups',
+  'dips','parallel bars','push-ups','ring push-ups','decline push-ups','diamond push-ups',
+  'archer push-ups','pike push-ups','inverted rows','trx low row','ring row',
+  'bench press','incline bench press','overhead press','barbell rows',
+  'squats','lunges (each leg)','bulgarian split squats','step-ups','leg press','deadlift',
+]);
+
+// For these exercises the added weight is literally lifted with the body →
+// use (BW + addedKg) / BW instead of the general resistance formula.
+const BODYWEIGHT_EXERCISES = new Set([
+  'pull-ups','wide pull-ups','chin-ups','hammer pull-ups','wide hammer pull-ups',
+  'dips','parallel bars',
+]);
+
+// Weight-based mult: 1 + (actualKg / BW)^0.7 × factor
+// Hydraulic: fixed band tiers (not weight-based).
+// lastNote: resolved note from a previous session (used when current note is ambiguous).
+export function resistanceMultiplier(name, note, { weightKg = 58, lastNote = null } = {}) {
+  const n = note ? String(note).toLowerCase() : '';
+  const key = String(name).toLowerCase();
+
+  // ── Hydraulic ──────────────────────────────────────────────────────────────
+  const hydraulicMention = /hydraulic|piston/.test(n);
+  const lvl = n.match(/(\d+)\s*\/\s*16/);
+  let level = lvl ? parseInt(lvl[1], 10) : null;
+  if (!level && /\bmax\b/.test(n) && hydraulicMention) level = 16;
+  if (!level && hydraulicMention) { const m2 = n.match(/(\d+)/); if (m2) level = parseInt(m2[1], 10); }
+  if (level != null && level >= 1 && level <= 16) {
+    const pct = level / 16;
+    const mult = pct > 0.70 ? 1.30 : pct > 0.35 ? 1.15 : 1.05;
+    return { mult, label: `hydraulic ${level}/16` };
+  }
+  if (hydraulicMention) {
+    return { mult: 1, label: '', needsValue: true,
+      ask: `What hydraulic level did you use for ${name}? (1–16, or "Max")` };
+  }
+
+  const _kg  = s => { const m = s.match(/(\d+(?:\.\d+)?)\s*k(?:ilo|gs?)?\b/); return m ? parseFloat(m[1]) : null; };
+  const _num = s => { const m = s.match(/(\d+(?:\.\d+)?)/); return m ? parseFloat(m[1]) : null; };
+
+  // ── Pull-ups / dips: added weight goes on the body → use BW + addedKg ──────
+  if (BODYWEIGHT_EXERCISES.has(key)) {
+    const addedKg = _kg(n) ?? (/^\s*\d/.test(n) ? _num(n) : null);
+    if (addedKg) return { mult: 1, addedWeightKg: addedKg, label: `+${addedKg}kg (total ${Math.round((weightKg + addedKg) * 10) / 10}kg)` };
+    const mentionsExtra = n && /weight|vest|\bbelt\b|added|plate|kg|kilo/.test(n);
+    if (mentionsExtra) return { mult: 1, label: '', needsValue: true,
+      ask: `How much weight are you adding for ${name}? (e.g. "10kg" — weight belt, vest, or plate)` };
+    // Any other note on a bodyweight exercise is irrelevant to resistance — never fall through.
+    return { mult: 1, label: '' };
+  }
+
+  // ── Weight-based ───────────────────────────────────────────────────────────
+  const isLeverNote  = s => /outdoor\s*gym|park\s*machine|\bkettlebell\b|urbanix/.test(s);
+  const isActualNote = s => /actual|real\s*load|real\s*weight/.test(s);
+  const isRegularNote= s => /dumbbell|\bdb\b|barbell|\bbar\b|regular|standard|plate/.test(s);
+  const extractKg = _kg;
+  const extractNum = _num;
+  const mentionsWeight = n => /weight|weighted|outdoor\s*gym|lever|\bkettlebell\b|\bkb\b|dumbbell|\bdb\b|barbell|actual|loaded|added|\bkgs?\b/.test(n)
+                           || /^\s*\d+(?:\.\d+)?\s*$/.test(n);
+
+  if (!mentionsWeight(n) && !extractKg(n) && !extractNum(n.replace(/[^\d.]/g,''))) {
+    return { mult: 1, label: '' };
+  }
+
+  const factor = COMPOUND_EXERCISES.has(key) ? 0.45 : 0.25;
+  const applyMult = (actualKg) => {
+    const ratio = Math.pow(actualKg / weightKg, 0.7);
+    return Math.round((1 + ratio * factor) * 100) / 100;
+  };
+
+  // "actual 14kg" or "real load 14kg" → use directly
+  if (isActualNote(n)) {
+    const kg = extractKg(n) || extractNum(n);
+    if (kg) return { mult: applyMult(kg), label: `actual ${kg}kg` };
+  }
+
+  // "dumbbell 7kg" / "barbell 60kg" / "regular 7kg" → marked = actual
+  if (isRegularNote(n)) {
+    const kg = extractKg(n) || extractNum(n);
+    if (kg) return { mult: applyMult(kg), label: `${kg}kg dumbbell` };
+  }
+
+  // "outdoor gym 7kg" / "park machine 7kg" / "kettlebell 7kg" → equipment known, actual load unknown
+  if (isLeverNote(n)) {
+    const kg = extractKg(n) || extractNum(n);
+    if (kg && lastNote) {
+      // If we've resolved the actual load before, reuse it
+      const ln = String(lastNote).toLowerCase();
+      if (isActualNote(ln)) {
+        const actualKg = extractKg(ln) || extractNum(ln);
+        if (actualKg) return { mult: applyMult(actualKg), label: `actual ${actualKg}kg`, asLastTime: true };
+      }
+    }
+    // Always ask — we can't assume the machine ratio without seeing it
+    return { mult: 1, label: '', needsValue: true,
+      ask: `What's the actual load for ${name}? A photo of the machine makes it easy.` };
+  }
+
+  // Bare kg / "with weight" — ambiguous. Try last session's note first.
+  const kg = extractKg(n) || (/^\s*\d/.test(n) ? extractNum(n) : null);
+  if (kg && lastNote) {
+    const ln = String(lastNote).toLowerCase();
+    if (isActualNote(ln)) {
+      const actualKg = extractKg(ln) || extractNum(ln);
+      if (actualKg) return { mult: applyMult(actualKg), label: `actual ${actualKg}kg`, asLastTime: true };
+    }
+    if (isRegularNote(ln)) {
+      const lastKg = extractKg(ln) || extractNum(ln);
+      if (lastKg) return { mult: applyMult(lastKg), label: `${lastKg}kg dumbbell`, asLastTime: true };
+    }
+  }
+  if (kg) {
+    return { mult: 1, label: '', needsValue: true,
+      ask: `${name}: was the ${kg}kg the actual load, or the marked weight on the outdoor gym / park machine?` };
+  }
+
+  // "with weight" / generic mention, no kg
+  return { mult: 1, label: '', needsValue: true,
+    ask: `${name}: how much weight? And was it the actual load (dumbbell/barbell) or an outdoor gym / park machine?` };
+}
+
 // ---------- MAIN ----------
 
 /**
@@ -315,7 +464,7 @@ function parseDurationMin(str) {
  * @param {object} opts     - { rpe, weightKg }
  * @returns {{ caloriesBurned, epocToday, epocTomorrow, stepsFromCardio, breakdown }}
  */
-export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swimLevel = 'intermediate' } = {}) {
+export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swimLevel = 'intermediate', exerciseHistory = {} } = {}) {
   const WEIGHT_KG = weightKg;
 
   // --- Strength ---
@@ -340,10 +489,15 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
       if (r > 0) { reps += r; sets++; }
     }
     const activeSec = reps * secsPerRep * legFactor;
-    const activeCal = met * 3.5 * WEIGHT_KG / 200 * (activeSec / 60);
+    // Resistance scales ACTIVE MET. lastNote from prior session resolves ambiguous bare-kg notes.
+    const lastNote = exerciseHistory[entry.name] || exerciseHistory[key] || null;
+    const { mult: resistMult, addedWeightKg, label: resistLabel, needsValue, ask: resistAsk, asLastTime } = resistanceMultiplier(entry.name, entry.note, { weightKg, lastNote });
+    const effectiveWeight = addedWeightKg ? WEIGHT_KG + addedWeightKg : WEIGHT_KG;
+    const activeMet = met * resistMult; // for bodyweight exercises resistMult=1; weight change is in effectiveWeight
+    const activeCal = activeMet * 3.5 * effectiveWeight / 200 * (activeSec / 60);
     const restCal   = STRENGTH_REST_MET * 3.5 * WEIGHT_KG / 200 * sets; // 1 min/set, flat 2.3 MET
     strengthBase += activeCal + restCal;
-    exCalcs.push({ name: entry.name, met, activeSec, sets, legFactor, activeCal, restCal });
+    exCalcs.push({ name: entry.name, met, activeMet, resistMult, addedWeightKg, resistLabel, needsValue, resistAsk, asLastTime, activeSec, sets, legFactor, activeCal, restCal });
   }
 
   // --- Cardio ---
@@ -406,17 +560,26 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
 
   // --- Breakdown (pro-rata share of adjusted total) ---
   const breakdown = [];
+  const questions = []; // routed to session.burnQuestions (the ❓ clarify mechanism)
   let breakdownSum = 0;
 
-  for (const { name, met, activeSec, sets, legFactor, activeCal, restCal } of exCalcs) {
+  for (const { name, met, activeMet, resistMult, addedWeightKg, resistLabel, needsValue, resistAsk, asLastTime, activeSec, sets, legFactor, activeCal, restCal } of exCalcs) {
     const finalCal = Math.round(activeCal + restCal);
     const legNote = legFactor === 2 ? ' (per-leg ×2)' : '';
     const restMet = STRENGTH_REST_MET.toFixed(1);
+    const lastTimeNote = asLastTime ? ', same as last time — update note if changed' : '';
+    const metNote = addedWeightKg
+      ? `MET ${met} at ${Math.round((WEIGHT_KG + addedWeightKg) * 10) / 10}kg (${resistLabel}${lastTimeNote})`
+      : resistMult > 1
+        ? `MET ${met}×${resistMult.toFixed(2)}=${activeMet.toFixed(1)} (${resistLabel}${lastTimeNote})`
+        : `MET ${met}`;
+    const flag = needsValue ? ' ⚠ resistance not fully specified — add it for accuracy' : '';
+    if (needsValue) questions.push(resistAsk || `What resistance did you use for ${name}? (hydraulic level 1–16/Max, or weight in kg) — I'll refine the calories.`);
     breakdownSum += finalCal;
     breakdown.push({
       activity: name,
       calories: finalCal,
-      reasoning: `MET ${met} × ${Math.round(activeSec / 60 * 10) / 10}min active${legNote} + ${sets} × 1min rest at MET ${restMet} = ${finalCal} kcal`,
+      reasoning: `${metNote} × ${Math.round(activeSec / 60 * 10) / 10}min active${legNote} + ${sets} × 1min rest at MET ${restMet} = ${finalCal} kcal${flag}`,
     });
   }
   for (const c of cardioCalcs) {
@@ -477,5 +640,6 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
     epocTomorrow,
     stepsFromCardio: Math.round(stepsFromCardio),
     breakdown,
+    questions,
   };
 }

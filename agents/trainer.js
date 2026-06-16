@@ -105,6 +105,29 @@ function buildUserMessage({ session, rpe, calories }) {
 // ---------- MAIN ENTRY ----------
 
 /**
+ * Deterministic calorie recompute for a session using the current profile/weight.
+ * No LLM — pure formula engine. Shared by runTrainer and the session-refine flow
+ * so both resolve weight/swim level identically.
+ * @param {object} session - the session object
+ * @param {number} rpe     - effort 2–10
+ * @returns {object} calculateSessionCalories result ({ caloriesBurned, breakdown, ... })
+ */
+export function computeSessionCalories(session, rpe) {
+  const weightKg = latestWeightKg(state.weights) ?? state.profile?.weightKg ?? 58;
+  const swimLevel = state.profile?.swimLevel || 'intermediate';
+  // Build a map of exercise name → last resolved note from previous sessions,
+  // so the engine can infer weight type (lever vs dumbbell) without asking again.
+  const exerciseHistory = {};
+  for (const s of (state.sessions || [])) {
+    if (s.savedAt === session.savedAt) continue;
+    for (const e of (s.entries || [])) {
+      if (e.name && e.note) exerciseHistory[e.name] = e.note;
+    }
+  }
+  return calculateSessionCalories(session, { rpe, weightKg, swimLevel, exerciseHistory });
+}
+
+/**
  * Run the trainer agent on a completed session.
  * @param {object} session - the session object from state.sessions
  * @param {object} inputs  - { rpe: number }
@@ -113,9 +136,7 @@ function buildUserMessage({ session, rpe, calories }) {
 export async function runTrainer(session, inputs) {
   const { rpe } = inputs;
 
-  const weightKg = latestWeightKg(state.weights) ?? state.profile?.weightKg ?? 58;
-  const swimLevel = state.profile?.swimLevel || 'intermediate';
-  const calories = calculateSessionCalories(session, { rpe, weightKg, swimLevel });
+  const calories = computeSessionCalories(session, rpe);
 
   const userMessage = buildUserMessage({ session, rpe, calories });
 
