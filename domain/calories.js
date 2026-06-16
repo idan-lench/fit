@@ -280,15 +280,42 @@ function calcIntervalSegments(segments, WEIGHT_KG) {
   return { total, totalMin: totalSec / 60, totalKm, avgWorkMet, phases };
 }
 
+// Steps per km — used to subtract a cardio bout's own steps from the daily step
+// total so they aren't double-counted (the bout's calories are scored via MET).
+// For RUNS this is only a fallback when duration is unknown; normally runs use
+// cadence × time (see runStepCount). Running takes far fewer steps/km than
+// walking (longer stride), so the run fallback is ~950, NOT a walking 1300.
 const CARDIO_STEPS_PER_KM = {
-  run: 1300,
-  'long-run': 1300,
-  interval: 1300,
+  run: 950,
+  'long-run': 950,
+  interval: 950,
   walk: 1400,
-  treadmill_run: 1300,
+  treadmill_run: 950,
   treadmill_walk: 1400,
   hike: 1400,
 };
+
+const RUN_TYPES = new Set(['run', 'long-run', 'interval', 'treadmill_run']);
+
+// Running cadence (steps/min), gently nudged by pace: faster pace → slightly
+// quicker turnover. ~160 spm easy (6:30/km) → ~178 spm fast (4:30/km), clamped
+// to a realistic 150–185 band. No pace → typical 170. Cadence is the *stable*
+// part of running; stride length (captured by pace/duration) does the rest.
+function runCadenceSpm(paceMinKm) {
+  if (!(paceMinKm > 0)) return 170;
+  return Math.max(150, Math.min(185, 160 + (6.5 - paceMinKm) * 9));
+}
+
+// Steps taken during one cardio bout. Runs: cadence × duration (pace-aware,
+// avoids the walking-cadence overcount) when duration is known, else the
+// distance × per-km fallback. Walks/hikes: stride-based per-km.
+function cardioStepCount(type, km, durationMin) {
+  if (RUN_TYPES.has(type) && durationMin > 0) {
+    const pace = km > 0 ? durationMin / km : 0;
+    return runCadenceSpm(pace) * durationMin;
+  }
+  return km * (CARDIO_STEPS_PER_KM[type] ?? 0);
+}
 
 // ---------- MODIFIER HELPERS ----------
 
@@ -512,7 +539,7 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
     if (a.type === 'interval' && Array.isArray(a.segments) && a.segments.length) {
       const r = calcIntervalSegments(a.segments, WEIGHT_KG);
       cardioBase += r.total;
-      stepsFromCardio += r.totalKm * (CARDIO_STEPS_PER_KM[a.type] ?? 1300);
+      stepsFromCardio += cardioStepCount(a.type, r.totalKm, r.totalMin);
       cardioCalcs.push({ type: a.type, segmented: true, rawCal: r.total, ...r });
       continue;
     }
@@ -535,7 +562,7 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
     const met = isRun ? runMet(durationMin, km) : (CARDIO_MET[a.type] ?? 6.0);
     const rawCal = met * 3.5 * WEIGHT_KG / 200 * durationMin;
     cardioBase += rawCal;
-    stepsFromCardio += km * (CARDIO_STEPS_PER_KM[a.type] ?? 0);
+    stepsFromCardio += cardioStepCount(a.type, km, durationMin);
     cardioCalcs.push({ type: a.type, met, durationMin, km, rawCal });
   }
 
