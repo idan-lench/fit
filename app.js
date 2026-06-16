@@ -47,7 +47,7 @@ import {
   shiftWorkoutDate, loadWorkoutPlan, startWorkout, addCardioPlan,
   closeTimerAttach, attachTimerTo, detachTimerFrom, attachTimerToAll,
   pauseTimer, resumeTimer, stopTimer, discardTimer, attachTimer,
-  clearExerciseDuration, clearCardioDuration, useTimerForDuration, clearIntervalSegments, onDurationInput, setSwimLevel,
+  clearExerciseDuration, clearCardioDuration, useTimerForDuration, clearIntervalSegments, onDurationInput, setSwimLevel, openSwimLevelModal,
   openSet, editSet, closeSet, bumpReps, confirmSet, deleteCurrentSet, removeSet, removeExercise, updateExerciseNote, openExercisePhotoAnalyze,
   removeCardio, openCardioPicker, closeCardioPicker, addCardioActivity, removeCardioActivity, updateCardioField,
   renderExerciseList, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, addCustomExercise, closeExercisePicker, pickExercise, addCustomExerciseText,
@@ -314,6 +314,16 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+// Periodic silent Fit sync every 30 min while the tab is open. Skips when the
+// tab is hidden (the visibilitychange handler above already syncs on return),
+// so we don't burn API calls in the background.
+const FIT_SYNC_INTERVAL_MS = 30 * 60 * 1000;
+setInterval(async () => {
+  if (document.hidden) return;
+  const u = await autoSilentFitSync();
+  if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+}, FIT_SYNC_INTERVAL_MS);
+
 // ---------- window bridge for dynamic handlers ----------
 // Functions called from innerHTML onClick strings in render functions (workout/meals/body tabs)
 // or cross-module window.X?.() calls cannot use direct imports — they need to be on window.
@@ -322,7 +332,7 @@ Object.assign(window, {
   // Dynamic innerHTML handlers (workout-tab.js render functions)
   addCardioActivity, addCardioPlan, addPlanExercise, dismissPlanExercise, clearAllPlanExercises, openCardioPhotoAnalyze, openCardioImageAttach, removeCardioImage, applySessionRefine,
   attachTimerTo, detachTimerFrom, attachTimerToAll, attachTimer, pauseTimer, resumeTimer, stopTimer, discardTimer,
-  clearExerciseDuration, clearCardioDuration, useTimerForDuration, clearIntervalSegments, onDurationInput, setSwimLevel, autoResizeTA,
+  clearExerciseDuration, clearCardioDuration, useTimerForDuration, clearIntervalSegments, onDurationInput, setSwimLevel, openSwimLevelModal, autoResizeTA,
   deleteSession, reanalyzeSession, discardSessionRefine,
   editSession, editStepsEntry, editWaist,
   openSet, editSet, deleteCurrentSet, openSessionRefine, openTemplateEdit,

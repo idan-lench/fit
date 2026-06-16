@@ -6,8 +6,8 @@ import { PLAN, WEEKLY_PLAN, getPlanKeyForDate } from '../domain/plan.js';
 import { EXERCISE_LIBRARY, lastSetsFor } from '../domain/exercises.js';
 import { CARDIO_TYPES, formatCardioActivitiesForAI } from '../domain/cardio.js';
 import { renderMuscleHeatmapSvg } from '../domain/muscle-map.js';
-import { isCurrentFresh, autoAnalyzeSession, updateWorkoutHistory, buildWorkoutHistoryContext } from '../domain/workouts.js';
-import { runTrainer } from '../agents/trainer.js';
+import { isCurrentFresh, updateWorkoutHistory, buildWorkoutHistoryContext } from '../domain/workouts.js';
+import { runTrainer, computeSessionCalories } from '../agents/trainer.js';
 import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { downscale } from './shared/image.js';
 import { openHeatmap } from './shared/heatmap.js';
@@ -84,6 +84,17 @@ export function shiftWorkoutDate(delta) {
   const shifted = [dt.getFullYear(), String(dt.getMonth()+1).padStart(2,'0'), String(dt.getDate()).padStart(2,'0')].join('-');
   workoutViewDate = shifted === todayISO() ? null : shifted;
   renderWorkout();
+}
+
+// "just now" / "5m ago" / "2h ago" / "3d ago" from a ms timestamp.
+function relativeTimeShort(ts) {
+  if (!ts) return '';
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1)  return 'synced just now';
+  if (mins < 60) return `synced ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `synced ${hrs}h ago`;
+  return `synced ${Math.floor(hrs / 24)}d ago`;
 }
 
 function formatWorkoutDateLabel(dateISO) {
@@ -306,14 +317,52 @@ export function saveDurations() {
   finishSession();
 }
 
-// Captured once on the first swim; drives swim MET via the pace tables. The
-// burn breakdown shows the level each time so the user can change it via chat.
+// When true, the swim-level modal was opened to CHANGE an existing setting
+// (from a logged swim session) rather than as part of the first-swim save flow.
+let _swimLevelEditMode = false;
+
+// Re-open the swim-level picker to change it after the first time. Routes the
+// choice through the "edit" path: recompute past swims, no session save.
+export function openSwimLevelModal() {
+  _swimLevelEditMode = true;
+  document.getElementById('swimLevelModal')?.classList.add('show');
+}
+
+// Deterministically recompute every logged swim session with the current profile
+// level — pure engine, no LLM — so changing level updates past swims instantly.
+function recomputeSwimSessions() {
+  let n = 0;
+  for (const s of (state.sessions || [])) {
+    const hasSwim = (s.cardioActivities || []).some(a => a.type === 'swim' || a.type?.startsWith('swim_'));
+    if (!hasSwim) continue;
+    const calc = computeSessionCalories(s, s.rpe ?? 5);
+    s.caloriesBurned  = calc.caloriesBurned;
+    s.burnBreakdown   = calc.breakdown;
+    s.epocToday       = calc.epocToday;
+    s.epocTomorrow    = calc.epocTomorrow;
+    s.stepsFromCardio = calc.stepsFromCardio;
+    updateWorkoutHistory(s);
+    n++;
+  }
+  return n;
+}
+
+// Captured once on the first swim; drives swim MET via the level×stroke×pace
+// tables. Editable later via the 🏊 Level button on any logged swim session.
 export function setSwimLevel(level) {
   if (!state.profile) return;
   state.profile.swimLevel = level;
-  save();
   window.refreshProfile?.();
   document.getElementById('swimLevelModal')?.classList.remove('show');
+  if (_swimLevelEditMode) {
+    _swimLevelEditMode = false;
+    const n = recomputeSwimSessions();
+    save();
+    renderHistory();
+    toast(`Swim level set to ${level} ✓${n ? ` · ${n} swim${n > 1 ? 's' : ''} recalculated` : ''}`);
+    return;
+  }
+  save();
   finishSession();
 }
 
@@ -995,6 +1044,7 @@ export async function finishSession() {
             s.trainerFeedback    = result.feedback;
             s.exerciseSuggestion = result.exerciseSuggestion || '';
             s.burnBreakdown      = result.breakdown;
+            s.burnQuestions      = result.questions || [];
             s.burnNotes          = null;
             s.rpe                = rpe;
             if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
@@ -1003,9 +1053,23 @@ export async function finishSession() {
             renderHistory();
           }
         } catch {
-          // fall back to legacy analysis
-          const ok = await autoAnalyzeSession(savedAt);
-          if (ok) renderHistory();
+          // runTrainer should not throw (LLM failure is handled inside it), but
+          // if the engine itself errors, keep numbers deterministic — never fall
+          // back to the legacy LLM-estimated total.
+          try {
+            const calc = computeSessionCalories(s, rpe);
+            s.caloriesBurned  = calc.caloriesBurned;
+            s.epocToday       = calc.epocToday;
+            s.epocTomorrow    = calc.epocTomorrow;
+            s.stepsFromCardio = calc.stepsFromCardio;
+            s.burnBreakdown   = calc.breakdown;
+            s.burnQuestions   = calc.questions || [];
+            s.burnNotes       = null;
+            s.rpe             = rpe;
+            updateWorkoutHistory(s);
+            save();
+            renderHistory();
+          } catch {}
         }
       }, 800);
     }
@@ -1062,7 +1126,7 @@ export function renderHistory() {
     const timeHtml = s.time
       ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ${s.time}</span>`
       : `<button class="ghost" style="margin-left: 4px; padding: 2px 8px; font-size: 12px; color: var(--accent);" onclick="setSessionTime(${s.savedAt})">+ Add time</button>`;
-    const durationHtml = s.durationMin ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ${s.durationMin} min</span>` : '';
+    const durationHtml = s.durationMin ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ${Math.round(s.durationMin * 100) / 100} min</span>` : '';
     const burnHtml = typeof s.caloriesBurned === 'number' ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ~${s.caloriesBurned} kcal</span>` : '';
     return `
       <div data-saved-at="${s.savedAt}" style="padding: 12px 0; border-top: 1px solid var(--line);">
@@ -1070,7 +1134,7 @@ export function renderHistory() {
         ${cardio ? `<div class="small" style="margin-top: 4px; color: var(--muted);">${cardio}</div>` : ''}
         ${cardioActivitiesHtml}
         ${s.entries.filter(e => e.sets.length).map(e => `
-          <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.durationMin ? ` <span class="muted">· ${e.durationMin} min</span>` : ''}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
+          <div class="small" style="margin-top: 4px;"><b>${escapeHtml(e.name)}</b>: ${e.sets.map(x=>x.reps).join(' · ')}${e.durationMin ? ` <span class="muted">· ${Math.round(e.durationMin * 100) / 100} min</span>` : ''}${e.note ? ` <span class="muted" style="font-style: italic;">— ${escapeHtml(e.note)}</span>` : ''}</div>
         `).join('')}
         ${s.entries.some(e => e.sets.length) ? `<details style="margin-top: 10px;"><summary class="muted small" style="cursor: pointer;">▸ Muscle heatmap</summary>${renderMuscleHeatmapSvg(s)}</details>` : ''}
         ${s.burnBreakdown && s.burnBreakdown.length ? `<div style="margin-top: 8px; padding: 10px 12px; background: var(--bg); border-radius: 10px;">
@@ -1092,6 +1156,7 @@ export function renderHistory() {
           <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="editSession(${s.savedAt})">Edit</button>
           <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="openSessionRefine(${s.savedAt})">💬 Chat</button>
           <button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="reanalyzeSession(${s.savedAt})">↺ Re-analyze</button>
+          ${(s.cardioActivities || []).some(a => a.type === 'swim' || a.type?.startsWith('swim_')) ? `<button class="ghost" style="padding: 4px 10px; font-size: 13px;" onclick="openSwimLevelModal()">🏊 Level${state.profile?.swimLevel ? ` (${state.profile.swimLevel})` : ''}</button>` : ''}
           <button class="ghost danger" style="padding: 4px 10px; font-size: 13px;" onclick="deleteSession(${s.savedAt})">Delete</button>
         </div>
       </div>
@@ -1165,6 +1230,7 @@ export async function reanalyzeSession(savedAt) {
       s.trainerFeedback    = result.feedback;
       s.exerciseSuggestion = result.exerciseSuggestion || '';
       s.burnBreakdown      = result.breakdown;
+      s.burnQuestions      = result.questions || [];
       s.burnNotes          = null;
       if (result.adjustPlan && result.planNote) s.planNote = result.planNote;
       updateWorkoutHistory(s);
@@ -1228,7 +1294,7 @@ export function closeSessionRefine() {
 
 function buildSessionSystemInstruction(session) {
   const exLines = (session.entries || []).filter(e => e.sets?.length).map(e =>
-    `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + e.durationMin + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`
+    `  - ${e.name}: ${e.sets.map(x => x.reps).join(',')}${e.durationMin ? ' (' + (Math.round(e.durationMin * 100) / 100) + ' min)' : ''}${e.note ? ' — note: ' + e.note : ''}`
   ).join('\n') || '  (none)';
   return PROMPTS.sessionChatSystem
     .replace('{date}', session.date)
@@ -1284,6 +1350,38 @@ export async function refineSessionEstimate() {
   }
 }
 
+// Build the engine-recognized note string from an extracted update.
+// Prefer STRUCTURED fields (kind/kg/level) so we never depend on the LLM
+// reproducing an exact magic string. Falls back to a literal note if given.
+function canonicalNote(u) {
+  const kg = Number(u.kg);
+  const level = Number(u.level);
+  if (u.kind === 'hydraulic' && level >= 1 && level <= 16) return `hydraulic ${level}/16`;
+  if (u.kind === 'dumbbell' && kg > 0) return `dumbbell ${kg}kg`;
+  // Any known real load (actual / kettlebell / outdoor / unspecified-but-numeric) → actual.
+  if (kg > 0) return `actual ${kg}kg`;
+  if (u.note) return String(u.note);
+  return null;
+}
+
+// An update is usable if it names an exercise AND carries a resolvable resistance.
+function hasResistance(u) {
+  return !!(u && u.exercise && (Number(u.kg) > 0 || (Number(u.level) >= 1 && Number(u.level) <= 16) || u.note));
+}
+
+// Find the session entry that matches an LLM-extracted exercise name and overwrite its note.
+function applyNoteUpdate(entries, u) {
+  if (!entries || !hasResistance(u)) return false;
+  const note = canonicalNote(u);
+  if (!note) return false;
+  const want = String(u.exercise).toLowerCase();
+  const entry = entries.find(e => e.name?.toLowerCase() === want)
+    || entries.find(e => e.name && (e.name.toLowerCase().includes(want) || want.includes(e.name.toLowerCase())));
+  if (!entry) return false;
+  entry.note = note;
+  return true;
+}
+
 export async function requestSessionEstimateUpdate() {
   if (_refiningSessionAt == null) return;
   if (!getGeminiKey()) return toast('Set up Gemini API key first');
@@ -1292,17 +1390,28 @@ export async function requestSessionEstimateUpdate() {
   if (!session) return;
   toast('Updating estimate…', { persistent: true });
   try {
+    // The LLM only EXTRACTS the resistance/weight the user clarified — it does not estimate calories.
     const systemInstruction = buildSessionSystemInstruction(session);
-    const updatePrompt = PROMPTS.sessionEstimateUpdate;
     const contents = [
       ..._sessionChatHistory.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text || '' }] })),
-      { role: 'user', parts: [{ text: updatePrompt }] }
+      { role: 'user', parts: [{ text: PROMPTS.sessionEstimateUpdate }] }
     ];
-    const result = await geminiGenerate({ systemInstruction, contents });
-    const text = result.replace(/^```(json)?/i, '').replace(/```$/i, '').trim();
-    try {
-      _pendingSessionRefine = JSON.parse(text);
-    } catch { _pendingSessionRefine = null; }
+    const raw = await geminiGenerate({ systemInstruction, contents });
+    const extracted = parseJSONResponse(raw) || {};
+    const noteUpdates = (extracted.noteUpdates || []).filter(hasResistance);
+
+    // Apply the extracted notes to a draft copy, then recompute with the DETERMINISTIC engine.
+    const draft = JSON.parse(JSON.stringify(session));
+    const applied = noteUpdates.filter(u => applyNoteUpdate(draft.entries, u));
+    const calc = computeSessionCalories(draft, draft.rpe ?? 5);
+
+    _pendingSessionRefine = {
+      total: calc.caloriesBurned,
+      breakdown: calc.breakdown || [],
+      notes: extracted.changeNote || '',
+      changeNote: extracted.changeNote || (applied.length ? '' : 'No resistance details to apply.'),
+      noteUpdates: applied,
+    };
     hideToast();
     renderSessionRefineChat();
   } catch (e) {
@@ -1315,6 +1424,8 @@ export async function applySessionRefine() {
   if (!_pendingSessionRefine || _refiningSessionAt == null) return;
   const idx = state.sessions.findIndex(s => s.savedAt === _refiningSessionAt);
   if (idx < 0) return;
+  // Persist the extracted notes so the engine result stays reproducible on future Re-analyze.
+  for (const u of (_pendingSessionRefine.noteUpdates || [])) applyNoteUpdate(state.sessions[idx].entries, u);
   state.sessions[idx].caloriesBurned = _pendingSessionRefine.total;
   state.sessions[idx].burnBreakdown = _pendingSessionRefine.breakdown || [];
   state.sessions[idx].burnNotes = _pendingSessionRefine.notes || state.sessions[idx].burnNotes;
@@ -1420,6 +1531,19 @@ export function renderWorkout() {
     }
   }
   if (stepsInput) stepsInput.value = stepsRec ? stepsRec.count : '';
+
+  // Persistent "last synced" hint under the steps row. Manual sync temporarily
+  // overrides this with live status; it returns to this on the next render.
+  const fitStatus = document.getElementById('fitSyncStatus');
+  if (fitStatus) {
+    if (state.fitLastSync) {
+      fitStatus.textContent = `🏃 Fit ${relativeTimeShort(state.fitLastSync)}`;
+      fitStatus.style.display = 'block';
+    } else {
+      fitStatus.textContent = '';
+      fitStatus.style.display = 'none';
+    }
+  }
 
   const banner = document.getElementById('workoutPlanBanner');
   const empty = document.getElementById('workoutEmptyState');

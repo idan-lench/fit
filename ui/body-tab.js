@@ -207,8 +207,21 @@ export function editStepsEntry(date) {
   document.getElementById('stepsInput').focus();
 }
 
+// "synced 5m ago" / "synced 2h ago" / "synced just now" from a ms timestamp.
+function fitSyncLabel(ts) {
+  if (!ts) return '';
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1)   return '· synced just now';
+  if (mins < 60)  return `· synced ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)   return `· synced ${hrs}h ago`;
+  return `· synced ${Math.floor(hrs / 24)}d ago`;
+}
+
 export function renderSteps() {
   const stepsGoal = state.profile?.goals?.steps || 10000;
+  const syncEl = document.getElementById('fitLastSync');
+  if (syncEl) syncEl.textContent = fitSyncLabel(state.fitLastSync);
   state.steps = state.steps || [];
   const ss = state.steps.slice().sort((a,b) => a.date.localeCompare(b.date));
   const today = todayISO();

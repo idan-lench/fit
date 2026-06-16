@@ -130,6 +130,7 @@ export async function silentSyncGoogleFit(date) {
       state.steps = state.steps || [];
       state.steps = state.steps.filter(s => s.date !== targetDate);
       state.steps.push({ date: targetDate, count: steps, source: 'gfit' });
+      state.fitLastSync = Date.now();
       save();
     }
     return steps > 0;

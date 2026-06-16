@@ -7,7 +7,7 @@ export const DEFAULT_PROFILE = {
   heightCm: 168,
   ageYears: 44,
   sex: 'male',
-  swimLevel: null, // 'beginner' | 'intermediate' | 'advanced' — captured on first swim, editable via chat
+  swimLevel: null, // 'beginner' | 'intermediate' | 'advanced' — by sustained-swim ability (continuity), captured on first swim, editable via chat. Drives swim MET via the level×stroke×pace tables in domain/calories.js.
   goals: {
     steps: 10000,
     waistCm: 75,
