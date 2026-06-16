@@ -56,8 +56,8 @@ test('meal modal opens and closes', async ({ page }) => {
   await expect(page.locator('#mealModal')).not.toHaveClass(/show/);
 });
 
-test('workout tab renders steps input and history section', async ({ page }) => {
+test('workout tab renders steps card and history section', async ({ page }) => {
   await page.click('nav button[data-tab="workout"]');
-  await expect(page.locator('#workoutStepsInput')).toBeVisible();
+  await expect(page.locator('#fitSyncBtn')).toBeVisible();
   await expect(page.locator('#tab-workout h2', { hasText: 'History' })).toBeVisible();
 });
