@@ -55,7 +55,7 @@ import {
   finishSession, cancelSession, editSession, setSessionTime, deleteSession, reanalyzeSession, updateSessionDate, updateSessionTime,
   openSessionRefine, closeSessionRefine, refineSessionEstimate, requestSessionEstimateUpdate, applySessionRefine, discardSessionRefine,
   sessionAttachFiles, renderSessionAttachPreview, _removeSessionAttach,
-  openPlanModal, closePlanModal,
+  openPlanModal, closePlanModal, refreshFitSyncLabels,
 } from './ui/workout-tab.js';
 
 // ---------- DATA ----------
@@ -323,6 +323,10 @@ setInterval(async () => {
   const u = await autoSilentFitSync();
   if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
 }, FIT_SYNC_INTERVAL_MS);
+
+// Tick the "synced Xm ago" labels every minute so the relative time stays
+// current between syncs (otherwise "just now" would never advance).
+setInterval(() => { if (!document.hidden) refreshFitSyncLabels(); }, 60 * 1000);
 
 // ---------- window bridge for dynamic handlers ----------
 // Functions called from innerHTML onClick strings in render functions (workout/meals/body tabs)

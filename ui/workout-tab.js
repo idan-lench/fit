@@ -97,6 +97,19 @@ function relativeTimeShort(ts) {
   return `synced ${Math.floor(hrs / 24)}d ago`;
 }
 
+// Update the "synced Xm ago" labels in place (workout steps card + Insights
+// Daily steps header) without a full re-render, so the relative time ticks up
+// between syncs. Called on a timer from app.js.
+export function refreshFitSyncLabels() {
+  const ws = document.getElementById('fitSyncStatus');
+  if (ws) {
+    if (state.fitLastSync) { ws.textContent = `🏃 Fit ${relativeTimeShort(state.fitLastSync)}`; ws.style.display = 'block'; }
+    else { ws.textContent = ''; ws.style.display = 'none'; }
+  }
+  const is = document.getElementById('fitLastSync');
+  if (is) is.textContent = state.fitLastSync ? `· ${relativeTimeShort(state.fitLastSync)}` : '';
+}
+
 function formatWorkoutDateLabel(dateISO) {
   const [y, m, d] = dateISO.split('-').map(Number);
   const date = new Date(y, m - 1, d);
