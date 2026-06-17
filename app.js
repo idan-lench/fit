@@ -6,9 +6,9 @@ import { state, save, load } from './data/state.js';
 import { getDailyNote, upsertDailyNote } from './data/daily-notes-store.js';
 import { getAllMeals } from './data/meals-store.js';
 import { getGeminiKey } from './integrations/gemini.js';
-import { loadCachedGfitToken, autoSilentFitSync } from './integrations/google-fit.js';
+import { loadCachedGfitToken } from './integrations/google-fit.js';
 import {
-  pullFromDrive, pullFromDriveForce, exportData,
+  pullFromDrive, pullFromDriveForce, exportData, pullFitStepsFromServer,
   restorePhotosFromDrive, checkSyncImportFromUrl,
 } from './integrations/drive-sync.js';
 import { PLAN, WEEKLY_PLAN, getPlanKeyForDate, suggestedDay } from './domain/plan.js';
@@ -55,7 +55,7 @@ import {
   finishSession, cancelSession, editSession, setSessionTime, deleteSession, reanalyzeSession, updateSessionDate, updateSessionTime,
   openSessionRefine, closeSessionRefine, refineSessionEstimate, requestSessionEstimateUpdate, applySessionRefine, discardSessionRefine,
   sessionAttachFiles, renderSessionAttachPreview, _removeSessionAttach,
-  openPlanModal, closePlanModal,
+  openPlanModal, closePlanModal, refreshFitSyncLabels,
 } from './ui/workout-tab.js';
 
 // ---------- DATA ----------
@@ -243,7 +243,26 @@ loadCachedGfitToken();
 
 
 
-// Auto-pull from Drive on startup, then silent Fit sync, then auto-gen summaries
+// Auto step-sync: pull server-side Fit steps (refreshed hourly by the Apps
+// Script), but only if at least an hour has passed since our last sync — so a
+// page refresh or tab-return inside the hour reuses the cached steps instead of
+// re-fetching. This is independent of focus/tab. The "synced Xm ago" label is
+// always refreshed. The manual 🏃 Sync button is the on-demand override.
+const FIT_SYNC_MIN_INTERVAL_MS = 60 * 60 * 1000; // 1h — matches the server cadence
+
+function fitSyncDue() {
+  return !state.fitLastSync || (Date.now() - state.fitLastSync) >= FIT_SYNC_MIN_INTERVAL_MS;
+}
+
+async function autoFitSync() {
+  if (fitSyncDue()) {
+    const r = await pullFitStepsFromServer();
+    if (r?.ok && r.updated) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+  }
+  refreshFitSyncLabels();
+}
+
+// Auto-pull from Drive on startup, then Fit step sync, then auto-gen summaries.
 if (state.sync?.webhookUrl) {
   setTimeout(async () => {
     // If local looks empty (browser data wiped or fresh device), bypass the
@@ -265,16 +284,11 @@ if (state.sync?.webhookUrl) {
       const r = await pullFromDrive({ silent: true });
       if (r.applied) toast('Auto-synced from Drive ✓');
     }
-    const fitUpdated = await autoSilentFitSync();
-    if (fitUpdated.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+    await autoFitSync();
     autoGenerateMissingSummaries();
   }, 1500);
 } else {
-  setTimeout(async () => {
-    const fitUpdated = await autoSilentFitSync();
-    if (fitUpdated.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
-    autoGenerateMissingSummaries();
-  }, 1500);
+  setTimeout(autoGenerateMissingSummaries, 1500);
 }
 
 // Initial render — ensure all main sections populate from existing local state
@@ -295,34 +309,22 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 // Schedule daily 23:55 generation
 scheduleMidnightGen();
 
-// Auto-pull + auto-gen when user returns to the tab
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    if (state.sync?.webhookUrl) {
-      pullFromDrive({ silent: true }).then(async r => {
-        if (r.applied) toast('Auto-synced ✓');
-        const u = await autoSilentFitSync();
-        if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
-        autoGenerateMissingSummaries();
-      });
-    } else {
-      autoSilentFitSync().then(u => {
-        if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
-        autoGenerateMissingSummaries();
-      });
-    }
+// Auto-pull + auto-gen when user returns to the tab.
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) return;
+  if (state.sync?.webhookUrl) {
+    const r = await pullFromDrive({ silent: true });
+    if (r.applied) toast('Auto-synced ✓');
   }
+  await autoFitSync();
+  autoGenerateMissingSummaries();
 });
 
-// Periodic silent Fit sync every 30 min while the tab is open. Skips when the
-// tab is hidden (the visibilitychange handler above already syncs on return),
-// so we don't burn API calls in the background.
-const FIT_SYNC_INTERVAL_MS = 30 * 60 * 1000;
-setInterval(async () => {
-  if (document.hidden) return;
-  const u = await autoSilentFitSync();
-  if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
-}, FIT_SYNC_INTERVAL_MS);
+// Every minute: keep the "synced Xm ago" label current AND re-sync if >= 1h has
+// elapsed (autoFitSync self-gates). Runs regardless of focus — when the tab is
+// backgrounded the browser throttles this, and the visibilitychange handler
+// above catches up on return.
+setInterval(autoFitSync, 60 * 1000);
 
 // ---------- window bridge for dynamic handlers ----------
 // Functions called from innerHTML onClick strings in render functions (workout/meals/body tabs)

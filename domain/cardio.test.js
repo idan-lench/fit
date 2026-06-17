@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CARDIO_TYPES, formatCardioActivitiesForAI } from './cardio.js';
+import { CARDIO_TYPES, formatCardioActivitiesForAI, cardioLabel, sessionActivityLabel } from './cardio.js';
 
 test('CARDIO_TYPES has at least one entry with required fields', () => {
   assert.ok(CARDIO_TYPES.length > 0);
@@ -31,4 +31,28 @@ test('formatCardioActivitiesForAI falls back to last type for unknown key', () =
   const out = formatCardioActivitiesForAI([{ type: 'unknown-key', distance: '', duration: '', notes: '' }]);
   assert.equal(typeof out, 'string');
   assert.ok(out.length > 0);
+});
+
+test('cardioLabel maps known + legacy types with an emoji', () => {
+  assert.equal(cardioLabel('interval'), '⚡ Speed / interval');
+  assert.equal(cardioLabel('long-run'), '🏃 Long run');
+  assert.equal(cardioLabel('run'), '🏃 Run');        // legacy alias
+  assert.equal(cardioLabel('treadmill_walk'), '🚶 Walk'); // legacy alias
+  assert.equal(cardioLabel('mystery'), '🏃 Cardio');  // unknown → generic
+});
+
+test('sessionActivityLabel reflects what was actually done', () => {
+  const strength = { entries: [{ name: 'Squats', sets: [{ reps: 8 }] }], cardioActivities: [] };
+  assert.equal(sessionActivityLabel(strength), '🏋️ Strength workout');
+
+  const run = { entries: [], cardioActivities: [{ type: 'long-run' }] };
+  assert.equal(sessionActivityLabel(run), '🏃 Long run');
+
+  const mix = { entries: [{ name: 'Pull-ups', sets: [{ reps: 5 }] }], cardioActivities: [{ type: 'interval' }] };
+  assert.equal(sessionActivityLabel(mix), '🏋️🏃 Cardio + strength');
+
+  const multiCardio = { entries: [], cardioActivities: [{ type: 'long-run' }, { type: 'bike' }] };
+  assert.equal(sessionActivityLabel(multiCardio), '🏃 Cardio');
+
+  assert.equal(sessionActivityLabel({ entries: [], cardioActivities: [] }), null); // nothing → caller falls back
 });

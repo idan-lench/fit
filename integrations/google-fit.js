@@ -8,6 +8,7 @@
 
 import { todayISO } from '../core/time.js';
 import { state, save } from '../data/state.js';
+import { upsertStep } from '../domain/steps.js';
 
 export const GFIT_CLIENT_ID = '702200125555-73etjk85h28n9a4ehsm8sio415tpivat.apps.googleusercontent.com';
 export const GFIT_SCOPES = [
@@ -40,26 +41,34 @@ export function clearCachedGfitToken() {
   try { localStorage.removeItem('fit.gfitToken'); } catch {}
 }
 
-// opts.silent: resolve null instead of showing OAuth popup when no token cached
+// opts.silent: don't show the OAuth consent popup. Instead of giving up when no
+// token is cached, attempt a SILENT refresh (prompt: '') — Google returns a token
+// with no UI when the session is active and consent was already granted. Only if
+// that fails do we resolve null. This keeps auto-sync working past the ~1h token
+// lifetime (previously it silently stopped until the next manual Sync).
 export function gfitGetToken(opts = {}) {
   const silent = !!opts.silent;
   return new Promise((resolve, reject) => {
     if (_gfitToken && Date.now() < _gfitTokenExpiry) return resolve(_gfitToken);
-    if (silent) return resolve(null);
-    if (typeof google === 'undefined' || !google.accounts?.oauth2)
+    if (typeof google === 'undefined' || !google.accounts?.oauth2) {
+      if (silent) return resolve(null);
       return reject(new Error('Google Identity not loaded'));
+    }
     const client = google.accounts.oauth2.initTokenClient({
       client_id: GFIT_CLIENT_ID,
       scope: GFIT_SCOPES,
       callback: (resp) => {
-        if (resp.error) return reject(new Error(resp.error));
+        if (resp.error) return silent ? resolve(null) : reject(new Error(resp.error));
         _gfitToken = resp.access_token;
         _gfitTokenExpiry = Date.now() + (resp.expires_in - 60) * 1000;
         saveCachedGfitToken(_gfitToken, _gfitTokenExpiry);
         resolve(_gfitToken);
       },
+      // Fires on popup blocked/closed or a failed silent refresh.
+      error_callback: (err) => silent ? resolve(null) : reject(new Error(err?.type || 'oauth_failed')),
     });
-    client.requestAccessToken();
+    // Silent: request without prompting; surfaces no UI if a grant already exists.
+    client.requestAccessToken(silent ? { prompt: '' } : {});
   });
 }
 
@@ -127,9 +136,7 @@ export async function silentSyncGoogleFit(date) {
     ]);
     const steps = gfitExtractInt(stepsData);
     if (steps > 0) {
-      state.steps = state.steps || [];
-      state.steps = state.steps.filter(s => s.date !== targetDate);
-      state.steps.push({ date: targetDate, count: steps, source: 'gfit' });
+      state.steps = upsertStep(state.steps, targetDate, steps, 'gfit');
       state.fitLastSync = Date.now();
       save();
     }
@@ -138,20 +145,4 @@ export async function silentSyncGoogleFit(date) {
     if (String(e.message || '').match(/40[13]|invalid|expired|forbidden/i)) clearCachedGfitToken();
     return false;
   }
-}
-
-// Auto-sync today + any missing days in the last 7. Silent — no popups.
-export async function autoSilentFitSync() {
-  const updated = [];
-  const today = todayISO();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(); d.setDate(d.getDate() - i);
-    const iso = d.toISOString().slice(0, 10);
-    const existing = (state.steps || []).find(s => s.date === iso);
-    if (iso === today || !existing) {
-      const ok = await silentSyncGoogleFit(iso);
-      if (ok) updated.push(iso);
-    }
-  }
-  return updated;
 }

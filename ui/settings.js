@@ -6,6 +6,7 @@ import { ensureSecret, buildAppsScript, pingSync, exportData } from '../integrat
 import { gfitGetToken, gfitDateRange, gfitAggregate, gfitExtractInt, gfitExtractFloat, clearCachedGfitToken } from '../integrations/google-fit.js';
 import { clearPhotos, putPhoto } from '../data/photo-store.js';
 import { clearMeals, putMeal } from '../data/meals-store.js';
+import { upsertStep } from '../domain/steps.js';
 import { selectDay, renderWorkout, workoutCurrentDate } from './workout-tab.js';
 import { renderBody, renderPhotos } from './body-tab.js';
 import { renderMeals } from './meals-tab.js';
@@ -241,9 +242,7 @@ export async function syncGoogleFit() {
     const distKm = Math.round(distM / 100) / 10;
 
     if (steps > 0) {
-      state.steps = state.steps || [];
-      state.steps = state.steps.filter(s => s.date !== date);
-      state.steps.push({ date, count: steps, source: 'gfit' });
+      state.steps = upsertStep(state.steps, date, steps, 'gfit');
       state.fitLastSync = Date.now();
       save();
     }

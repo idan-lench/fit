@@ -13,6 +13,7 @@ import { getAllMeals, putMeal, clearMeals } from '../data/meals-store.js';
 import { getAllPhotos, putPhoto, clearPhotos } from '../data/photo-store.js';
 import { getAllTemplates, putTemplate } from '../data/template-store.js';
 import { getAllDailyNotes, upsertDailyNote } from '../data/daily-notes-store.js';
+import { mergeSteps } from '../domain/steps.js';
 
 // Returns the shared secret, generating one if not set yet.
 export function ensureSecret() {
@@ -60,6 +61,30 @@ export async function pingSync() {
     const text = await res.text();
     try { return JSON.parse(text); } catch { return { ok: false, error: 'bad response: ' + text.slice(0, 80) }; }
   } catch (err) { return { ok: false, error: err.message }; }
+}
+
+// Pull server-side Google Fit steps (fetched hourly by the Apps Script trigger)
+// and merge the last few days into state.steps. This is the reliable auto-sync
+// path: the token lives server-side, so it works without the browser's blocked
+// silent OAuth refresh. Returns { ok, updated } — updated = any day changed.
+export async function pullFitStepsFromServer() {
+  const url = state.sync?.webhookUrl;
+  const secret = state.sync?.secret;
+  if (!url || !secret) return { ok: false, skipped: true };
+  try {
+    const res = await fetch(url + '?secret=' + encodeURIComponent(secret) + '&steps=1', {
+      method: 'GET', redirect: 'follow',
+    });
+    const data = JSON.parse(await res.text());
+    if (!data.ok || !Array.isArray(data.steps)) return { ok: false, error: data.error || 'no steps' };
+    const { steps, changed } = mergeSteps(state.steps, data.steps, 'gfit-server');
+    state.steps = steps;
+    if (data.steps.length) state.fitLastSync = Date.now();
+    save();
+    return { ok: true, updated: changed };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
 
 // Pull latest backup from Drive and apply it locally.

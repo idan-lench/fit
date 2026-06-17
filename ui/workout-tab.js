@@ -97,6 +97,19 @@ function relativeTimeShort(ts) {
   return `synced ${Math.floor(hrs / 24)}d ago`;
 }
 
+// Update the "synced Xm ago" labels in place (workout steps card + Insights
+// Daily steps header) without a full re-render, so the relative time ticks up
+// between syncs. Called on a timer from app.js.
+export function refreshFitSyncLabels() {
+  const ws = document.getElementById('fitSyncStatus');
+  if (ws) {
+    if (state.fitLastSync) { ws.textContent = `🏃 Fit ${relativeTimeShort(state.fitLastSync)}`; ws.style.display = 'block'; }
+    else { ws.textContent = ''; ws.style.display = 'none'; }
+  }
+  const is = document.getElementById('fitLastSync');
+  if (is) is.textContent = state.fitLastSync ? `· ${relativeTimeShort(state.fitLastSync)}` : '';
+}
+
 function formatWorkoutDateLabel(dateISO) {
   const [y, m, d] = dateISO.split('-').map(Number);
   const date = new Date(y, m - 1, d);
@@ -652,9 +665,11 @@ function _intervalSummary(segs) {
 // Turn the AI-extracted interval structure into an ordered segments[] array.
 // One recovery follows EACH work rep (including the last, before the cooldown),
 // so #recoveries == #intervals. Recovery duration: use the screenshot's recovery
-// laps if present; else infer from total duration minus known laps; else default
-// 1:1 with work. Recovery pace is left null when unknown — the engine then uses
-// 60% of work MET.
+// laps if present; else infer from a real total duration minus known laps; else
+// default to a conservative 1 min per interval (NOT the work-interval length,
+// which over-counted badly). Recovery pace is left null when unknown — the
+// engine then uses 60% of work MET.
+const DEFAULT_RECOVERY_SEC = 60; // 1 min per interval when nothing else is known
 function buildIntervalSegments(p) {
   if (!p || !Array.isArray(p.work)) return null;
   const work = p.work.filter(w => w && w.durationSec > 0);
@@ -675,7 +690,7 @@ function buildIntervalSegments(p) {
     // makes this ~0 — in that case fall through to the 1:1 default below.
     if (per >= 0.5 * workDur) recDur = Math.round(per);
   }
-  if (recDur == null) recDur = workDur; // fall back to 1:1 with work
+  if (recDur == null) recDur = DEFAULT_RECOVERY_SEC; // 1 min/interval — never the work length
 
   const segs = [];
   if (p.warmup?.durationSec > 0) {
@@ -1017,6 +1032,8 @@ export async function finishSession() {
   } else {
     savedAt = Date.now();
     const savedSession = { ...state.current, savedAt };
+    // Auto-detect the session time from when it was saved; user can edit later.
+    if (!savedSession.time) savedSession.time = new Date(savedAt).toTimeString().slice(0, 5);
     state.sessions.push(savedSession);
     state.current = null;
     updateWorkoutHistory(savedSession);
@@ -1123,14 +1140,16 @@ export function renderHistory() {
     }).join('');
     const notes = s.notes ? escapeHtml(s.notes) : '';
     const burnQs = s.burnQuestions || [];
-    const timeHtml = s.time
-      ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ${s.time}</span>`
-      : `<button class="ghost" style="margin-left: 4px; padding: 2px 8px; font-size: 12px; color: var(--accent);" onclick="setSessionTime(${s.savedAt})">+ Add time</button>`;
-    const durationHtml = s.durationMin ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ${Math.round(s.durationMin * 100) / 100} min</span>` : '';
-    const burnHtml = typeof s.caloriesBurned === 'number' ? `<span class="muted small" style="margin-left: 6px; font-weight: 500;">· ~${s.caloriesBurned} kcal</span>` : '';
+    // Header = the session meta (auto-detected time, editable · duration · kcal).
+    // The plan title is dropped — the activity line(s) below say what it was.
+    const sessionTime = s.time || new Date(s.savedAt).toTimeString().slice(0, 5);
+    const metaHtml =
+      `<span style="cursor: pointer;" onclick="setSessionTime(${s.savedAt})" title="Edit time">${sessionTime}</span>`
+      + (s.durationMin ? `<span class="muted"> · ${Math.round(s.durationMin * 100) / 100} min</span>` : '')
+      + (typeof s.caloriesBurned === 'number' ? `<span class="muted"> · ~${s.caloriesBurned} kcal</span>` : '');
     return `
       <div data-saved-at="${s.savedAt}" style="padding: 12px 0; border-top: 1px solid var(--line);">
-        <div style="font-weight: 600;">${PLAN[s.day]?.label || s.day}${timeHtml}${durationHtml}${burnHtml}</div>
+        <div style="font-weight: 600;">${metaHtml}</div>
         ${cardio ? `<div class="small" style="margin-top: 4px; color: var(--muted);">${cardio}</div>` : ''}
         ${cardioActivitiesHtml}
         ${s.entries.filter(e => e.sets.length).map(e => `
@@ -1197,7 +1216,7 @@ export function editSession(savedAt) {
 export function setSessionTime(savedAt) {
   const s = state.sessions.find(x => x.savedAt === savedAt);
   if (!s) return;
-  const newTime = prompt('Enter time (HH:MM, 24h):', s.time || '');
+  const newTime = prompt('Enter time (HH:MM, 24h):', s.time || new Date(s.savedAt).toTimeString().slice(0, 5));
   if (!newTime) return;
   if (!/^\d{1,2}:\d{2}$/.test(newTime.trim())) return toast('Invalid time format');
   s.time = newTime.trim();
