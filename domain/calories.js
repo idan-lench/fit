@@ -383,7 +383,9 @@ export function resistanceMultiplier(name, note, { weightKg = 58, lastNote = nul
   const key = String(name).toLowerCase();
 
   // ── Hydraulic ──────────────────────────────────────────────────────────────
-  const hydraulicMention = /hydraulic|piston/.test(n);
+  // Detect from the NOTE or the exercise NAME (e.g. "Hydraulic Bench Press"),
+  // so a machine named hydraulic is recognized even when the note only says "max".
+  const hydraulicMention = /hydraulic|piston/.test(n) || /hydraulic|piston/.test(key);
   const lvl = n.match(/(\d+)\s*\/\s*16/);
   let level = lvl ? parseInt(lvl[1], 10) : null;
   if (!level && /\bmax\b/.test(n) && hydraulicMention) level = 16;

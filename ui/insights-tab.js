@@ -5,6 +5,7 @@ import { escapeHtml } from '../core/format.js';
 import { toast } from '../core/dom.js';
 import { getAllMeals } from '../data/meals-store.js';
 import { PLAN } from '../domain/plan.js';
+import { sessionActivityLabel } from '../domain/cardio.js';
 import { computeDailyEnergy, weekStartFor, weekDates, weeklyFingerprint, runWeeklyAnalysis } from '../domain/analysis.js';
 import { getGeminiKey } from '../integrations/gemini.js';
 
@@ -217,6 +218,12 @@ async function renderWeekView() {
   }
 }
 
+// Short weekday name (Mon/Tue/…) for an ISO date.
+function weekday(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short' });
+}
+
 export async function renderAnalysis() {
   if (analysisMode === 'week') {
     return renderWeekView();
@@ -229,11 +236,11 @@ export async function renderAnalysis() {
   const isToday = viewDate === today;
 
   const labelEl = document.getElementById('analysisDateLabel');
-  if (labelEl) labelEl.textContent = isToday ? 'Today' : formatDate(viewDate);
+  if (labelEl) labelEl.textContent = isToday ? `${weekday(viewDate)}, Today` : `${weekday(viewDate)}, ${formatDate(viewDate)}`;
   const nextBtn = document.getElementById('analysisNextBtn');
   if (nextBtn) nextBtn.style.opacity = isToday ? '0.3' : '1';
   const titleEl = document.getElementById('analysisEnergyTitle');
-  if (titleEl) titleEl.textContent = isToday ? "Today's energy" : formatDate(viewDate) + ' energy';
+  if (titleEl) titleEl.textContent = isToday ? `${weekday(viewDate)}, Today's energy` : `${weekday(viewDate)}, ${formatDate(viewDate)} energy`;
 
   const e = await computeDailyEnergy(viewDate);
   document.getElementById('analysisEaten').textContent = e.eaten ? e.eaten.toLocaleString() : '—';
@@ -317,7 +324,7 @@ export async function renderAnalysis() {
   }
   for (const s of todaySessions) {
     if (s.caloriesBurned) {
-      const label = (PLAN[s.day]?.label || s.day) + (s.cardioNote ? ' · ' + s.cardioNote.slice(0, 30) + (s.cardioNote.length > 30 ? '…' : '') : '');
+      const label = (sessionActivityLabel(s) || PLAN[s.day]?.label || s.day) + (s.cardioNote ? ' · ' + s.cardioNote.slice(0, 30) + (s.cardioNote.length > 30 ? '…' : '') : '');
       const epocLine = s.epocToday > 0 ? ` <span class="muted">(+${s.epocToday} EPOC)</span>` : '';
       html += `<div class="row between" style="padding: 4px 0; border-bottom: 1px solid var(--line);"><span class="small">${escapeHtml(label)}${epocLine}</span><span class="small">+${s.caloriesBurned + (s.epocToday || 0)} kcal</span></div>`;
     }
