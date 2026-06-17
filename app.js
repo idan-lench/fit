@@ -243,13 +243,22 @@ loadCachedGfitToken();
 
 
 
-// Single auto step-sync path: pull server-side Fit steps (fetched hourly by the
-// Apps Script) and re-render if anything changed. Replaces the old GIS silent
-// sync, which browsers block once the ~1h token expires. The manual 🏃 Sync
-// (interactive OAuth) stays as the on-demand fallback.
+// Auto step-sync: pull server-side Fit steps (refreshed hourly by the Apps
+// Script), but only if at least an hour has passed since our last sync — so a
+// page refresh or tab-return inside the hour reuses the cached steps instead of
+// re-fetching. This is independent of focus/tab. The "synced Xm ago" label is
+// always refreshed. The manual 🏃 Sync button is the on-demand override.
+const FIT_SYNC_MIN_INTERVAL_MS = 60 * 60 * 1000; // 1h — matches the server cadence
+
+function fitSyncDue() {
+  return !state.fitLastSync || (Date.now() - state.fitLastSync) >= FIT_SYNC_MIN_INTERVAL_MS;
+}
+
 async function autoFitSync() {
-  const r = await pullFitStepsFromServer();
-  if (r?.ok && r.updated) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+  if (fitSyncDue()) {
+    const r = await pullFitStepsFromServer();
+    if (r?.ok && r.updated) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+  }
   refreshFitSyncLabels();
 }
 
@@ -311,14 +320,11 @@ document.addEventListener('visibilitychange', async () => {
   autoGenerateMissingSummaries();
 });
 
-// Periodic Fit step sync every 30 min while the tab is open. Skips when the tab
-// is hidden (the visibilitychange handler above already syncs on return).
-const FIT_SYNC_INTERVAL_MS = 30 * 60 * 1000;
-setInterval(() => { if (!document.hidden) autoFitSync(); }, FIT_SYNC_INTERVAL_MS);
-
-// Tick the "synced Xm ago" labels every minute so the relative time stays
-// current between syncs (otherwise "just now" would never advance).
-setInterval(() => { if (!document.hidden) refreshFitSyncLabels(); }, 60 * 1000);
+// Every minute: keep the "synced Xm ago" label current AND re-sync if >= 1h has
+// elapsed (autoFitSync self-gates). Runs regardless of focus — when the tab is
+// backgrounded the browser throttles this, and the visibilitychange handler
+// above catches up on return.
+setInterval(autoFitSync, 60 * 1000);
 
 // ---------- window bridge for dynamic handlers ----------
 // Functions called from innerHTML onClick strings in render functions (workout/meals/body tabs)
