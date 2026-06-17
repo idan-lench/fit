@@ -10,10 +10,14 @@ export const DEFAULT_PROFILE = {
   swimLevel: null, // 'beginner' | 'intermediate' | 'advanced' — by sustained-swim ability (continuity), captured on first swim, editable via chat. Drives swim MET via the level×stroke×pace tables in domain/calories.js.
   goals: {
     steps: 10000,
-    waistCm: 75,
+    waistCm: 75,    // optional body goal — null = no goal
+    weightKg: null, // optional body goal — null = no goal
     dailyCalories: 1700,
     dailyProteinG: 95,
   },
+  // Achieved body goals, banked when the user raises the bar. Keyed by goal name
+  // → [{ value, date }]. Shown as "🏆 …" chips for motivation.
+  goalsHit: { waistCm: [], weightKg: [] },
 };
 
 // Mifflin-St Jeor (1990) — modern standard for BMR estimation.
