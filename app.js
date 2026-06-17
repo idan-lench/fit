@@ -6,9 +6,9 @@ import { state, save, load } from './data/state.js';
 import { getDailyNote, upsertDailyNote } from './data/daily-notes-store.js';
 import { getAllMeals } from './data/meals-store.js';
 import { getGeminiKey } from './integrations/gemini.js';
-import { loadCachedGfitToken, autoSilentFitSync } from './integrations/google-fit.js';
+import { loadCachedGfitToken } from './integrations/google-fit.js';
 import {
-  pullFromDrive, pullFromDriveForce, exportData,
+  pullFromDrive, pullFromDriveForce, exportData, pullFitStepsFromServer,
   restorePhotosFromDrive, checkSyncImportFromUrl,
 } from './integrations/drive-sync.js';
 import { PLAN, WEEKLY_PLAN, getPlanKeyForDate, suggestedDay } from './domain/plan.js';
@@ -243,7 +243,17 @@ loadCachedGfitToken();
 
 
 
-// Auto-pull from Drive on startup, then silent Fit sync, then auto-gen summaries
+// Single auto step-sync path: pull server-side Fit steps (fetched hourly by the
+// Apps Script) and re-render if anything changed. Replaces the old GIS silent
+// sync, which browsers block once the ~1h token expires. The manual 🏃 Sync
+// (interactive OAuth) stays as the on-demand fallback.
+async function autoFitSync() {
+  const r = await pullFitStepsFromServer();
+  if (r?.ok && r.updated) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+  refreshFitSyncLabels();
+}
+
+// Auto-pull from Drive on startup, then Fit step sync, then auto-gen summaries.
 if (state.sync?.webhookUrl) {
   setTimeout(async () => {
     // If local looks empty (browser data wiped or fresh device), bypass the
@@ -265,16 +275,11 @@ if (state.sync?.webhookUrl) {
       const r = await pullFromDrive({ silent: true });
       if (r.applied) toast('Auto-synced from Drive ✓');
     }
-    const fitUpdated = await autoSilentFitSync();
-    if (fitUpdated.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
+    await autoFitSync();
     autoGenerateMissingSummaries();
   }, 1500);
 } else {
-  setTimeout(async () => {
-    const fitUpdated = await autoSilentFitSync();
-    if (fitUpdated.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
-    autoGenerateMissingSummaries();
-  }, 1500);
+  setTimeout(autoGenerateMissingSummaries, 1500);
 }
 
 // Initial render — ensure all main sections populate from existing local state
@@ -295,34 +300,21 @@ if (document.readyState === 'complete' || document.readyState === 'interactive')
 // Schedule daily 23:55 generation
 scheduleMidnightGen();
 
-// Auto-pull + auto-gen when user returns to the tab
-document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
-    if (state.sync?.webhookUrl) {
-      pullFromDrive({ silent: true }).then(async r => {
-        if (r.applied) toast('Auto-synced ✓');
-        const u = await autoSilentFitSync();
-        if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
-        autoGenerateMissingSummaries();
-      });
-    } else {
-      autoSilentFitSync().then(u => {
-        if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
-        autoGenerateMissingSummaries();
-      });
-    }
+// Auto-pull + auto-gen when user returns to the tab.
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden) return;
+  if (state.sync?.webhookUrl) {
+    const r = await pullFromDrive({ silent: true });
+    if (r.applied) toast('Auto-synced ✓');
   }
+  await autoFitSync();
+  autoGenerateMissingSummaries();
 });
 
-// Periodic silent Fit sync every 30 min while the tab is open. Skips when the
-// tab is hidden (the visibilitychange handler above already syncs on return),
-// so we don't burn API calls in the background.
+// Periodic Fit step sync every 30 min while the tab is open. Skips when the tab
+// is hidden (the visibilitychange handler above already syncs on return).
 const FIT_SYNC_INTERVAL_MS = 30 * 60 * 1000;
-setInterval(async () => {
-  if (document.hidden) return;
-  const u = await autoSilentFitSync();
-  if (u.length) { renderWorkout?.(); renderBody?.(); renderAnalysis?.(); }
-}, FIT_SYNC_INTERVAL_MS);
+setInterval(() => { if (!document.hidden) autoFitSync(); }, FIT_SYNC_INTERVAL_MS);
 
 // Tick the "synced Xm ago" labels every minute so the relative time stays
 // current between syncs (otherwise "just now" would never advance).
