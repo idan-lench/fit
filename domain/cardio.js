@@ -1,4 +1,5 @@
 // Cardio activity type definitions + AI formatting helper.
+import { ICONS } from '../core/icons.js';
 
 export const CARDIO_TYPES = [
   { key: 'long-run',  icon: '🏃',  label: 'Long run',         showDist: true,  showDur: true },
@@ -14,16 +15,16 @@ export const CARDIO_TYPES = [
 ];
 
 // ---------- ACTIVITY LABELS (single source of truth for icons + names) ----------
-// Cardio icons live in CARDIO_TYPES above; the rest live here.
-export const STRENGTH_ICON = '🏋️';
+// Cardio type icons live in CARDIO_TYPES above; standalone glyphs come from ICONS.
+export const STRENGTH_ICON = ICONS.strength;
 
 // Legacy/aliased cardio types not in CARDIO_TYPES (older sessions, Google Fit).
 const LEGACY_CARDIO_LABELS = {
-  run: '🏃 Run',
-  treadmill_run: '🏃 Run',
-  walk: '🚶 Walk',
-  treadmill_walk: '🚶 Walk',
-  swim: '🏊 Swim',
+  run: `${ICONS.run} Run`,
+  treadmill_run: `${ICONS.run} Run`,
+  walk: `${ICONS.walk} Walk`,
+  treadmill_walk: `${ICONS.walk} Walk`,
+  swim: `${ICONS.swim} Swim`,
 };
 
 // Emoji + friendly name for a single cardio activity type.
@@ -39,11 +40,11 @@ export function cardioLabel(type) {
 export function sessionActivityLabel(session) {
   const hasStrength = (session?.entries || []).some(e => e?.name && (e.sets || []).some(x => Number(x?.reps) > 0));
   const cardio = (session?.cardioActivities || []).filter(a => a?.type);
-  if (hasStrength && cardio.length) return `${STRENGTH_ICON}🏃 Cardio + strength`;
+  if (hasStrength && cardio.length) return `${STRENGTH_ICON}${ICONS.run} Cardio + strength`;
   if (hasStrength) return `${STRENGTH_ICON} Strength workout`;
   if (cardio.length) {
     const names = [...new Set(cardio.map(a => cardioLabel(a.type)))];
-    return names.length === 1 ? names[0] : '🏃 Cardio';
+    return names.length === 1 ? names[0] : `${ICONS.run} Cardio`;
   }
   return null;
 }

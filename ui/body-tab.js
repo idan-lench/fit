@@ -7,6 +7,7 @@ import { getGeminiKey, geminiGenerate } from '../integrations/gemini.js';
 import { photoSizeKey } from '../integrations/drive-sync.js';
 import { upsertStep, removeStep } from '../domain/steps.js';
 import { upsertMeasurement, removeMeasurement, upsertWeight, removeWeight, latestWeightKg } from '../domain/body.js';
+import { ICONS } from '../core/icons.js';
 import { drawChart, drawStepsChart } from './shared/chart.js';
 import { downscale } from './shared/image.js';
 import { getTrendMode } from './insights-tab.js';
@@ -16,11 +17,93 @@ import { renderWorkout, workoutCurrentDate } from './workout-tab.js';
 let selectedForCompare = [];
 
 // ---------- BODY / WAIST ----------
+
+// Latest + starting value for a metric ('waistCm' → measurements, else weights).
+function metricValues(key) {
+  const arr   = key === 'waistCm' ? (state.measurements || []) : (state.weights || []);
+  const field = key === 'waistCm' ? 'cm' : 'kg';
+  const sorted = arr.slice().sort((a, b) => a.date.localeCompare(b.date));
+  return {
+    current: sorted.length ? sorted[sorted.length - 1][field] : null,
+    start:   sorted.length ? sorted[0][field] : null,
+  };
+}
+
+// Direction is inferred from the starting value: started above the goal → working
+// down (reached when current ≤ goal); started below → working up.
+function isGoalReached(current, start, goal) {
+  if (goal == null || current == null) return false;
+  const ref = start != null ? start : current;
+  return ref >= goal ? current <= goal : current >= goal;
+}
+
+// Render a metric's goal status line. null goal → no-goal prompt; reached →
+// celebratory line; else distance to go.
+function applyGoalLine(elId, current, start, goal, unit) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.style.fontWeight = '';
+  if (goal == null) {
+    el.textContent = 'No goal — tap ✎ Goal to set one';
+    el.style.color = 'var(--muted)';
+  } else if (current == null) {
+    el.textContent = `${ICONS.goal} Goal ${goal} ${unit}`;
+    el.style.color = 'var(--muted)';
+  } else if (isGoalReached(current, start, goal)) {
+    el.textContent = `${ICONS.goalReached} Goal reached — ${goal} ${unit}!`;
+    el.style.color = 'var(--accent2)';
+    el.style.fontWeight = '600';
+  } else {
+    el.textContent = `${ICONS.goal} Goal ${goal} ${unit} — ${Math.abs(current - goal).toFixed(1)} ${unit} to go`;
+    el.style.color = 'var(--muted)';
+  }
+}
+
+// "🏆" chips for goals already achieved (banked when the bar was raised).
+function renderGoalHits(elId, key, unit) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const hits = state.profile?.goalsHit?.[key] || [];
+  el.innerHTML = hits.slice().reverse().map(h =>
+    `<span class="small" style="background: rgba(34,197,94,0.12); color: var(--accent2); padding: 2px 9px; border-radius: 999px; font-weight: 500;">${ICONS.trophy} ${h.value} ${unit} · ${formatDate(h.date)}</span>`
+  ).join('');
+}
+
+// Prompt-based goal editor. Blank clears it. If the OLD goal was already reached
+// and you're changing it, bank it as a 🏆 achievement first.
+function editBodyGoal(key, label, unit) {
+  const oldGoal = state.profile?.goals?.[key];
+  const input = prompt(`${label} goal (${unit}) — leave blank to remove:`, oldGoal ?? '');
+  if (input === null) return; // cancelled
+  const t = input.trim();
+  let newGoal = null;
+  if (t !== '') {
+    const n = parseFloat(t);
+    if (isNaN(n) || n <= 0) return toast('Enter a valid number');
+    newGoal = n;
+  }
+  state.profile = state.profile || {};
+  state.profile.goals = state.profile.goals || {};
+  const { current, start } = metricValues(key);
+  if (oldGoal != null && newGoal !== oldGoal && isGoalReached(current, start, oldGoal)) {
+    state.profile.goalsHit = state.profile.goalsHit || {};
+    const hits = state.profile.goalsHit[key] = state.profile.goalsHit[key] || [];
+    if (!hits.some(h => h.value === oldGoal)) hits.push({ value: oldGoal, date: todayISO() });
+  }
+  state.profile.goals[key] = newGoal;
+  save();
+  renderBody();
+  toast(newGoal == null ? 'Goal removed' : 'Goal updated ✓');
+}
+export function editWaistGoal()  { editBodyGoal('waistCm', 'Waist', 'cm'); }
+export function editWeightGoal() { editBodyGoal('weightKg', 'Weight', 'kg'); }
+
 export function renderBody() {
-  const waistGoal = state.profile?.goals?.waistCm || 75;
   renderCompareHistory();
-  const dateInput = document.getElementById('weightDate');
-  if (dateInput && !dateInput.value) dateInput.value = todayISO();
+  const waistDateEl = document.getElementById('waistDate');
+  if (waistDateEl && !waistDateEl.value) waistDateEl.value = todayISO();
+  const weightDateEl = document.getElementById('weightDate');
+  if (weightDateEl && !weightDateEl.value) weightDateEl.value = todayISO();
   const ms = state.measurements.slice().sort((a,b) => a.date.localeCompare(b.date));
   const last = ms[ms.length - 1];
   const first = ms[0];
@@ -34,26 +117,8 @@ export function renderBody() {
     dEl.textContent = ' ';
     dEl.className = 'delta';
   }
-
-  const goalEl = document.getElementById('waistToGoal');
-  const goalDeltaEl = document.getElementById('waistGoalDelta');
-  if (last) {
-    const toGoal = last.cm - waistGoal;
-    if (toGoal <= 0) {
-      goalEl.textContent = '✓';
-      goalEl.style.color = 'var(--accent2)';
-      goalDeltaEl.textContent = `${waistGoal} cm ✓`;
-      goalDeltaEl.className = 'delta down';
-    } else {
-      goalEl.textContent = toGoal.toFixed(1) + ' cm';
-      goalEl.style.color = '';
-      goalDeltaEl.textContent = `to ${waistGoal} cm`;
-      goalDeltaEl.className = 'delta muted';
-    }
-  } else {
-    goalEl.textContent = '—';
-    goalDeltaEl.textContent = ' ';
-  }
+  applyGoalLine('waistGoalLine', last ? last.cm : null, first ? first.cm : null, state.profile?.goals?.waistCm ?? null, 'cm');
+  renderGoalHits('waistGoalHits', 'waistCm', 'cm');
 
   drawChart(document.getElementById('waistChart'), ms);
   document.getElementById('waistList').innerHTML = ms.length === 0
@@ -83,7 +148,7 @@ export function toggleWaistEdit() {
 
 export function addWaist() {
   const v = parseFloat(document.getElementById('waistInput').value);
-  const d = document.getElementById('weightDate').value || todayISO();
+  const d = document.getElementById('waistDate').value || todayISO();
   if (isNaN(v) || v <= 0) return toast('Enter a number');
   state.measurements = upsertMeasurement(state.measurements, d, v);
   save();
@@ -108,6 +173,8 @@ export function renderWeight() {
     dEl.textContent = ' ';
     dEl.className = 'delta';
   }
+  applyGoalLine('weightGoalLine', last ? last.kg : null, first ? first.kg : null, state.profile?.goals?.weightKg ?? null, 'kg');
+  renderGoalHits('weightGoalHits', 'weightKg', 'kg');
 
   drawChart(document.getElementById('weightChart'), ws, w => w.kg);
   document.getElementById('weightList').innerHTML = ws.length === 0
@@ -175,7 +242,7 @@ export function editWaist(date) {
   const m = state.measurements.find(x => x.date === date);
   if (!m) return;
   document.getElementById('waistInput').value = m.cm;
-  document.getElementById('weightDate').value = m.date;
+  document.getElementById('waistDate').value = m.date;
   document.getElementById('waistInput').scrollIntoView({ behavior: 'smooth', block: 'center' });
   document.getElementById('waistInput').focus();
 }

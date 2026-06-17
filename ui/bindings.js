@@ -14,7 +14,7 @@ import {
 } from './settings.js';
 import {
   saveWorkoutSteps, toggleStepsEdit, toggleWaistEdit, addWaist,
-  addWeight, toggleWeightEdit,
+  addWeight, toggleWeightEdit, editWaistGoal, editWeightGoal,
   onPhotoPicked, analyzePhotoComparison, dedupePhotos,
 } from './body-tab.js';
 import {
@@ -84,8 +84,10 @@ on('effortHelpBtn', 'click', toggleEffortHelp);
 // ── BODY TAB ──────────────────────────────────────────────────────────────────
 on('saveWaistBtn',     'click',  addWaist);
 on('waistEditBtn',     'click',  toggleWaistEdit);
+on('waistGoalBtn',     'click',  editWaistGoal);
 on('saveWeightBtn',    'click',  addWeight);
 on('weightEditBtn',    'click',  toggleWeightEdit);
+on('weightGoalBtn',    'click',  editWeightGoal);
 on('photoCameraInput', 'change', onPhotoPicked);
 on('photoGalleryInput','change', onPhotoPicked);
 on('photoCameraBtn',   'click',  () => document.getElementById('photoCameraInput').click());
