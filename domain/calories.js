@@ -625,12 +625,18 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
         const cal = Math.round(ph.kcal);
         const min = ph.sec / 60;
         const met = Math.round(ph.kcal / (k * min) * 10) / 10; // effective (blended) MET
-        const countNote = ph.count > 1 ? `${ph.count}× ` : '';
+        // count is informational (how many intervals were detected) — keep it
+        // OUT of the equation, since `min` is already the summed total for the
+        // phase. Putting it as a multiplier would make the formula read 12× too
+        // big even though `cal` is correct.
+        const noun = kind === 'recovery' ? 'recoveries' : 'intervals';
+        const countNote = ph.count > 1 ? `${ph.count} ${noun} · ` : '';
+        const totalNote = ph.count > 1 ? ' total' : '';
         const recNote = kind === 'recovery' ? ' (60% of work MET)' : '';
         breakdown.push({
           activity: label,
           calories: cal,
-          reasoning: `${countNote}MET ${met} × ${Math.round(min * 10) / 10} min${recNote} = ${cal} kcal`,
+          reasoning: `${countNote}MET ${met} × ${Math.round(min * 10) / 10} min${totalNote}${recNote} = ${cal} kcal`,
         });
       }
       continue;
