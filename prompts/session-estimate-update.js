@@ -9,10 +9,13 @@ For each exercise with a known resistance, return STRUCTURED fields (the app bui
   • Regular dumbbell / barbell whose marked weight IS the real load → also { "kind": "actual", "kg": <marked kg> }.
 Only emit once you know the actual kg (or hydraulic level). If it is still genuinely unknown, leave noteUpdates empty and ask in changeNote.
 
+CARDIO MET OVERRIDE: If the USER explicitly stated a MET value for a cardio activity (e.g. "the movement class is more like MET 3", "use MET 4 for the hike"), emit a metUpdate so the engine uses their number. ONLY when the user gives an explicit MET number — never your own opinion of what the MET should be, and never for runs or swims (their MET comes from pace). Match the activity by its type or label as shown in the session.
+
 Return ONLY valid JSON, no markdown:
 {
   "noteUpdates": [{"exercise": "<exact exercise name from the session>", "kind": "actual"|"hydraulic", "kg": <number, for actual>, "level": <1-16, for hydraulic>}],
-  "changeNote": "<one short sentence: what resistance you applied>"
+  "metUpdates": [{"activity": "<cardio type or label from the session, e.g. movement>", "met": <number the user stated>}],
+  "changeNote": "<one short sentence: what you applied>"
 }
-If no resistance was established, return:
-{"noteUpdates": [], "changeNote": "No resistance details to apply."}`;
+If nothing was established, return:
+{"noteUpdates": [], "metUpdates": [], "changeNote": "No details to apply."}`;

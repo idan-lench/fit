@@ -1388,6 +1388,29 @@ function hasResistance(u) {
   return !!(u && u.exercise && (Number(u.kg) > 0 || (Number(u.level) >= 1 && Number(u.level) <= 16) || u.note));
 }
 
+// A cardio MET override is usable if it names an activity and a positive MET.
+// Runs/swims derive MET from pace, so the engine ignores overrides on them.
+function hasMetOverride(u) {
+  return !!(u && u.activity && Number(u.met) > 0);
+}
+
+// Apply a user-stated MET to the matching cardio activity (by type key or label).
+function applyMetUpdate(cardioActivities, u) {
+  if (!cardioActivities || !hasMetOverride(u)) return false;
+  const want = String(u.activity).toLowerCase();
+  const matches = a => {
+    if (!a?.type) return false;
+    const def = CARDIO_TYPES.find(c => c.key === a.type);
+    const label = (def?.label || '').toLowerCase();
+    const key = a.type.toLowerCase();
+    return key === want || label === want || key.includes(want) || want.includes(key) || (label && (label.includes(want) || want.includes(label)));
+  };
+  const act = cardioActivities.find(matches);
+  if (!act) return false;
+  act.metOverride = Number(u.met);
+  return true;
+}
+
 // Find the session entry that matches an LLM-extracted exercise name and overwrite its note.
 function applyNoteUpdate(entries, u) {
   if (!entries || !hasResistance(u)) return false;
@@ -1418,18 +1441,21 @@ export async function requestSessionEstimateUpdate() {
     const raw = await geminiGenerate({ systemInstruction, contents });
     const extracted = parseJSONResponse(raw) || {};
     const noteUpdates = (extracted.noteUpdates || []).filter(hasResistance);
+    const metUpdates = (extracted.metUpdates || []).filter(hasMetOverride);
 
     // Apply the extracted notes to a draft copy, then recompute with the DETERMINISTIC engine.
     const draft = JSON.parse(JSON.stringify(session));
     const applied = noteUpdates.filter(u => applyNoteUpdate(draft.entries, u));
+    const appliedMet = metUpdates.filter(u => applyMetUpdate(draft.cardioActivities, u));
     const calc = computeSessionCalories(draft, draft.rpe ?? 5);
 
     _pendingSessionRefine = {
       total: calc.caloriesBurned,
       breakdown: calc.breakdown || [],
       notes: extracted.changeNote || '',
-      changeNote: extracted.changeNote || (applied.length ? '' : 'No resistance details to apply.'),
+      changeNote: extracted.changeNote || ((applied.length || appliedMet.length) ? '' : 'No details to apply.'),
       noteUpdates: applied,
+      metUpdates: appliedMet,
     };
     hideToast();
     renderSessionRefineChat();
@@ -1445,6 +1471,7 @@ export async function applySessionRefine() {
   if (idx < 0) return;
   // Persist the extracted notes so the engine result stays reproducible on future Re-analyze.
   for (const u of (_pendingSessionRefine.noteUpdates || [])) applyNoteUpdate(state.sessions[idx].entries, u);
+  for (const u of (_pendingSessionRefine.metUpdates || [])) applyMetUpdate(state.sessions[idx].cardioActivities, u);
   state.sessions[idx].caloriesBurned = _pendingSessionRefine.total;
   state.sessions[idx].burnBreakdown = _pendingSessionRefine.breakdown || [];
   state.sessions[idx].burnNotes = _pendingSessionRefine.notes || state.sessions[idx].burnNotes;
