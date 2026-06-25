@@ -347,13 +347,30 @@ function epocSplit(rpe, sessionHour, runMet = 0) {
   return { rate, todayFraction };
 }
 
-function parseDurationMin(str) {
+export function parseDurationMin(str) {
   if (!str) return 0;
-  const s = String(str).trim();
+  const s = String(str).trim().toLowerCase();
+  // Clock formats: H:MM:SS or M:SS.
   const hms = s.match(/^(\d+):(\d{2}):(\d{2})$/);
   if (hms) return parseInt(hms[1]) * 60 + parseInt(hms[2]) + parseInt(hms[3]) / 60;
   const ms = s.match(/^(\d+):(\d{2})$/);
   if (ms) return parseInt(ms[1]) + parseInt(ms[2]) / 60;
+  // Unit formats: hours and/or minutes — "1h", "1 h", "1.5 hour", "1h30",
+  // "1h30m", "90m", "30 min". A bare number with no unit means minutes.
+  const hourMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:h(?:ours?|rs?)?)(?![a-z])/);
+  const minMatch  = s.match(/(\d+(?:\.\d+)?)\s*(?:m(?:in(?:ute)?s?)?)(?![a-z])/);
+  if (hourMatch || minMatch) {
+    let total = 0;
+    if (hourMatch) total += parseFloat(hourMatch[1]) * 60;
+    if (minMatch)  total += parseFloat(minMatch[1]);
+    // "1h30" (hour unit, trailing number, no minute unit) → trailing number is minutes.
+    if (hourMatch && !minMatch) {
+      const after = s.slice(s.indexOf(hourMatch[0]) + hourMatch[0].length).match(/(\d+)/);
+      if (after) total += parseInt(after[1]);
+    }
+    return total;
+  }
+  // Bare number → minutes.
   const m = s.match(/(\d+(?:\.\d+)?)/);
   return m ? parseFloat(m[1]) : 0;
 }
