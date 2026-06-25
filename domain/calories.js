@@ -561,11 +561,16 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
       continue;
     }
 
-    const met = isRun ? runMet(durationMin, km) : (CARDIO_MET[a.type] ?? 6.0);
+    // Runs/swims derive MET from pace. For the remaining (movement, hike, bike,
+    // custom) the user may override the table MET via the refine chat — their
+    // stated value is a fact, so it wins. The engine still computes the kcal.
+    const userMet = Number(a.metOverride);
+    const hasUserMet = !isRun && userMet > 0;
+    const met = isRun ? runMet(durationMin, km) : (hasUserMet ? userMet : (CARDIO_MET[a.type] ?? 6.0));
     const rawCal = met * 3.5 * WEIGHT_KG / 200 * durationMin;
     cardioBase += rawCal;
     stepsFromCardio += cardioStepCount(a.type, km, durationMin);
-    cardioCalcs.push({ type: a.type, met, durationMin, km, rawCal });
+    cardioCalcs.push({ type: a.type, met, durationMin, km, rawCal, userMet: hasUserMet });
   }
 
   const adjusted = strengthBase + cardioBase;
@@ -662,10 +667,11 @@ export function calculateSessionCalories(session, { rpe = 5, weightKg = 58, swim
       ? ` at ${Math.floor(durationMin / km)}:${String(Math.round((durationMin / km % 1) * 60)).padStart(2, '0')}/km`
       : '';
     const kmNote = km ? ` · ${km} km${paceNote}` : '';
+    const metNote = c.userMet ? `MET ${met} (you set)` : `MET ${met}`;
     breakdown.push({
       activity: type,
       calories: finalCal,
-      reasoning: `MET ${met} × 3.5 × ${WEIGHT_KG}kg ÷ 200 × ${durationMin} min${kmNote} = ${finalCal} kcal`,
+      reasoning: `${metNote} × 3.5 × ${WEIGHT_KG}kg ÷ 200 × ${durationMin} min${kmNote} = ${finalCal} kcal`,
     });
   }
 
